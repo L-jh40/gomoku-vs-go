@@ -1,15 +1,20 @@
 # Gomoku vs Go (windowed AI-vs-AI)
 
-This folder contains a complete new implementation of the hybrid game.
+仓库包含两个版本：
+
+| 版本 | 位置 | 说明 |
+|------|------|------|
+| **正式版**（Official） | 仓库根目录 | 当前完整实现（原 gomoku-vs-go2），AI 棋力更强 |
+| **快速版**（Fast） | `v1-fast/` | 旧版实现（原 gomoku-vs-go1），AI 更快但棋力较弱 |
 
 ## Run
 
 ```powershell
-cd gomoku-vs-go2
-python main.py
+python main.py              # 正式版（GUI）
+python v1-fast\main.py      # 快速版（GUI）
 ```
 
-Command-line self-play:
+Command-line self-play（正式版）:
 
 ```powershell
 python main.py --cli
@@ -18,7 +23,7 @@ python main.py --size 19
 
 Dependencies: Python 3.9+ with `numpy` and `tkinter`.
 
-## Files
+## Files（正式版）
 
 | File | Purpose |
 |------|---------|
@@ -53,7 +58,7 @@ move = ai_white.best_white_move(b, time_limit=10, max_depth=2)
 `white_should_pass(b)` distinguishes pass from resignation when
 `best_white_move` returns `None`.
 
-## Exact marker scoring
+## Exact marker scoring（正式版）
 
 | Marker | Threat | Score |
 |--------|--------|-------|
