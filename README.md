@@ -58,9 +58,9 @@ move = ai_white.best_white_move(b, time_limit=10, max_depth=2)
 | Marker | Threat | Score |
 |--------|--------|-------|
 | solid circle | five point | handled before scoring |
-| triangle | four-three / open four | 3125 |
-| hollow triangle | fragile four-three / open four | 500 |
-| large circle | rush four / open three | 625 |
+| triangle | four-three / open four | 625 |
+| hollow triangle | fragile four-three / open four | 250 |
+| large circle | rush four / open three | 125 |
 | small circle | sleep three / open two | 25 |
 | red dot | sleep two | 1 |
 | territory | empty dead cell or dead black cell | -1 |

@@ -59,9 +59,9 @@ THREAT_SCORE = {
 FORCED_THREAT_TYPES = {"five_point", "four_three", "open_four"}
 
 # A fragile triangle which White can neutralise by capturing an attacking
-# one-liberty black group is still a forced threat, but scores 500 rather
+# one-liberty black group is still a forced threat, but scores 250 rather
 # than the normal triangle score.
-HOLLOW_TRIANGLE_SCORE = 100
+HOLLOW_TRIANGLE_SCORE = 250
 
 # Red-position priority used when no solid circle/triangle exists.
 RED_LEVEL_GROUPS = (
@@ -844,7 +844,7 @@ class HybridBoard:
         A triangle is hollow when, after Black plays it, one of the attacking
         one-liberty black groups can be captured and that capture removes all
         solid circles AND all triangles.  Such triangles still count as
-        forced threats, but their score is 500 instead of 625.
+        forced threats, but their score is 250 instead of 625.
         """
         if self._hollow_triangles_cache is not None:
             return set(self._hollow_triangles_cache)
