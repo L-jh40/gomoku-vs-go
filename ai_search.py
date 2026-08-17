@@ -242,8 +242,10 @@ def _white_defense(board: HybridBoard, depth: int,
                 # so it is not part of the forced line to check.
                 continue
             strength = 0
-            if _five_points(after_threats):
-                strength += 100
+            five_count = len(_five_points(after_threats))
+            if five_count:
+                # More immediate winning points means a shorter forced win.
+                strength += 100 + five_count * 10
             if _triangles(after_threats):
                 strength += 10
             if black_move in tri_set:
@@ -259,9 +261,9 @@ def _white_defense(board: HybridBoard, depth: int,
             )
             if sub_safe is None:
                 # White cannot clear everything after this black move.
-                # Keep evaluating all black replies so every winning reply
-                # (for example both ways to extend an open three) is stored
-                # in the replay table.
+                # The replies are already ordered from fastest forced win to
+                # slower forced win, so the first winning reply is kept and
+                # the search for this white move stops immediately.
                 if replay_map is not None:
                     _record_replay_move(
                         replay_map, _board_signature(child), black_move
@@ -269,6 +271,7 @@ def _white_defense(board: HybridBoard, depth: int,
                 if not child_fail_path:
                     child_fail_path = [black_move] + sub_path
                 child_is_safe = False
+                break
 
         if child_is_safe:
             safe_moves.append(white_move)
