@@ -224,11 +224,11 @@ class GameGUI:
 
     def apply_theme(self):
         if self.dark_mode_var.get():
-            self.board_bg = "#4a3f1f"
-            self.line_color = "#c9b56a"
-            self.star_color = "#c9b56a"
+            self.board_bg = "#c0ab70"
+            self.line_color = "black"
+            self.star_color = "black"
             self.panel_bg = "#1e1e1e"
-            self.fg_color = "#d8c88a"
+            self.fg_color = "#ffffff"
         else:
             self.board_bg = "#f0d68c"
             self.line_color = "black"
