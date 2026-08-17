@@ -178,7 +178,7 @@ class GameGUI:
         self.canvas.bind("<Button-1>", self.on_click)
         self.canvas.bind("<Button-3>", self.on_right_click)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
-        self.draw_board()
+        self.apply_theme()
         self.update_mode_label()
 
         if self.black_ai_var.get() and self.current == BLACK:
@@ -285,11 +285,16 @@ class GameGUI:
     # ------------------------------------------------------------------
     def draw_board(self, with_hints=True):
         self.canvas.delete("all")
+        self.canvas.configure(bg=self.board_bg)
         size = self.size
         for i in range(size):
             x0 = MARGIN + i * CELL
-            self.canvas.create_line(x0, MARGIN, x0, MARGIN + (size - 1) * CELL)
-            self.canvas.create_line(MARGIN, x0, MARGIN + (size - 1) * CELL, x0)
+            self.canvas.create_line(
+                x0, MARGIN, x0, MARGIN + (size - 1) * CELL, fill=self.line_color
+            )
+            self.canvas.create_line(
+                MARGIN, x0, MARGIN + (size - 1) * CELL, x0, fill=self.line_color
+            )
 
         star_points = []
         if size == 15:
@@ -300,7 +305,9 @@ class GameGUI:
         for sx, sy in star_points:
             cx = MARGIN + sy * CELL
             cy = MARGIN + sx * CELL
-            self.canvas.create_oval(cx - 3, cy - 3, cx + 3, cy + 3, fill="black")
+            self.canvas.create_oval(
+                cx - 3, cy - 3, cx + 3, cy + 3, fill=self.star_color
+            )
 
         move_numbers = {}
         if self.show_moves_var.get():
