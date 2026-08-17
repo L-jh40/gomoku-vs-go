@@ -124,6 +124,14 @@ class GameGUI:
         tk.Entry(time_frame, textvariable=self.min_search_time_var,
                  width=6).pack(side=tk.LEFT)
 
+        self.max_search_time_var = tk.StringVar(value="0")
+        max_time_frame = tk.Frame(self.info)
+        max_time_frame.pack(fill=tk.X, pady=1)
+        tk.Label(max_time_frame, text="最长搜索时间(s):",
+                 font=("Arial", 9)).pack(side=tk.LEFT)
+        tk.Entry(max_time_frame, textvariable=self.max_search_time_var,
+                 width=6).pack(side=tk.LEFT)
+
         self.hint_var = tk.IntVar(value=0)
         tk.Checkbutton(self.info, text="玩家落子提示",
                        variable=self.hint_var,
@@ -132,9 +140,6 @@ class GameGUI:
         tk.Checkbutton(self.info, text="显示手数",
                        variable=self.show_moves_var,
                        command=self.draw_board).pack(anchor=tk.W)
-        self.forbidden_blue_var = tk.IntVar(value=0)
-        tk.Checkbutton(self.info, text="AI算法加入禁手判断",
-                       variable=self.forbidden_blue_var).pack(anchor=tk.W)
         self.cancel_resign_var = tk.IntVar(value=0)
         tk.Checkbutton(self.info, text="取消投子认负",
                        variable=self.cancel_resign_var).pack(anchor=tk.W)
