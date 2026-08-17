@@ -7,6 +7,12 @@
 | **正式版**（Official） | 仓库根目录 | 当前完整实现（原 gomoku-vs-go2），AI 棋力更强 |
 | **快速版**（Fast） | `v1-fast/` | 旧版实现（原 gomoku-vs-go1），AI 更快但棋力较弱 |
 
+## 界面预览
+
+![黑棋胜利](docs/black-win.png)
+
+![白棋胜利](docs/white-win.png)
+
 ## Run
 
 ```powershell
