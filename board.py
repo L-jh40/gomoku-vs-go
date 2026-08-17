@@ -781,12 +781,6 @@ class HybridBoard:
 
         blue = self.get_blue_cross_positions()
         dead = self.get_dead_positions()
-        # Pattern classification uses only real white stones and board edges
-        # as blockers.  Empty cells which are currently blue/dead may change
-        # status after the hypothetical black move; treating them statically
-        # as blockers caused false negatives / false positives for gapped
-        # four shapes such as 2101102 and 2110012.
-        blockers: set[tuple[int, int]] = set()
 
         threats: dict[tuple[int, int], str] = {}
         import rules
@@ -800,8 +794,18 @@ class HybridBoard:
                 continue
             self.grid[x, y] = BLACK
             try:
+                # No-liberty empty cells after this hypothetical move act as
+                # blockers: Black could never play them, so they cannot be
+                # the completing point of a four/three.  They are computed
+                # after the move (not before), so gapped shapes such as
+                # 21111AB and 001A11BC are classified correctly.
+                dynamic_blockers = set()
+                for cx, cy in self.positions_on_lines(x, y, radius=4):
+                    if self.grid[cx, cy] == EMPTY and \
+                            self.would_self_capture(cx, cy):
+                        dynamic_blockers.add((cx, cy))
                 threat = rules.classify_position_after_move(
-                    self, x, y, blockers=blockers
+                    self, x, y, blockers=dynamic_blockers
                 )
             finally:
                 self.grid[x, y] = EMPTY
@@ -816,7 +820,6 @@ class HybridBoard:
             return {}
         blue = self.get_blue_cross_positions()
         dead = self.get_dead_positions()
-        blockers: set[tuple[int, int]] = set()
         threats: dict[tuple[int, int], str] = {}
         import rules
         for x, y in positions:
@@ -824,8 +827,13 @@ class HybridBoard:
                 continue
             self.grid[x, y] = BLACK
             try:
+                dynamic_blockers = set()
+                for cx, cy in self.positions_on_lines(x, y, radius=4):
+                    if self.grid[cx, cy] == EMPTY and \
+                            self.would_self_capture(cx, cy):
+                        dynamic_blockers.add((cx, cy))
                 threat = rules.classify_position_after_move(
-                    self, x, y, blockers=blockers
+                    self, x, y, blockers=dynamic_blockers
                 )
             finally:
                 self.grid[x, y] = EMPTY
