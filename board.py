@@ -1089,10 +1089,24 @@ class HybridBoard:
         import rules
 
         for tx, ty in sorted(forced):
+            forced_type = threats.get((tx, ty))
             board_after = self.copy()
             ok, _ = board_after.play_black(tx, ty)
             if not ok:
                 continue
+
+            # Direct rule: pretend Black plays the solid circle / triangle,
+            # then look at the group containing that very point.  If its
+            # liberty count is 1 (solid circle) or <= 2 (triangle), White may
+            # play one of those liberties to make the threat unplayable
+            # before Black can convert it.
+            forced_stones, forced_libs = board_after.get_group(tx, ty)
+            if forced_type == "five_point":
+                if len(forced_libs) == 1:
+                    candidates.update(forced_libs)
+            elif forced_type in ("four_three", "open_four"):
+                if 0 < len(forced_libs) <= 2:
+                    candidates.update(forced_libs)
 
             seen: set[tuple[int, int]] = set()
             for dx, dy in DIRECTIONS:
