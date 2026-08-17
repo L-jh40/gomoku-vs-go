@@ -340,7 +340,7 @@ class GameGUI:
             else CELL // 2 - 2
         fill = "black" if color == BLACK else "white"
         self.canvas.create_oval(cx - r, cy - r, cx + r, cy + r,
-                                fill=fill, outline="black")
+                                fill=fill, outline=self.line_color)
         if dead_black:
             s = 6
             self.canvas.create_rectangle(cx - s, cy - s, cx + s, cy + s,
