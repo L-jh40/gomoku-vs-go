@@ -62,6 +62,7 @@ class GameGUI:
         self.pass_log: list[int] = []
         self.previous_game_snapshot = None
         self.moves_since_new_game = 0
+        self.max_time_after_id = None
 
         canvas_size = MARGIN * 2 + (board_size - 1) * CELL + 20
         self.canvas = tk.Canvas(root, width=canvas_size, height=canvas_size,
@@ -519,8 +520,6 @@ class GameGUI:
         self._schedule_search_ticker()
 
         board_copy = self.board.copy()
-        board_copy._update_forbidden_blue = bool(self.forbidden_blue_var.get())
-        board_copy._invalidate_caches()
         max_depth = self.current_max_depth
         try:
             min_search_time = float(self.min_search_time_var.get())
@@ -528,6 +527,18 @@ class GameGUI:
             min_search_time = 0.0
         if min_search_time < 0:
             min_search_time = 0.0
+        try:
+            max_search_time = float(self.max_search_time_var.get())
+        except ValueError:
+            max_search_time = 0.0
+        if max_search_time < 0:
+            max_search_time = 0.0
+
+        if max_search_time > 0:
+            self._cancel_max_search_timer()
+            self.max_time_after_id = self.root.after(
+                int(max_search_time * 1000), self._on_max_search_time
+            )
 
         def progress_callback(completed_depth, elapsed_layer, finished=True,
                               focused=False):
