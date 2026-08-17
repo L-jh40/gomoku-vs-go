@@ -492,10 +492,26 @@ class GameGUI:
                 return
         self.run_ai_move(self.current)
 
+    def _cancel_max_search_timer(self):
+        if self.max_time_after_id is not None:
+            try:
+                self.root.after_cancel(self.max_time_after_id)
+            except Exception:
+                pass
+            self.max_time_after_id = None
+
+    def _on_max_search_time(self):
+        self.max_time_after_id = None
+        if self.ai_thinking:
+            # Same effect as clicking "AI 立即落子": interrupt the current
+            # depth and commit the best completed/partial result.
+            self.search_interrupt.set()
+
     def _stop_search(self):
         self.search_epoch += 1
         self.search_interrupt.set()
         self.ai_thinking = False
+        self._cancel_max_search_timer()
 
     def run_ai_move(self, color):
         if self.game_over:
@@ -593,6 +609,7 @@ class GameGUI:
             def apply():
                 if epoch != self.search_epoch:
                     return
+                self._cancel_max_search_timer()
                 self.ai_thinking = False
                 self.search_interrupt.clear()
                 total = time.time() - self.search_start_time
