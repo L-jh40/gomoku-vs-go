@@ -891,9 +891,21 @@ class GameGUI:
             self._apply_replay_black_move(move)
             return
 
-        # The player chose a move outside the searched replies.  Do not
-        # blindly trust the single recorded line; calculate a black winning
-        # reply for this concrete position instead.
+        # The player chose a move outside the searched replies.  If Black
+        # already has a direct winning point or triangle, play the first one
+        # immediately instead of starting an expensive search.
+        threats = self.board.compute_threats()
+        five = ai_search._five_points(threats)
+        if five:
+            self._apply_replay_black_move(five[0])
+            return
+        tri = ai_search._triangles(threats)
+        if tri:
+            self._apply_replay_black_move(tri[0])
+            return
+
+        # No direct forced point: calculate a black reply for this concrete
+        # position instead.
         self.ai_thinking = True
         self.search_interrupt.clear()
         self.thinking_label.config(text="复盘：计算黑棋下法...")
