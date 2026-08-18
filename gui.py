@@ -64,12 +64,9 @@ class GameGUI:
         self.moves_since_new_game = 0
         self.max_time_after_id = None
 
-        self.dark_mode_var = tk.IntVar(value=0)
         self.board_bg = "#f0d68c"
         self.line_color = "black"
         self.star_color = "black"
-        self.panel_bg = "#f0f0f0"
-        self.fg_color = "black"
 
         canvas_size = MARGIN * 2 + (board_size - 1) * CELL + 20
         self.canvas = tk.Canvas(root, width=canvas_size, height=canvas_size,
@@ -175,7 +172,7 @@ class GameGUI:
         self.canvas.bind("<Button-1>", self.on_click)
         self.canvas.bind("<Button-3>", self.on_right_click)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
-        self.apply_theme()
+        self.draw_board()
         self.update_mode_label()
 
         if self.black_ai_var.get() and self.current == BLACK:
@@ -218,46 +215,6 @@ class GameGUI:
         except ValueError:
             self.current_max_depth = 2
         self.update_mode_label()
-
-    def apply_theme(self):
-        if self.dark_mode_var.get():
-            self.board_bg = "#c0ab70"
-            self.line_color = "black"
-            self.star_color = "black"
-            self.panel_bg = "#1e1e1e"
-            self.fg_color = "#ffffff"
-        else:
-            self.board_bg = "#f0d68c"
-            self.line_color = "black"
-            self.star_color = "black"
-            self.panel_bg = "#f0f0f0"
-            self.fg_color = "black"
-
-        self.root.configure(bg=self.panel_bg)
-        self.info.configure(bg=self.panel_bg)
-        self.canvas.configure(bg=self.board_bg)
-        self._apply_theme_to_widgets(self.info, self.panel_bg, self.fg_color)
-        self.draw_board()
-
-    def _apply_theme_to_widgets(self, parent, bg, fg):
-        for child in parent.winfo_children():
-            try:
-                if isinstance(child, tk.Frame):
-                    child.configure(bg=bg)
-                    self._apply_theme_to_widgets(child, bg, fg)
-                elif isinstance(child, tk.Label):
-                    child.configure(bg=bg, fg=fg)
-                elif isinstance(child, (tk.Button, tk.Checkbutton, tk.Radiobutton)):
-                    child.configure(
-                        bg=bg, fg=fg,
-                        activebackground=bg, activeforeground=fg,
-                        highlightthickness=0
-                    )
-                elif isinstance(child, tk.Entry):
-                    child.configure(bg="#2b2b2b" if self.dark_mode_var.get() else "white",
-                                    fg=fg, insertbackground=fg)
-            except Exception:
-                pass
 
     def update_mode_label(self):
         bh = "人类" if self.black_is_human() else "AI"
