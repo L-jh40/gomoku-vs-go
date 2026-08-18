@@ -776,10 +776,8 @@ class GameGUI:
         win.title(title)
         win.geometry("360x130")
         win.transient(self.root)
-        try:
-            win.grab_set()
-        except Exception:
-            pass
+        # No grab: the main window stays clickable while this dialog is open.
+        # Closing the main window will close this dialog through _on_close.
         win.protocol("WM_DELETE_WINDOW", self._close_active_dialog)
         tk.Label(win, text=text, font=("Arial", 12)).pack(
             padx=12, pady=14, fill=tk.X)
