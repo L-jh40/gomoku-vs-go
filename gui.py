@@ -148,9 +148,6 @@ class GameGUI:
         tk.Checkbutton(self.info, text="显示手数",
                        variable=self.show_moves_var,
                        command=self.draw_board).pack(anchor=tk.W)
-        tk.Checkbutton(self.info, text="暗夜模式",
-                       variable=self.dark_mode_var,
-                       command=self.apply_theme).pack(anchor=tk.W)
         self.cancel_resign_var = tk.IntVar(value=0)
         tk.Checkbutton(self.info, text="取消投子认负",
                        variable=self.cancel_resign_var).pack(anchor=tk.W)
