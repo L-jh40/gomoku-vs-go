@@ -109,6 +109,17 @@ class GameGUI:
 
         self.black_ai_var = tk.IntVar(value=1 if black_is_ai else 0)
         self.white_ai_var = tk.IntVar(value=1 if white_is_ai else 0)
+
+        self.first_player_var = tk.StringVar(value="black")
+        self.enable_forbidden_var = tk.IntVar(value=1)
+        self.forbid_overline_var = tk.IntVar(value=1)
+        self.forbid_44_var = tk.IntVar(value=1)
+        self.forbid_33_var = tk.IntVar(value=1)
+        self.torus_mode_var = tk.IntVar(value=0)
+        self.obstacle_enabled_var = tk.IntVar(value=0)
+        self.obstacle_count_var = tk.StringVar(value="0")
+        self.mode_window = None
+
         tk.Checkbutton(self.info, text="黑棋 AI",
                        variable=self.black_ai_var,
                        command=self.update_mode_label).pack(anchor=tk.W)
