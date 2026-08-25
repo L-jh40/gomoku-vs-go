@@ -542,7 +542,7 @@ def _alphabeta(board: HybridBoard, depth: int, alpha: float, beta: float,
         else:
             child_value = _alphabeta(
                 child, depth - 1, alpha, beta, True,
-                interrupt_event, deadline, defense_depth
+                interrupt_event, deadline, local_defense_depth
             )
         value = min(value, child_value)
         beta = min(beta, value)
