@@ -491,8 +491,13 @@ def _alphabeta(board: HybridBoard, depth: int, alpha: float, beta: float,
     if depth <= 0:
         return board.evaluate_black_position()
 
+    # Depth n, layer k: when this minimax node encounters a forced threat,
+    # the forced-defence proof is only expanded to (n - k + 2) plies.
+    # Here `depth` is the remaining minimax depth, so local_defense_depth
+    # equals depth + 2.
+    local_defense_depth = depth + 2
     threats = board.compute_threats()
-    moves = _moves_for_player(board, black_turn, threats, defense_depth,
+    moves = _moves_for_player(board, black_turn, threats, local_defense_depth,
                               interrupt_event=interrupt_event)
     if not moves:
         # No legal candidate for the side to move.
