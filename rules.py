@@ -172,11 +172,25 @@ def classify_position_after_move(board, x: int, y: int,
         return None
     if "five" in direction_threats:
         return "five_point"
+
+    # If long-connection foul is disabled, a 6+ line is treated as a
+    # large-circle threat (the move is legal).
     if "overline" in direction_threats:
-        return None
+        if getattr(board, "_forbid_overline", True):
+            return None
+        direction_threats = [
+            "rush_four" if t == "overline" else t for t in direction_threats
+        ]
 
     fours = [t for t in direction_threats if t in ("open_four", "rush_four")]
     open_threes = [t for t in direction_threats if t == "open_three"]
+
+    # If three-three / four-four fouls are disabled, the combined shape is
+    # strong enough to display as a triangle.
+    if not getattr(board, "_forbid_33", True) and len(open_threes) >= 2:
+        return "four_three"
+    if not getattr(board, "_forbid_44", True) and len(fours) >= 2:
+        return "four_three"
 
     if any(t == "open_four" for t in fours):
         return "open_four"
