@@ -1014,10 +1014,19 @@ class HybridBoard:
     # ------------------------------------------------------------------
     # Farthest-open-point fallback
     # ------------------------------------------------------------------
-    def farthest_open_positions(self, candidates) -> set[tuple[int, int]]:
+    def farthest_open_positions(self, candidates):
+        """Return candidates sorted by the task's no-red-point distance rule.
+
+        For each candidate, four direction pairs (vertical, horizontal, and
+        the two diagonals) are considered.  Each pair is represented by
+        (max distance of the two directions, min distance of the two
+        directions).  The four pairs are compared from weakest to strongest;
+        after that Chebyshev distance to the nearest blocker/edge is used,
+        and finally centre-out index order.
+        """
         candidates = [p for p in candidates if self.is_empty(*p)]
         if not candidates:
-            return set()
+            return []
         blockers = {
             (x, y)
             for x in range(self.size)
@@ -1027,34 +1036,48 @@ class HybridBoard:
         territory = self.get_white_territory_empty_positions()
         blockers |= territory
 
-        best: set[tuple[int, int]] = set()
-        best_score = -1.0
-        center = self.size / 2.0
-        for x, y in candidates:
-            direction_scores = []
-            for dx, dy in DIRECTIONS:
-                forward = 0
-                nx, ny = x + dx, y + dy
-                while self.in_bounds(nx, ny) and (nx, ny) not in blockers:
-                    forward += 1
-                    nx += dx
-                    ny += dy
-                backward = 0
-                nx, ny = x - dx, y - dy
-                while self.in_bounds(nx, ny) and (nx, ny) not in blockers:
-                    backward += 1
-                    nx -= dx
-                    ny -= dy
-                direction_scores.append(min(forward, backward))
-            score = max(direction_scores) if direction_scores else 0
-            tie = -0.001 * (abs(x - center) + abs(y - center))
-            value = score + tie
-            if value > best_score:
-                best_score = value
-                best = {(x, y)}
-            elif abs(value - best_score) < 1e-12:
-                best.add((x, y))
-        return best
+        direction_pairs = [
+            ((1, 0), (-1, 0)),
+            ((0, 1), (0, -1)),
+            ((1, 1), (-1, -1)),
+            ((1, -1), (-1, 1)),
+        ]
+        center = (self.size - 1) / 2.0
+
+        def dir_distance(x, y, dx, dy):
+            d = 0
+            nx, ny = x + dx, y + dy
+            while self.in_bounds(nx, ny) and (nx, ny) not in blockers:
+                d += 1
+                nx += dx
+                ny += dy
+            return d
+
+        def chebyshev(x, y):
+            best = min(x, y, self.size - 1 - x, self.size - 1 - y)
+            for bx, by in blockers:
+                best = min(best, max(abs(x - bx), abs(y - by)))
+            return best
+
+        def make_key(candidate):
+            x, y = candidate
+            pair_values = []
+            for (dx1, dy1), (dx2, dy2) in direction_pairs:
+                d1 = dir_distance(x, y, dx1, dy1)
+                d2 = dir_distance(x, y, dx2, dy2)
+                pair_values.append((max(d1, d2), min(d1, d2)))
+            pair_values.sort(key=lambda item: item[0])  # weakest first
+            key = []
+            for pair_max, pair_min in pair_values:
+                key.append(-pair_max)
+                key.append(-pair_min)
+            key.append(-chebyshev(x, y))
+            key.append(abs(x - center) + abs(y - center))
+            key.append(x)
+            key.append(y)
+            return tuple(key)
+
+        return sorted(candidates, key=make_key)
 
     # ------------------------------------------------------------------
     # White defence candidates (forced threats + capture liberties)
