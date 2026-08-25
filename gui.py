@@ -1105,7 +1105,9 @@ class GameGUI:
 
     def undo_move(self):
         if self.ai_thinking:
+            # First click while AI is searching only stops the search.
             self._stop_search()
+            return
         if not self.board.history:
             if self.previous_game_snapshot is not None:
                 self._restore_previous_game()
