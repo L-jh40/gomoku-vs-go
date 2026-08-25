@@ -1072,7 +1072,21 @@ class GameGUI:
             self.previous_game_snapshot = None
         self.moves_since_new_game = 0
         self.board = HybridBoard(self.size)
-        self.current = BLACK
+        self.board._forbid_overline = bool(
+            self.enable_forbidden_var.get() and self.forbid_overline_var.get()
+        )
+        self.board._forbid_44 = bool(
+            self.enable_forbidden_var.get() and self.forbid_44_var.get()
+        )
+        self.board._forbid_33 = bool(
+            self.enable_forbidden_var.get() and self.forbid_33_var.get()
+        )
+        if self.first_player_var.get() == "white":
+            self.current = WHITE
+            self.board.turn = WHITE
+        else:
+            self.current = BLACK
+            self.board.turn = BLACK
         self.last_move = None
         self.game_over = False
         self.pass_count = 0
@@ -1090,7 +1104,9 @@ class GameGUI:
         self.draw_board()
         self.update_info()
         self.update_mode_label()
-        if self.black_ai_var.get():
+        if self.current == BLACK and self.black_ai_var.get():
+            self.root.after(300, self.maybe_play_ai)
+        elif self.current == WHITE and self.white_ai_var.get():
             self.root.after(300, self.maybe_play_ai)
 
     def _register_move(self):
