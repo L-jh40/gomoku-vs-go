@@ -132,6 +132,9 @@ class HybridBoard:
         nb.captured_count = dict(self.captured_count)
         nb.turn = self.turn
         nb._update_forbidden_blue = self._update_forbidden_blue
+        nb._forbid_overline = self._forbid_overline
+        nb._forbid_44 = self._forbid_44
+        nb._forbid_33 = self._forbid_33
         if self._blue_cross_cache is not None:
             nb._blue_cross_cache = set(self._blue_cross_cache)
         if self._dead_cache is not None:
