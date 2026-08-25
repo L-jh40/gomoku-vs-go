@@ -208,6 +208,7 @@ class GameGUI:
     def _on_close(self):
         self.search_interrupt.set()
         self._close_active_dialog()
+        self._close_mode_window()
         try:
             self.root.destroy()
         except Exception:
@@ -429,6 +430,7 @@ class GameGUI:
     def try_play_black(self, x, y):
         if not self.board.is_empty(x, y):
             return
+        self._stop_search()
         ok, _ftype = rules.is_black_legal_move(self.board, x, y)
         if not ok:
             messagebox.showinfo("禁手", "黑棋不能落在此处")
@@ -453,6 +455,7 @@ class GameGUI:
     def try_play_white(self, x, y):
         if not self.board.is_empty(x, y):
             return
+        self._stop_search()
         ok, _ = self.board.play_white(x, y)
         if not ok:
             messagebox.showinfo("落子失败", "白棋不能落在此处")
@@ -1043,6 +1046,68 @@ class GameGUI:
         # hints/territory here was the cause of the frozen-looking window.
         self.draw_board(with_hints=False)
         self.update_info()
+
+    def open_mode_window(self):
+        self._restore_main_window()
+        if self.mode_window is not None and self.mode_window.winfo_exists():
+            self.mode_window.lift()
+            return
+        win = tk.Toplevel(self.root)
+        self.mode_window = win
+        win.title("选择模式")
+        win.geometry("420x400")
+        win.transient(self.root)
+        win.protocol("WM_DELETE_WINDOW", self._close_mode_window)
+
+        tk.Label(win, text="先手", font=("Arial", 11, "bold")).pack(anchor=tk.W, padx=10)
+        first_frame = tk.Frame(win)
+        first_frame.pack(fill=tk.X, padx=10)
+        tk.Radiobutton(first_frame, text="黑棋先手（五子棋规则）",
+                       variable=self.first_player_var, value="black").pack(side=tk.LEFT)
+        tk.Radiobutton(first_frame, text="白棋先手（围棋规则）",
+                       variable=self.first_player_var, value="white").pack(side=tk.LEFT, padx=10)
+
+        tk.Label(win, text="禁手设置", font=("Arial", 11, "bold")).pack(
+            anchor=tk.W, padx=10, pady=(10, 0))
+        tk.Checkbutton(win, text="启用三种禁手",
+                       variable=self.enable_forbidden_var).pack(anchor=tk.W, padx=10)
+        forbidden_frame = tk.Frame(win)
+        forbidden_frame.pack(fill=tk.X, padx=20)
+        tk.Checkbutton(forbidden_frame, text="三三禁手",
+                       variable=self.forbid_33_var).pack(side=tk.LEFT)
+        tk.Checkbutton(forbidden_frame, text="四四禁手",
+                       variable=self.forbid_44_var).pack(side=tk.LEFT, padx=10)
+        tk.Checkbutton(forbidden_frame, text="长连禁手",
+                       variable=self.forbid_overline_var).pack(side=tk.LEFT)
+
+        tk.Label(win, text="预留接口", font=("Arial", 11, "bold")).pack(
+            anchor=tk.W, padx=10, pady=(10, 0))
+        tk.Checkbutton(win, text="环面模式",
+                       variable=self.torus_mode_var).pack(anchor=tk.W, padx=10)
+        tk.Checkbutton(win, text="启用障碍",
+                       variable=self.obstacle_enabled_var).pack(anchor=tk.W, padx=10)
+        obstacle_frame = tk.Frame(win)
+        obstacle_frame.pack(fill=tk.X, padx=20)
+        tk.Label(obstacle_frame, text="选择障碍个数:").pack(side=tk.LEFT)
+        tk.Entry(obstacle_frame, textvariable=self.obstacle_count_var,
+                 width=6).pack(side=tk.LEFT)
+
+        bottom = tk.Frame(win)
+        bottom.pack(side=tk.BOTTOM, fill=tk.X, pady=10)
+        tk.Button(bottom, text="新对局", command=self._apply_mode_new_game).pack(
+            side=tk.TOP)
+
+    def _close_mode_window(self):
+        if self.mode_window is not None:
+            try:
+                self.mode_window.destroy()
+            except Exception:
+                pass
+            self.mode_window = None
+
+    def _apply_mode_new_game(self):
+        self._close_mode_window()
+        self.new_game()
 
     def new_game(self):
         self._close_active_dialog()
