@@ -111,7 +111,6 @@ class GameGUI:
         self.white_ai_var = tk.IntVar(value=1 if white_is_ai else 0)
 
         self.first_player_var = tk.StringVar(value="black")
-        self.enable_forbidden_var = tk.IntVar(value=1)
         self.forbid_overline_var = tk.IntVar(value=1)
         self.forbid_44_var = tk.IntVar(value=1)
         self.forbid_33_var = tk.IntVar(value=1)
