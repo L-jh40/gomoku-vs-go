@@ -209,7 +209,7 @@ def is_black_legal_move(board, x: int, y: int):
         run = board.black_run_length(x, y)
         if run == 5:
             return True, None
-        if run >= 6:
+        if getattr(board, "_forbid_overline", True) and run >= 6:
             return False, "overline"
 
         four_count = 0
@@ -221,9 +221,9 @@ def is_black_legal_move(board, x: int, y: int):
             elif threat == "open_three":
                 three_count += 1
 
-        if four_count >= 2:
+        if getattr(board, "_forbid_44", True) and four_count >= 2:
             return False, "four_four"
-        if three_count >= 2:
+        if getattr(board, "_forbid_33", True) and three_count >= 2:
             return False, "three_three"
         return True, None
     finally:
