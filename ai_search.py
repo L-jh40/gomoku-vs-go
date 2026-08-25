@@ -522,7 +522,7 @@ def _alphabeta(board: HybridBoard, depth: int, alpha: float, beta: float,
             else:
                 child_value = _alphabeta(
                     child, depth - 1, alpha, beta, False,
-                    interrupt_event, deadline, defense_depth
+                    interrupt_event, deadline, local_defense_depth
                 )
             value = max(value, child_value)
             alpha = max(alpha, value)
