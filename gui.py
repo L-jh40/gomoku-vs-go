@@ -1069,8 +1069,6 @@ class GameGUI:
 
         tk.Label(win, text="禁手设置", font=("Arial", 11, "bold")).pack(
             anchor=tk.W, padx=10, pady=(10, 0))
-        tk.Checkbutton(win, text="启用三种禁手",
-                       variable=self.enable_forbidden_var).pack(anchor=tk.W, padx=10)
         forbidden_frame = tk.Frame(win)
         forbidden_frame.pack(fill=tk.X, padx=20)
         tk.Checkbutton(forbidden_frame, text="三三禁手",
@@ -1137,15 +1135,9 @@ class GameGUI:
             self.previous_game_snapshot = None
         self.moves_since_new_game = 0
         self.board = HybridBoard(self.size)
-        self.board._forbid_overline = bool(
-            self.enable_forbidden_var.get() and self.forbid_overline_var.get()
-        )
-        self.board._forbid_44 = bool(
-            self.enable_forbidden_var.get() and self.forbid_44_var.get()
-        )
-        self.board._forbid_33 = bool(
-            self.enable_forbidden_var.get() and self.forbid_33_var.get()
-        )
+        self.board._forbid_overline = bool(self.forbid_overline_var.get())
+        self.board._forbid_44 = bool(self.forbid_44_var.get())
+        self.board._forbid_33 = bool(self.forbid_33_var.get())
         if self.first_player_var.get() == "white":
             self.current = WHITE
             self.board.turn = WHITE
