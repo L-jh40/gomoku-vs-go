@@ -693,7 +693,7 @@ def _farthest_move(board: HybridBoard, black_turn: bool):
     best = board.farthest_open_positions(candidates)
     if not best:
         return None
-    return sorted(best)[0]
+    return best[0]
 
 
 # ----------------------------------------------------------------------

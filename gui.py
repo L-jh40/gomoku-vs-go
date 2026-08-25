@@ -94,8 +94,12 @@ class GameGUI:
                                     font=("Arial", 9))
         self.depth_label.pack(pady=1)
 
-        tk.Button(self.info, text="新对局", command=self.new_game).pack(
-            fill=tk.X, pady=1)
+        top_buttons = tk.Frame(self.info)
+        top_buttons.pack(fill=tk.X, pady=1)
+        tk.Button(top_buttons, text="新对局", command=self.new_game).pack(
+            side=tk.LEFT, fill=tk.X, expand=True)
+        tk.Button(top_buttons, text="选择模式", command=self.open_mode_window).pack(
+            side=tk.LEFT, fill=tk.X, expand=True, padx=(4, 0))
         tk.Button(self.info, text="悔棋", command=self.undo_move).pack(
             fill=tk.X, pady=1)
         tk.Button(self.info, text="Pass", command=self.human_pass).pack(
