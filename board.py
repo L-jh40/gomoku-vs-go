@@ -118,6 +118,9 @@ class HybridBoard:
         self._white_pass_pending = False
         self.pattern_positions: dict[str, tuple[int, int]] = {}
         self._update_forbidden_blue = True
+        self._forbid_overline = True
+        self._forbid_44 = True
+        self._forbid_33 = True
 
     # ------------------------------------------------------------------
     # Basic helpers
