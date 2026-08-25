@@ -171,6 +171,8 @@ class GameGUI:
 
         self.canvas.bind("<Button-1>", self.on_click)
         self.canvas.bind("<Button-3>", self.on_right_click)
+        self.root.bind("<KeyPress-z>", self._on_key)
+        self.root.bind("<KeyPress-x>", self._on_key)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self.draw_board()
         self.update_mode_label()
@@ -389,6 +391,14 @@ class GameGUI:
             self.try_play_black(x, y)
         elif self.current == WHITE and (self.white_is_human() or self.replay_mode):
             self.try_play_white(x, y)
+
+    def _on_key(self, event):
+        if isinstance(event.widget, tk.Entry):
+            return
+        if event.keysym.lower() == "z":
+            self.undo_move()
+        elif event.keysym.lower() == "x":
+            self.human_pass()
 
     def on_right_click(self, _event=None):
         if self.game_over or self.ai_thinking or self.replay_mode:
