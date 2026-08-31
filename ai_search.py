@@ -221,11 +221,13 @@ def _white_defense(board: HybridBoard, depth: int,
 
         tri_moves = _triangles(child_threats)
         tri_set = set(tri_moves)
-        large_moves = [p for p in _large_circles(child_threats) if p not in tri_set]
-        # Triangles are stronger than large circles.  The reply ordering below
-        # also prefers a black move that immediately leaves solid circles, so
-        # replay always picks a direct winning move when one exists.
-        black_moves = sorted(tri_moves) + sorted(large_moves)
+        # Focused search should only consider the opponent's raw candidate
+        # algorithm: triangles + capture liberties when Black has triangles,
+        # otherwise the normal priority candidates.
+        if tri_moves:
+            black_moves = _black_algorithm_a_candidates(child, child_threats)
+        else:
+            black_moves = child.get_black_priority_candidates(child_threats)
         child_is_safe = True
         child_fail_path: list[tuple[int, int]] = []
 
@@ -660,11 +662,12 @@ def _iterative_minimax(board: HybridBoard, black_turn: bool, max_depth: int,
                         ordered[0] if ordered else None
                     )
                     completed = 0
-                elif move is not None:
-                    # A deeper search interrupted at ~1.5 layers exposes
-                    # the current odd-layer best (layer 1 for depth 2).
-                    best_move = move
-                    completed = max(completed, max(0, depth - 1))
+                elif completed == 0:
+                    # No completed layer yet: use the highest-scored ordered
+                    # candidate (the first ordered move) instead of a partial
+                    # deeper result that may not have finished screening.
+                    best_move = ordered[0] if ordered else None
+                # If a lower even depth already completed, keep its best move.
                 break
             if move is not None:
                 best_move = move
