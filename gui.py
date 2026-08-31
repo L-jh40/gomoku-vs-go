@@ -818,6 +818,7 @@ class GameGUI:
         if not self.ai_thinking:
             return
         self._refresh_thinking_label()
+        self.update_info()
         self._schedule_search_ticker()
 
     def _refresh_thinking_label(self):
