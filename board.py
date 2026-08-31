@@ -1129,11 +1129,22 @@ class HybridBoard:
             # before Black can convert it.
             forced_stones, forced_libs = board_after.get_group(tx, ty)
             if forced_type == "five_point":
-                if 0 < len(forced_libs) <= 2:
+                # Solid circle: White only has one move before Black can win,
+                # so only a one-liberty group can be captured/blocked.
+                if len(forced_libs) == 1:
                     candidates.update(forced_libs)
             elif forced_type in ("four_three", "open_four"):
+                # Triangle: two moves remain, so groups with <=2 liberties
+                # are still defensible.
                 if 0 < len(forced_libs) <= 2:
                     candidates.update(forced_libs)
+                # After Black plays the triangle, it may produce solid
+                # circles.  White can defend those with <=2 liberties too.
+                after_threats = board_after.compute_threats()
+                for five_pos in _five_points_from_threats(after_threats):
+                    fstones, flibs = board_after.get_group(*five_pos)
+                    if 0 < len(flibs) <= 2:
+                        candidates.update(flibs)
 
             seen: set[tuple[int, int]] = set()
             for dx, dy in DIRECTIONS:
@@ -1141,7 +1152,10 @@ class HybridBoard:
                     board_after, tx, ty, dx, dy
                 )
                 if threat in ("five", "open_four", "rush_four", "open_three"):
-                    limit = 2
+                    if forced_type == "five_point":
+                        limit = 1
+                    else:
+                        limit = 2
                 else:
                     continue
 
