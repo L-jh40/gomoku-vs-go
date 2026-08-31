@@ -348,6 +348,8 @@ class GameGUI:
 
         if with_hints and self.hint_var.get():
             self.draw_hints(dead)
+        elif self.show_candidates_var.get():
+            self._draw_candidate_squares()
 
     def draw_stone(self, x, y, color, move_num=None, dead_black=False):
         cx = MARGIN + y * CELL
@@ -427,14 +429,19 @@ class GameGUI:
                 self.canvas.create_oval(cx - 2, cy - 2, cx + 2, cy + 2,
                                         fill="red", outline="red")
 
-        if self.show_candidates_var.get():
-            for x, y in self._get_candidate_display_positions():
-                if not self.board.is_empty(x, y):
-                    continue
-                cx = MARGIN + y * CELL
-                cy = MARGIN + x * CELL
-                self.canvas.create_oval(cx - 4, cy - 4, cx + 4, cy + 4,
-                                        outline="green", width=2)
+    def _draw_candidate_squares(self):
+        if not self.show_candidates_var.get():
+            return
+        r = 8  # same half-size as a large circle
+        for x, y in self._get_candidate_display_positions():
+            if not self.board.is_empty(x, y):
+                continue
+            cx = MARGIN + y * CELL
+            cy = MARGIN + x * CELL
+            self.canvas.create_rectangle(
+                cx - r, cy - r, cx + r, cy + r,
+                outline="green", width=2
+            )
 
     def _get_candidate_display_positions(self):
         threats = self.board.compute_threats()
