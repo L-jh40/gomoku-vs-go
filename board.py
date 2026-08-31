@@ -47,10 +47,10 @@ THREAT_MARKER = {
 # Exact scores from the task specification.
 THREAT_SCORE = {
     "five_point": 0,      # handled before scoring
-    "four_three": 625,
-    "open_four": 625,
-    "rush_four": 125,
-    "open_three": 125,
+    "four_three": 10000,
+    "open_four": 10000,
+    "rush_four": 625,
+    "open_three": 625,
     "sleep_three": 25,
     "open_two": 25,
     "sleep_two": 1,
