@@ -484,6 +484,7 @@ class GameGUI:
             self.end_game("黑棋连五，黑胜!")
             return
         self.current = WHITE
+        self._start_turn_timer(WHITE)
         self.draw_board()
         self.update_info()
         self.root.after(300, self.maybe_play_ai)
@@ -492,6 +493,7 @@ class GameGUI:
         if not self.board.is_empty(x, y):
             return
         self._stop_search()
+        self._finish_turn_time(WHITE, False)
         ok, _ = self.board.play_white(x, y)
         if not ok:
             messagebox.showinfo("落子失败", "白棋不能落在此处")
@@ -505,6 +507,7 @@ class GameGUI:
         if self.check_white_win():
             return
         self.current = BLACK
+        self._start_turn_timer(BLACK)
         self.draw_board()
         self.update_info()
         self.root.after(300, self.maybe_play_ai)
