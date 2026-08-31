@@ -678,7 +678,7 @@ def _iterative_minimax(board: HybridBoard, black_turn: bool, max_depth: int,
             elapsed = time.monotonic() - start
             if max_depth <= 0:
                 break
-            if completed >= max_depth and elapsed >= min_search_time:
+            if completed >= max_depth:
                 break
             if depth >= EVEN_DEPTHS[-1]:
                 break

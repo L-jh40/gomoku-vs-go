@@ -844,7 +844,8 @@ class GameGUI:
         if self.search_start_time <= 0:
             return
         total = time.time() - self.search_start_time
-        if self.ai_thinking and self.depth0_unfinished:
+        if self.ai_thinking and not self.last_focused and \
+                self.last_layer_depth == 0:
             self.thinking_label.config(
                 text=f"AI搜索中，用时: {total:.2f}，未完成搜索"
             )
