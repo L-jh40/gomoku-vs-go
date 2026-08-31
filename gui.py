@@ -466,6 +466,7 @@ class GameGUI:
         if not self.board.is_empty(x, y):
             return
         self._stop_search()
+        self._finish_turn_time(BLACK, False)
         ok, _ftype = rules.is_black_legal_move(self.board, x, y)
         if not ok:
             messagebox.showinfo("禁手", "黑棋不能落在此处")
@@ -1183,6 +1184,10 @@ class GameGUI:
         self.game_over = False
         self.pass_count = 0
         self.pass_log = []
+        self.time_black_ai = 0.0
+        self.time_black_human = 0.0
+        self.time_white_ai = 0.0
+        self.time_white_human = 0.0
         self.replay_mode = False
         self.replay_new_stones = set()
         self.replay_map = {}
@@ -1191,6 +1196,7 @@ class GameGUI:
         self.replay_start_history_len = 0
         self.replay_pre_ai = (True, True)
         self.search_interrupt.clear()
+        self._start_turn_timer(self.current)
         self.thinking_label.config(text="")
         self.depth_label.config(text="")
         self.draw_board()
