@@ -277,14 +277,23 @@ class GameGUI:
         self.turn_start_time = time.time()
         self.turn_start_color = color
 
+    def _display_time(self, color, is_ai):
+        if color == BLACK:
+            base = self.time_black_ai if is_ai else self.time_black_human
+        else:
+            base = self.time_white_ai if is_ai else self.time_white_human
+        if self.current == color and self.turn_start_time is not None:
+            base += time.time() - self.turn_start_time
+        return self._format_time(base)
+
     def update_info(self):
         black_text = (
-            f"黑: AI {self._format_time(self.time_black_ai)} | "
-            f"人类 {self._format_time(self.time_black_human)}"
+            f"黑: AI {self._display_time(BLACK, True)} | "
+            f"人类 {self._display_time(BLACK, False)}"
         )
         white_text = (
-            f"白: AI {self._format_time(self.time_white_ai)} | "
-            f"人类 {self._format_time(self.time_white_human)}"
+            f"白: AI {self._display_time(WHITE, True)} | "
+            f"人类 {self._display_time(WHITE, False)}"
         )
         cap = self.board.captured_count[WHITE]
         cap_b = self.board.captured_count[BLACK]
