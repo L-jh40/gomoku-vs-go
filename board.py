@@ -1105,9 +1105,11 @@ class HybridBoard:
     def get_white_defense_candidates(self, threats=None) -> list[tuple[int, int]]:
         """Candidate set used when black has solid circles or triangles.
 
-        1. every solid circle / triangle position.
-        2. For attacking groups on five/open-four/rush-four/open-three lines:
-           if the group has one or two liberties, add all its liberties.
+        - Solid circle: White has only one move before Black wins, so only
+          one-liberty groups are useful.
+        - Triangle: Black still needs two moves, so groups with <=2
+          liberties are useful.  We also simulate the triangle, collect the
+          resulting solid circles, and add their <=2-liberty groups as well.
         """
         if threats is None:
             threats = self.compute_threats()
@@ -1141,7 +1143,9 @@ class HybridBoard:
                 # After Black plays the triangle, it may produce solid
                 # circles.  White can defend those with <=2 liberties too.
                 after_threats = board_after.compute_threats()
-                for five_pos in _five_points_from_threats(after_threats):
+                for five_pos, five_type in after_threats.items():
+                    if five_type != "five_point":
+                        continue
                     fstones, flibs = board_after.get_group(*five_pos)
                     if 0 < len(flibs) <= 2:
                         candidates.update(flibs)
