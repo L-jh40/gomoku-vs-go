@@ -520,13 +520,20 @@ class GameGUI:
         self._pass_turn()
 
     def _pass_turn(self):
-        self.pass_log.append(self.current)
+        color = self.current
+        is_ai = (
+            not self.black_is_human() if color == BLACK
+            else not self.white_is_human()
+        )
+        self._finish_turn_time(color, is_ai)
+        self.pass_log.append(color)
         self.pass_count += 1
         # Only a black pass followed by a white pass ends the game.
         if self.pass_log[-2:] == [BLACK, WHITE]:
             self.end_game("黑棋 Pass + 白棋 Pass，对局结束")
             return
-        self.current = WHITE if self.current == BLACK else BLACK
+        self.current = WHITE if color == BLACK else BLACK
+        self._start_turn_timer(self.current)
         self.last_move = None
         self.draw_board()
         self.update_info()
@@ -690,6 +697,7 @@ class GameGUI:
                 self._cancel_max_search_timer()
                 self.ai_thinking = False
                 self.search_interrupt.clear()
+                self._finish_turn_time(color, True)
                 total = time.time() - self.search_start_time
                 b_time = self.prev_layer_time if self.prev_layer_depth >= 0 else (
                     self.last_layer_time if self.last_layer_time else total
@@ -739,6 +747,7 @@ class GameGUI:
                         self.end_game("黑棋连五，黑胜!")
                         return
                     self.current = WHITE
+                    self._start_turn_timer(WHITE)
                 else:
                     ok, _ = self.board.play_white(x, y)
                     if not ok:
