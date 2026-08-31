@@ -63,6 +63,12 @@ class GameGUI:
         self.previous_game_snapshot = None
         self.moves_since_new_game = 0
         self.max_time_after_id = None
+        self.time_black_ai = 0.0
+        self.time_black_human = 0.0
+        self.time_white_ai = 0.0
+        self.time_white_human = 0.0
+        self.turn_start_time = None
+        self.turn_start_color = None
 
         self.board_bg = "#f0d68c"
         self.line_color = "black"
@@ -242,11 +248,41 @@ class GameGUI:
         )
         self.draw_board()
 
+    def _format_time(self, seconds):
+        seconds = max(0, int(seconds))
+        return f"{seconds // 60}min {seconds % 60}s"
+
+    def _finish_turn_time(self, color, is_ai):
+        if self.turn_start_time is None or self.turn_start_color != color:
+            return
+        elapsed = time.time() - self.turn_start_time
+        if color == BLACK:
+            if is_ai:
+                self.time_black_ai += elapsed
+            else:
+                self.time_black_human += elapsed
+        else:
+            if is_ai:
+                self.time_white_ai += elapsed
+            else:
+                self.time_white_human += elapsed
+        self.turn_start_time = None
+        self.turn_start_color = None
+
+    def _start_turn_timer(self, color):
+        self.turn_start_time = time.time()
+        self.turn_start_color = color
+
     def update_info(self):
-        nb = self.board.black_stone_count()
-        nw = self.board.white_stone_count()
-        cap = self.board.captured_count[WHITE]
-        self.stats_var.set(f"黑: {nb}  白: {nw}\n黑被白吃: {cap}")
+        black_text = (
+            f"黑: AI {self._format_time(self.time_black_ai)} | "
+            f"人类 {self._format_time(self.time_black_human)}"
+        )
+        white_text = (
+            f"白: AI {self._format_time(self.time_white_ai)} | "
+            f"人类 {self._format_time(self.time_white_human)}"
+        )
+        self.stats_var.set(f"{black_text}\n{white_text}")
         if not self.game_over:
             turn = "● 黑棋" if self.current == BLACK else "○ 白棋"
             self.status_var.set(f"{turn} 行棋")
