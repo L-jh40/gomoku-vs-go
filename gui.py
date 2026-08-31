@@ -394,6 +394,9 @@ class GameGUI:
             self.canvas.create_line(cx - r, cy + r, cx + r, cy - r,
                                     fill="blue", width=2)
 
+        # Candidate squares are below red markers.
+        self._draw_candidate_squares()
+
         # Red markers.
         threats = self.board.compute_threats()
         for (x, y), threat in threats.items():
