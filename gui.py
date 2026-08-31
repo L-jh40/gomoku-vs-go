@@ -1359,7 +1359,8 @@ class GameGUI:
 def main(board_size: int = BOARD_SIZE):
     root = tk.Tk()
     root.title(f"Gomoku vs Go  ({board_size}x{board_size})")
-    GameGUI(root, board_size=board_size)
+    GameGUI(root, board_size=board_size,
+            black_is_ai=False, white_is_ai=False)
     try:
         root.mainloop()
     except KeyboardInterrupt:
