@@ -165,6 +165,10 @@ class GameGUI:
         tk.Checkbutton(self.info, text="显示手数",
                        variable=self.show_moves_var,
                        command=self.draw_board).pack(anchor=tk.W)
+        self.show_candidates_var = tk.IntVar(value=0)
+        tk.Checkbutton(self.info, text="显示候选点",
+                       variable=self.show_candidates_var,
+                       command=self.draw_board).pack(anchor=tk.W)
         self.cancel_resign_var = tk.IntVar(value=0)
         tk.Checkbutton(self.info, text="取消投子认负",
                        variable=self.cancel_resign_var).pack(anchor=tk.W)
@@ -250,7 +254,7 @@ class GameGUI:
 
     def _format_time(self, seconds):
         seconds = max(0, int(seconds))
-        return f"{seconds // 60}min {seconds % 60}s"
+        return f"{seconds // 60}:{seconds % 60:02d}"
 
     def _finish_turn_time(self, color, is_ai):
         if self.turn_start_time is None or self.turn_start_color != color:
@@ -282,7 +286,12 @@ class GameGUI:
             f"白: AI {self._format_time(self.time_white_ai)} | "
             f"人类 {self._format_time(self.time_white_human)}"
         )
-        self.stats_var.set(f"{black_text}\n{white_text}")
+        cap = self.board.captured_count[WHITE]
+        cap_b = self.board.captured_count[BLACK]
+        cap_text = f"吃子：白吃黑 {cap}"
+        if cap_b:
+            cap_text += f"，黑自吃 {cap_b}"
+        self.stats_var.set(f"{black_text}\n{white_text}\n{cap_text}")
         if not self.game_over:
             turn = "● 黑棋" if self.current == BLACK else "○ 白棋"
             self.status_var.set(f"{turn} 行棋")
@@ -417,6 +426,25 @@ class GameGUI:
             elif threat == "sleep_two":
                 self.canvas.create_oval(cx - 2, cy - 2, cx + 2, cy + 2,
                                         fill="red", outline="red")
+
+        if self.show_candidates_var.get():
+            for x, y in self._get_candidate_display_positions():
+                if not self.board.is_empty(x, y):
+                    continue
+                cx = MARGIN + y * CELL
+                cy = MARGIN + x * CELL
+                self.canvas.create_oval(cx - 4, cy - 4, cx + 4, cy + 4,
+                                        outline="green", width=2)
+
+    def _get_candidate_display_positions(self):
+        threats = self.board.compute_threats()
+        if self.current == BLACK:
+            if ai_search._forced(threats):
+                return ai_search._black_algorithm_a_candidates(self.board, threats)
+            return self.board.get_black_priority_candidates(threats)
+        if ai_search._forced(threats):
+            return self.board.get_white_defense_candidates(threats)
+        return self.board.get_white_priority_candidates(threats)
 
     def get_move_numbers(self):
         out = {}
