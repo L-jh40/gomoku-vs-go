@@ -980,9 +980,13 @@ class GameGUI:
             self._apply_replay_black_move(move)
             return
 
-        # The player chose a move outside the searched replies.  If Black
-        # already has a direct winning point or triangle, play the first one
-        # immediately instead of starting an expensive search.
+        # The player chose a move outside the searched replies.  Report the
+        # table miss first, then fall back to direct/AI play.
+        self._restore_main_window()
+        messagebox.showwarning("复盘查表失败", "未找到对应应手，改用 AI 搜索。")
+
+        # If Black already has a direct winning point or triangle, play the
+        # first one immediately instead of starting an expensive search.
         threats = self.board.compute_threats()
         five = ai_search._five_points(threats)
         if five:

@@ -1146,6 +1146,7 @@ class HybridBoard:
                 for five_pos, five_type in after_threats.items():
                     if five_type != "five_point":
                         continue
+                    candidates.add(five_pos)
                     fstones, flibs = board_after.get_group(*five_pos)
                     if 0 < len(flibs) <= 2:
                         candidates.update(flibs)
