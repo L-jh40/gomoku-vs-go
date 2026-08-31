@@ -1106,9 +1106,7 @@ class HybridBoard:
         """Candidate set used when black has solid circles or triangles.
 
         1. every solid circle / triangle position.
-        2. For attacking groups on live-four/rush-four/five lines:
-           if the group has one liberty, add that liberty.
-        3. For attacking groups on live-three lines:
+        2. For attacking groups on five/open-four/rush-four/open-three lines:
            if the group has one or two liberties, add all its liberties.
         """
         if threats is None:
@@ -1131,7 +1129,7 @@ class HybridBoard:
             # before Black can convert it.
             forced_stones, forced_libs = board_after.get_group(tx, ty)
             if forced_type == "five_point":
-                if len(forced_libs) == 1:
+                if 0 < len(forced_libs) <= 2:
                     candidates.update(forced_libs)
             elif forced_type in ("four_three", "open_four"):
                 if 0 < len(forced_libs) <= 2:
@@ -1142,10 +1140,8 @@ class HybridBoard:
                 threat = rules.classify_direction_after_move(
                     board_after, tx, ty, dx, dy
                 )
-                if threat == "open_three":
+                if threat in ("five", "open_four", "rush_four", "open_three"):
                     limit = 2
-                elif threat in ("five", "open_four", "rush_four"):
-                    limit = 1
                 else:
                     continue
 
