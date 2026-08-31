@@ -479,6 +479,7 @@ class GameGUI:
         self.pass_count = 0
         self.pass_log = []
         self._register_move()
+        self.thinking_label.config(text="")
         if self.board.check_black_five(x, y):
             self.draw_board(with_hints=False)
             self.end_game("黑棋连五，黑胜!")
@@ -504,6 +505,7 @@ class GameGUI:
         self.pass_count = 0
         self.pass_log = []
         self._register_move()
+        self.thinking_label.config(text="")
         if self.check_white_win():
             return
         self.current = BLACK
@@ -535,6 +537,7 @@ class GameGUI:
         self.current = WHITE if color == BLACK else BLACK
         self._start_turn_timer(self.current)
         self.last_move = None
+        self.thinking_label.config(text="")
         self.draw_board()
         self.update_info()
         self.root.after(300, self.maybe_play_ai)
