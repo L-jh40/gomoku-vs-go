@@ -760,6 +760,7 @@ class GameGUI:
                     if self.check_white_win():
                         return
                     self.current = BLACK
+                    self._start_turn_timer(BLACK)
                 self.draw_board()
                 self.update_info()
                 self.root.after(300, self.maybe_play_ai)
@@ -1178,6 +1179,10 @@ class GameGUI:
                 "black_ai_var": bool(self.black_ai_var.get()),
                 "white_ai_var": bool(self.white_ai_var.get()),
                 "current_max_depth": self.current_max_depth,
+                "time_black_ai": self.time_black_ai,
+                "time_black_human": self.time_black_human,
+                "time_white_ai": self.time_white_ai,
+                "time_white_human": self.time_white_human,
             }
         else:
             self.previous_game_snapshot = None
@@ -1244,8 +1249,13 @@ class GameGUI:
         self.white_ai_var.set(1 if snap["white_ai_var"] else 0)
         self.current_max_depth = snap["current_max_depth"]
         self.depth_var.set(str(self.current_max_depth))
+        self.time_black_ai = snap.get("time_black_ai", 0.0)
+        self.time_black_human = snap.get("time_black_human", 0.0)
+        self.time_white_ai = snap.get("time_white_ai", 0.0)
+        self.time_white_human = snap.get("time_white_human", 0.0)
         self.moves_since_new_game = 0
         self.search_interrupt.clear()
+        self._start_turn_timer(self.current)
         self.thinking_label.config(text="")
         self.depth_label.config(text="")
         self.draw_board()
