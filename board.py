@@ -1106,81 +1106,136 @@ class HybridBoard:
     def get_white_defense_candidates(self, threats=None) -> list[tuple[int, int]]:
         """Candidate set used when black has solid circles or triangles.
 
-        - Solid circle: White has only one move before Black wins, so only
-          one-liberty groups are useful.
-        - Triangle: Black still needs two moves, so groups with <=2
-          liberties are useful.  We also simulate the triangle, collect the
-          resulting solid circles, and add their <=2-liberty groups as well.
+        The algorithm follows the requested "resolve_i / resolve_j"
+        construction:
+        - for every solid circle, build one resolve set;
+        - for every triangle, build one resolve set;
+        - return the intersection of all resolve sets.
         """
         if threats is None:
             threats = self.compute_threats()
-        forced = {pos for pos, t in threats.items() if t in FORCED_THREAT_TYPES}
-        candidates = set(forced)
         import rules
 
-        for tx, ty in sorted(forced):
-            forced_type = threats.get((tx, ty))
-            board_after = self.copy()
-            ok, _ = board_after.play_black(tx, ty)
-            if not ok:
-                continue
-
-            # Direct rule: pretend Black plays the solid circle / triangle,
-            # then look at the group containing that very point.  If its
-            # liberty count is 1 (solid circle) or <= 2 (triangle), White may
-            # play one of those liberties to make the threat unplayable
-            # before Black can convert it.
-            forced_stones, forced_libs = board_after.get_group(tx, ty)
-            if forced_type == "five_point":
-                # Solid circle: White only has one move before Black can win,
-                # so only a one-liberty group can be captured/blocked.
-                if len(forced_libs) == 1:
-                    candidates.update(forced_libs)
-            elif forced_type in ("four_three", "open_four"):
-                # Triangle: two moves remain, so groups with <=2 liberties
-                # are still defensible.
-                if 0 < len(forced_libs) <= 2:
-                    candidates.update(forced_libs)
-                # After Black plays the triangle, it may produce solid
-                # circles.  White can defend those with <=2 liberties too.
-                after_threats = board_after.compute_threats()
-                for five_pos, five_type in after_threats.items():
-                    if five_type != "five_point":
-                        continue
-                    candidates.add(five_pos)
-                    fstones, flibs = board_after.get_group(*five_pos)
-                    if 0 < len(flibs) <= 2:
-                        candidates.update(flibs)
-
+        def attack_liberties(work, pos, limit):
+            """After Black plays `pos` on `work`, return all useful liberties
+            of the group at `pos` and of its attacking line groups."""
+            if work.is_empty(*pos):
+                ok, _ = work.play_black(*pos)
+                if not ok:
+                    return set()
+            out: set[tuple[int, int]] = set()
+            _stones, libs = work.get_group(*pos)
+            if 0 < len(libs) <= limit:
+                out.update(libs)
             seen: set[tuple[int, int]] = set()
             for dx, dy in DIRECTIONS:
                 threat = rules.classify_direction_after_move(
-                    board_after, tx, ty, dx, dy
+                    work, *pos, dx, dy
                 )
-                if threat in ("five", "open_four", "rush_four", "open_three"):
-                    if forced_type == "five_point":
-                        limit = 1
-                    else:
-                        limit = 2
-                else:
+                if threat not in ("five", "open_four", "rush_four", "open_three"):
                     continue
-
                 line_black: set[tuple[int, int]] = set()
                 for step in range(-4, 5):
-                    nx, ny = tx + step * dx, ty + step * dy
-                    if board_after.in_bounds(nx, ny) and \
-                            board_after.grid[nx, ny] == BLACK:
+                    nx, ny = pos[0] + step * dx, pos[1] + step * dy
+                    if work.in_bounds(nx, ny) and work.grid[nx, ny] == BLACK:
                         line_black.add((nx, ny))
-
                 for ax, ay in sorted(line_black):
                     if (ax, ay) in seen:
                         continue
-                    stones, liberties = board_after.get_group(ax, ay)
+                    stones, liberties = work.get_group(ax, ay)
                     seen |= stones
                     if 0 < len(liberties) <= limit:
-                        candidates.update(liberties)
+                        out.update(liberties)
+            return out
 
-        return sorted(p for p in candidates if self.is_empty(*p))
+        forced = {pos for pos, t in threats.items() if t in FORCED_THREAT_TYPES}
+        resolves: list[set[tuple[int, int]]] = []
+
+        # ---- solid circles ----
+        for pos in sorted(forced):
+            if threats[pos] != "five_point":
+                continue
+            board_after = self.copy()
+            ok, _ = board_after.play_black(*pos)
+            if not ok:
+                continue
+            resolve = {pos}
+            resolve |= attack_liberties(board_after, pos, 1)
+            resolves.append(resolve)
+
+        # ---- triangles ----
+        for pos in sorted(forced):
+            if threats[pos] not in ("four_three", "open_four"):
+                continue
+            board_after = self.copy()
+            ok, _ = board_after.play_black(*pos)
+            if not ok:
+                continue
+            resolve = {pos}
+            resolve |= attack_liberties(board_after, pos, 2)
+
+            after_threats = board_after.compute_threats()
+            solid_positions = [
+                p for p, t in after_threats.items() if t == "five_point"
+            ]
+
+            # Step 3: one Qi per resulting solid circle, union size <= 2.
+            solid_attack_sets: list[list[set[tuple[int, int]]]] = []
+            for five_pos in solid_positions:
+                five_work = board_after.copy()
+                ok5, _ = five_work.play_black(*five_pos)
+                if not ok5:
+                    continue
+                # The solid circle itself is added by step 4 below; here we
+                # only collect its attacking line groups' liberties.
+                five_sets: list[set[tuple[int, int]]] = []
+                seen: set[tuple[int, int]] = set()
+                for dx, dy in DIRECTIONS:
+                    threat = rules.classify_direction_after_move(
+                        five_work, *five_pos, dx, dy
+                    )
+                    if threat not in ("five", "open_four", "rush_four", "open_three"):
+                        continue
+                    for step in range(-4, 5):
+                        nx, ny = five_pos[0] + step * dx, five_pos[1] + step * dy
+                        if five_work.in_bounds(nx, ny) and \
+                                five_work.grid[nx, ny] == BLACK:
+                            line_black: set[tuple[int, int]] = set()
+                            line_black.add((nx, ny))
+                            for ax, ay in sorted(line_black):
+                                if (ax, ay) in seen:
+                                    continue
+                                stones, libs = five_work.get_group(ax, ay)
+                                seen |= stones
+                                if 0 < len(libs) <= 2:
+                                    five_sets.append(set(libs))
+                solid_attack_sets.append(five_sets)
+
+            if solid_attack_sets:
+                valid_union: set[tuple[int, int]] = set()
+                for combo in itertools.product(*solid_attack_sets):
+                    u = set().union(*combo)
+                    if len(u) <= 2:
+                        valid_union |= u
+                resolve |= valid_union
+
+            # Step 4: each resulting solid circle's own group, <=2 liberties.
+            for five_pos in solid_positions:
+                resolve.add(five_pos)
+                five_work = board_after.copy()
+                ok5, _ = five_work.play_black(*five_pos)
+                if ok5:
+                    _stones, flibs = five_work.get_group(*five_pos)
+                    if 0 < len(flibs) <= 2:
+                        resolve.update(flibs)
+
+            resolves.append(resolve)
+
+        if not resolves:
+            return []
+
+        common = set.intersection(*resolves)
+        return sorted(p for p in common if self.is_empty(*p))
 
     def get_white_blocking_candidates(self, threats=None) -> list[tuple[int, int]]:
         """Compatibility alias."""
