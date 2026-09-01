@@ -990,7 +990,9 @@ class HybridBoard:
         if red_scores is None:
             red_scores = self.get_red_scores()
         a_value = self.compute_group_capture_loss(stones, red_scores)
-        return a_value * (1.0 - 0.5 ** n)
+        # 1 / sqrt(2) makes the score drop more slowly than 1/2 as liberties
+        # increase, so White values reducing liberties more strongly.
+        return a_value * (1.0 - (2.0 ** -0.5) ** n)
 
     def evaluate_black_position(self) -> float:
         """Static black-perspective value:
