@@ -73,12 +73,13 @@ move = ai_white.best_white_move(b, time_limit=10, max_depth=2)
 | Marker | Threat | Score |
 |--------|--------|-------|
 | solid circle | five point | handled before scoring |
-| triangle | four-three / open four | 625 |
-| hollow triangle | fragile four-three / open four | 250 |
-| large circle | rush four / open three | 125 |
+| triangle | four-three / open four | 10000 |
+| hollow triangle | fragile four-three / open four | 500 |
+| large circle | rush four / open three | 625 |
 | small circle | sleep three / open two | 25 |
 | red dot | sleep two | 1 |
 | territory | empty dead cell or dead black cell | -1 |
 
-Black group score is `A * (1 - 0.5 ** n)` where `n` is the group's liberty
-count and `A` is the red-position score lost if the group vanished.
+Black group score is `A * (1 - (1 / sqrt(2)) ** n)` where `n` is the
+group's liberty count and `A` is the red-position score lost if the group
+vanished.
