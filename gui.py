@@ -693,6 +693,10 @@ class GameGUI:
 
         def progress_callback(completed_depth, elapsed_layer, finished=True,
                               focused=False):
+            if completed_depth == -1:
+                # Candidate-filtering debug refresh.
+                self.root.after(0, self.draw_board)
+                return
             if focused:
                 if completed_depth < self.last_focused_depth:
                     return
