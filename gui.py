@@ -775,7 +775,7 @@ class GameGUI:
                         )
                     )
                 self.depth_label.config(
-                    text=f"上一步AI用时: {elapsed:.2f}s | 搜索深度: {depth}"
+                    text=f"上一步AI用时: {total:.2f}s | 搜索深度: {depth}"
                 )
                 if move is None:
                     self.handle_no_move(color, board_copy)
