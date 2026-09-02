@@ -1198,19 +1198,19 @@ class HybridBoard:
                     )
                     if threat not in ("five", "open_four", "rush_four", "open_three"):
                         continue
+                    line_black: set[tuple[int, int]] = set()
                     for step in range(-4, 5):
                         nx, ny = five_pos[0] + step * dx, five_pos[1] + step * dy
                         if five_work.in_bounds(nx, ny) and \
                                 five_work.grid[nx, ny] == BLACK:
-                            line_black: set[tuple[int, int]] = set()
                             line_black.add((nx, ny))
-                            for ax, ay in sorted(line_black):
-                                if (ax, ay) in seen:
-                                    continue
-                                stones, libs = five_work.get_group(ax, ay)
-                                seen |= stones
-                                if 0 < len(libs) <= 2:
-                                    five_sets.append(set(libs))
+                    for ax, ay in sorted(line_black):
+                        if (ax, ay) in seen:
+                            continue
+                        stones, libs = five_work.get_group(ax, ay)
+                        seen |= stones
+                        if 0 < len(libs) <= 2:
+                            five_sets.append(set(libs))
                 solid_attack_sets.append(five_sets)
 
             if solid_attack_sets:
