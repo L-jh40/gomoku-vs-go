@@ -1232,11 +1232,15 @@ class HybridBoard:
                         resolve.update(flibs)
 
             resolves.append(resolve)
+            if not resolve:
+                return []
 
         if not resolves:
             return []
 
         common = set.intersection(*resolves)
+        if not common:
+            return []
         return sorted(p for p in common if self.is_empty(*p))
 
     def get_white_blocking_candidates(self, threats=None) -> list[tuple[int, int]]:

@@ -273,6 +273,10 @@ def _white_defense(board: HybridBoard, depth: int,
                 if not child_fail_path:
                     child_fail_path = [black_move] + sub_path
                 child_is_safe = False
+                if progress_callback is not None:
+                    # Debug UI refresh: a candidate was proven unsafe.
+                    progress_callback(-1, time.monotonic() - start_time,
+                                      False, True)
                 break
 
         if child_is_safe:
