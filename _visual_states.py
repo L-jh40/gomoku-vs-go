@@ -42,7 +42,7 @@ elif state == "stones":
     app.last_move = (7, 9)
     app.draw_board()
 
-end = time.time() + 30
+end = time.time() + 90
 while time.time() < end:
     root.update()
     time.sleep(0.03)
