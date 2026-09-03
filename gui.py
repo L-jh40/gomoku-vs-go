@@ -23,6 +23,19 @@ CELL = 30
 MARGIN = 24
 BOARD_SIZE = 15
 
+# Standard star points (hoshi) per supported board size, in (row, col).
+STAR_POINTS = {
+    9: [(2, 2), (2, 6), (6, 2), (6, 6), (4, 4)],
+    11: [(2, 2), (2, 8), (8, 2), (8, 8), (5, 5)],
+    13: [(3, 3), (3, 9), (9, 3), (9, 9), (6, 6)],
+    15: [(3, 3), (3, 11), (11, 3), (11, 11), (7, 7)],
+    17: [(3, 3), (3, 13), (13, 3), (13, 13), (8, 8)],
+    19: [(3, 3), (3, 9), (3, 15), (9, 3), (9, 9), (9, 15),
+         (15, 3), (15, 9), (15, 15)],
+}
+
+BOARD_SIZES = (9, 11, 13, 15, 17, 19)
+
 
 class GameGUI:
     def __init__(self, root: tk.Tk, board_size: int = BOARD_SIZE,
@@ -74,16 +87,19 @@ class GameGUI:
         self.line_color = "black"
         self.star_color = "black"
 
-        canvas_size = MARGIN * 2 + (board_size - 1) * CELL + 20
-        self.canvas = tk.Canvas(root, width=canvas_size, height=canvas_size,
-                                bg=self.board_bg)
-        self.canvas.pack(side=tk.LEFT, fill=tk.BOTH)
+        # "point" = stones on intersections, "cell" = stones inside cells.
+        self.board_style = "point"
+        # Canvas large enough for either style; draw_board centers the grid
+        # inside the yellow area (origin_x / origin_y).
+        self.canvas_size = board_size * CELL + 2 * MARGIN
+        self.origin_x = MARGIN
+        self.origin_y = MARGIN
+        self.canvas = tk.Canvas(root, width=self.canvas_size,
+                                height=self.canvas_size, bg=self.board_bg)
+        self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        # Keep the window only as tall as the board / controls need.
-        info_height = canvas_size + 80
-        self.info = tk.Frame(root, width=300, height=info_height)
+        self.info = tk.Frame(root, width=300)
         self.info.pack(side=tk.RIGHT, fill=tk.Y, padx=6, pady=4)
-        self.info.pack_propagate(False)
 
         self.status_var = tk.StringVar(value="黑棋先行")
         tk.Label(self.info, textvariable=self.status_var,
@@ -124,6 +140,13 @@ class GameGUI:
         self.obstacle_enabled_var = tk.IntVar(value=0)
         self.obstacle_count_var = tk.StringVar(value="0")
         self.mode_window = None
+        self.board_size_vars = {
+            n: tk.IntVar(value=1 if n == board_size else 0)
+            for n in BOARD_SIZES
+        }
+        self.style_point_var = tk.IntVar(value=1)
+        self.style_cell_var = tk.IntVar(value=0)
+        self.info_natural_height = 0
 
         tk.Checkbutton(self.info, text="黑棋 AI",
                        variable=self.black_ai_var,
@@ -193,8 +216,20 @@ class GameGUI:
         self.mode_label.pack(pady=1)
         self._on_depth_change()
 
+        # Fix the side panel height now that its content is built: keep every
+        # control visible even when a small board makes the canvas short.
+        self.info.update_idletasks()
+        try:
+            self.info_natural_height = max(self.info.winfo_reqheight(), 1)
+        except Exception:
+            self.info_natural_height = 1
+        self.info.configure(height=max(self.canvas_size + 80,
+                                       self.info_natural_height))
+        self.info.pack_propagate(False)
+
         self.canvas.bind("<Button-1>", self.on_click)
         self.canvas.bind("<Button-3>", self.on_right_click)
+        self.canvas.bind("<Configure>", self._on_canvas_resize)
         self.root.bind("<KeyPress-z>", self._on_key)
         self.root.bind("<KeyPress-x>", self._on_key)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -308,28 +343,61 @@ class GameGUI:
     # ------------------------------------------------------------------
     # Drawing
     # ------------------------------------------------------------------
+    def _grid_extent(self):
+        """Pixel span of the playing area for the current board style."""
+        if self.board_style == "cell":
+            return self.size * CELL
+        return (self.size - 1) * CELL
+
+    def _update_origin(self):
+        """Center the playing area inside the yellow canvas."""
+        extent = self._grid_extent()
+        width = self.canvas.winfo_width()
+        height = self.canvas.winfo_height()
+        if width <= 1:
+            width = self.canvas_size
+        if height <= 1:
+            height = self.canvas_size
+        self.origin_x = int(max(0, (width - extent) / 2))
+        self.origin_y = int(max(0, (height - extent) / 2))
+
+    def _point_center(self, x, y):
+        """Canvas coords of logical point (x, y): an intersection, or the
+        center of the matching cell in cell style."""
+        if self.board_style == "cell":
+            return (self.origin_x + (y + 0.5) * CELL,
+                    self.origin_y + (x + 0.5) * CELL)
+        return (self.origin_x + y * CELL, self.origin_y + x * CELL)
+
+    def _on_canvas_resize(self, _event=None):
+        self.draw_board()
+
     def draw_board(self, with_hints=True):
         self.canvas.delete("all")
         self.canvas.configure(bg=self.board_bg)
+        self._update_origin()
         size = self.size
-        for i in range(size):
-            x0 = MARGIN + i * CELL
-            self.canvas.create_line(
-                x0, MARGIN, x0, MARGIN + (size - 1) * CELL, fill=self.line_color
-            )
-            self.canvas.create_line(
-                MARGIN, x0, MARGIN + (size - 1) * CELL, x0, fill=self.line_color
-            )
+        ox, oy = self.origin_x, self.origin_y
+        if self.board_style == "cell":
+            # Stones sit inside cells: draw (size + 1) lines per direction.
+            end = size * CELL
+            for i in range(size + 1):
+                p = i * CELL
+                self.canvas.create_line(ox + p, oy, ox + p, oy + end,
+                                        fill=self.line_color)
+                self.canvas.create_line(ox, oy + p, ox + end, oy + p,
+                                        fill=self.line_color)
+        else:
+            end = (size - 1) * CELL
+            for i in range(size):
+                p = i * CELL
+                self.canvas.create_line(ox + p, oy, ox + p, oy + end,
+                                        fill=self.line_color)
+                self.canvas.create_line(ox, oy + p, ox + end, oy + p,
+                                        fill=self.line_color)
 
-        star_points = []
-        if size == 15:
-            star_points = [(3, 3), (3, 11), (11, 3), (11, 11), (7, 7)]
-        elif size == 19:
-            star_points = [(3, 3), (3, 9), (3, 15), (9, 3), (9, 9),
-                           (9, 15), (15, 3), (15, 9), (15, 15)]
-        for sx, sy in star_points:
-            cx = MARGIN + sy * CELL
-            cy = MARGIN + sx * CELL
+        for sx, sy in STAR_POINTS.get(size, []):
+            cx, cy = self._point_center(sx, sy)
             self.canvas.create_oval(
                 cx - 3, cy - 3, cx + 3, cy + 3, fill=self.star_color
             )
@@ -348,8 +416,7 @@ class GameGUI:
 
         if self.last_move is not None and self.board.grid[self.last_move] != EMPTY:
             lx, ly = self.last_move
-            cx = MARGIN + ly * CELL
-            cy = MARGIN + lx * CELL
+            cx, cy = self._point_center(lx, ly)
             r = 10 if self.replay_mode and (lx, ly) in self.replay_new_stones \
                 else CELL // 2 - 2
             self.canvas.create_oval(cx - r, cy - r, cx + r, cy + r,
@@ -361,8 +428,7 @@ class GameGUI:
             self._draw_candidate_squares()
 
     def draw_stone(self, x, y, color, move_num=None, dead_black=False):
-        cx = MARGIN + y * CELL
-        cy = MARGIN + x * CELL
+        cx, cy = self._point_center(x, y)
         r = 10 if self.replay_mode and (x, y) in self.replay_new_stones \
             else CELL // 2 - 2
         fill = "black" if color == BLACK else "white"
@@ -383,8 +449,7 @@ class GameGUI:
         for x, y in dead:
             if self.board.grid[x, y] != EMPTY:
                 continue
-            cx = MARGIN + y * CELL
-            cy = MARGIN + x * CELL
+            cx, cy = self._point_center(x, y)
             s = 6
             self.canvas.create_rectangle(cx - s, cy - s, cx + s, cy + s,
                                          fill="white", outline="gray",
@@ -395,8 +460,7 @@ class GameGUI:
         for x, y in blue_crosses:
             if not self.board.is_empty(x, y):
                 continue
-            cx = MARGIN + y * CELL
-            cy = MARGIN + x * CELL
+            cx, cy = self._point_center(x, y)
             r = 6
             self.canvas.create_line(cx - r, cy - r, cx + r, cy + r,
                                     fill="blue", width=2)
@@ -411,8 +475,7 @@ class GameGUI:
         for (x, y), threat in threats.items():
             if not self.board.is_empty(x, y):
                 continue
-            cx = MARGIN + y * CELL
-            cy = MARGIN + x * CELL
+            cx, cy = self._point_center(x, y)
             if threat == "five_point":
                 r = 8
                 self.canvas.create_oval(cx - r, cy - r, cx + r, cy + r,
@@ -448,8 +511,7 @@ class GameGUI:
         for x, y in self._get_candidate_display_positions():
             if not self.board.is_empty(x, y):
                 continue
-            cx = MARGIN + y * CELL
-            cy = MARGIN + x * CELL
+            cx, cy = self._point_center(x, y)
             self.canvas.create_rectangle(
                 cx - r, cy - r, cx + r, cy + r,
                 outline="green", width=2
@@ -479,8 +541,12 @@ class GameGUI:
     def on_click(self, event):
         if self.game_over or self.ai_thinking:
             return
-        x = round((event.y - MARGIN) / CELL)
-        y = round((event.x - MARGIN) / CELL)
+        if self.board_style == "cell":
+            x = int((event.y - self.origin_y) // CELL)
+            y = int((event.x - self.origin_x) // CELL)
+        else:
+            x = round((event.y - self.origin_y) / CELL)
+            y = round((event.x - self.origin_x) / CELL)
         if not self.board.in_bounds(x, y):
             return
         if self.replay_mode and self.current == BLACK:
@@ -1136,12 +1202,8 @@ class GameGUI:
 
     def _show_unblocked_lines(self):
         for line in self.board.get_unblocked_lines():
-            x1, y1 = line[0]
-            x2, y2 = line[-1]
-            cx1 = MARGIN + y1 * CELL
-            cy1 = MARGIN + x1 * CELL
-            cx2 = MARGIN + y2 * CELL
-            cy2 = MARGIN + x2 * CELL
+            cx1, cy1 = self._point_center(*line[0])
+            cx2, cy2 = self._point_center(*line[-1])
             self.canvas.create_line(cx1, cy1, cx2, cy2,
                                     fill="red", width=1)
 
@@ -1164,9 +1226,31 @@ class GameGUI:
         win = tk.Toplevel(self.root)
         self.mode_window = win
         win.title("选择模式")
-        win.geometry("420x400")
+        win.geometry("420x470")
         win.transient(self.root)
         win.protocol("WM_DELETE_WINDOW", self._close_mode_window)
+
+        tk.Label(win, text="棋盘尺寸", font=("Arial", 11, "bold")).pack(
+            anchor=tk.W, padx=10)
+        size_frame = tk.Frame(win)
+        size_frame.pack(fill=tk.X, padx=10)
+        for n in BOARD_SIZES:
+            tk.Checkbutton(size_frame, text=f"{n}×{n}",
+                           variable=self.board_size_vars[n],
+                           command=lambda n=n: self._on_size_check(n)
+                           ).pack(side=tk.LEFT)
+
+        tk.Label(win, text="棋盘样式", font=("Arial", 11, "bold")).pack(
+            anchor=tk.W, padx=10, pady=(10, 0))
+        style_frame = tk.Frame(win)
+        style_frame.pack(fill=tk.X, padx=10)
+        tk.Checkbutton(style_frame, text="落子交叉点",
+                       variable=self.style_point_var,
+                       command=self._on_style_change).pack(side=tk.LEFT)
+        tk.Checkbutton(style_frame, text="落子格子",
+                       variable=self.style_cell_var,
+                       command=self._on_style_change).pack(side=tk.LEFT,
+                                                           padx=10)
 
         tk.Label(win, text="先手", font=("Arial", 11, "bold")).pack(anchor=tk.W, padx=10)
         first_frame = tk.Frame(win)
@@ -1203,6 +1287,51 @@ class GameGUI:
         bottom.pack(side=tk.BOTTOM, fill=tk.X, pady=10)
         tk.Button(bottom, text="新对局", command=self._apply_mode_new_game).pack(
             side=tk.TOP)
+
+    def _on_size_check(self, selected):
+        var = self.board_size_vars[selected]
+        if var.get():
+            for n, other in self.board_size_vars.items():
+                if n != selected:
+                    other.set(0)
+        else:
+            # Keep exactly one board size selected at all times.
+            var.set(1)
+
+    def _selected_board_size(self):
+        for n, var in self.board_size_vars.items():
+            if var.get():
+                return n
+        return None
+
+    def _on_style_change(self):
+        if self.style_cell_var.get():
+            self.style_point_var.set(0)
+            self.board_style = "cell"
+        else:
+            self.style_point_var.set(1)
+            self.board_style = "point"
+        self.draw_board()
+
+    def _select_board_size_var(self, size):
+        for n, var in self.board_size_vars.items():
+            var.set(1 if n == size else 0)
+
+    def _apply_canvas_size(self):
+        """Resize the canvas / side panel for the current board size."""
+        new_size = self.size * CELL + 2 * MARGIN
+        if new_size == self.canvas_size:
+            return
+        self.canvas_size = new_size
+        self.canvas.configure(width=new_size, height=new_size)
+        self.info.configure(height=max(new_size + 80,
+                                       self.info_natural_height))
+        self.root.title(f"Gomoku vs Go  ({self.size}x{self.size})")
+        try:
+            # Let the window shrink/grow to fit the new board.
+            self.root.geometry("")
+        except Exception:
+            pass
 
     def _close_mode_window(self):
         if self.mode_window is not None:
@@ -1247,6 +1376,9 @@ class GameGUI:
         else:
             self.previous_game_snapshot = None
         self.moves_since_new_game = 0
+        selected_size = self._selected_board_size()
+        if selected_size is not None:
+            self.size = selected_size
         self.board = HybridBoard(self.size)
         self.board._forbid_overline = bool(self.forbid_overline_var.get())
         self.board._forbid_44 = bool(self.forbid_44_var.get())
@@ -1276,6 +1408,7 @@ class GameGUI:
         self._start_turn_timer(self.current)
         self.thinking_label.config(text="")
         self.depth_label.config(text="")
+        self._apply_canvas_size()
         self.draw_board()
         self.update_info()
         self.update_mode_label()
@@ -1293,6 +1426,10 @@ class GameGUI:
         snap = self.previous_game_snapshot
         self.previous_game_snapshot = None
         self.board = snap["board"]
+        if self.board.size != self.size:
+            self.size = self.board.size
+            self._apply_canvas_size()
+            self._select_board_size_var(self.size)
         self.current = snap["current"]
         self.last_move = snap["last_move"]
         self.game_over = snap["game_over"]
