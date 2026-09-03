@@ -57,10 +57,10 @@ app.style_point_var.set(1)
 app._on_style_point()
 assert app.board_style == "point" and app.style_cell_var.get() == 0
 
-# unchecking the only selected style restores it
+# unchecking the only selected style just restores it, style unchanged
 app.style_cell_var.set(0)
 app._on_style_cell()
-assert app.style_cell_var.get() == 1 and app.board_style == "cell"
+assert app.style_cell_var.get() == 1 and app.board_style == "point"
 app.style_point_var.set(1)
 app._on_style_point()
 assert app.style_point_var.get() == 1 and app.style_cell_var.get() == 0
