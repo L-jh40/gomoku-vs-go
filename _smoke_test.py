@@ -112,12 +112,13 @@ for size in gui.BOARD_SIZES:
         mirror = (size - 1 - sx, size - 1 - sy)
         assert mirror in gui.STAR_POINTS[size], (size, sx, sy)
     b = app.board
-    b.play_black(7, 7)
-    b.play_white(8, 7)
-    b.play_black(7, 8)
-    b.play_white(8, 8)
-    b.play_black(7, 9)
-    app.last_move = (7, 9)
+    mid = size // 2
+    b.play_black(mid, mid)
+    b.play_white(mid + 1, mid)
+    b.play_black(mid, mid + 1)
+    b.play_white(mid + 1, mid + 1)
+    b.play_black(mid, mid + 2)
+    app.last_move = (mid, mid + 2)
     for style in ("point", "cell"):
         app.board_style = style
         app.draw_board()
