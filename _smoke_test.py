@@ -94,10 +94,11 @@ app._on_size_check(9)
 app.new_game()
 assert app.size == 9
 app.undo_move()
-assert app.size == 15, app.size
-assert app.board.size == 15
+# Snapshot holds the previous 13x13 game: undo must restore that size.
+assert app.size == 13, app.size
+assert app.board.size == 13
 assert len(app.board.history) == 1
-assert app._selected_board_size() == 15
+assert app._selected_board_size() == 13
 
 # --- stones + hints render in both styles on every size ---
 app.hint_var.set(1)
