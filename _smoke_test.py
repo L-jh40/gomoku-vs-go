@@ -65,7 +65,8 @@ app.style_point_var.set(1)
 app._on_style_point()
 assert app.style_point_var.get() == 1 and app.style_cell_var.get() == 0
 
-# --- size checkbox exclusivity ---
+# --- size checkbox exclusivity (checkbox toggles its own var first) ---
+app.board_size_vars[9].set(1)
 app._on_size_check(9)
 assert app._selected_board_size() == 9
 assert all(v.get() == (n == 9) for n, v in app.board_size_vars.items())
