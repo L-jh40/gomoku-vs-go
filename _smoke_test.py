@@ -41,7 +41,7 @@ assert (round((e.y - app.origin_y) / CELL),
 
 # --- cell style toggle ---
 app.style_cell_var.set(1)
-app._on_style_change()
+app._on_style_cell()
 assert app.board_style == "cell"
 assert app.style_point_var.get() == 0
 assert app._grid_extent() == 15 * CELL
