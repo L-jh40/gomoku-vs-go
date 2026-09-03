@@ -75,7 +75,9 @@ app._on_size_check(9)
 assert app.board_size_vars[9].get() == 1, "cannot deselect the only size"
 
 # --- new game applies the selected size ---
+app.board_size_vars[13].set(1)
 app._on_size_check(13)
+assert app._selected_board_size() == 13
 app.new_game()
 assert app.size == 13 and app.board.size == 13
 assert app.board.grid.shape == (13, 13)
@@ -87,6 +89,7 @@ app.draw_board()
 # --- play a stone, switch size, undo restores the old game ---
 app.try_play_black(3, 4)
 assert len(app.board.history) == 1
+app.board_size_vars[9].set(1)
 app._on_size_check(9)
 app.new_game()
 assert app.size == 9
