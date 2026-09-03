@@ -52,10 +52,18 @@ e.x, e.y = int(cx), int(cy)
 assert (int((e.y - app.origin_y) // CELL),
         int((e.x - app.origin_x) // CELL)) == (4, 6)
 
-# --- back to point style ---
+# --- back to point style (simulate clicking the 交叉点 checkbox) ---
 app.style_point_var.set(1)
-app._on_style_change()
+app._on_style_point()
 assert app.board_style == "point" and app.style_cell_var.get() == 0
+
+# unchecking the only selected style restores it
+app.style_cell_var.set(0)
+app._on_style_cell()
+assert app.style_cell_var.get() == 1 and app.board_style == "cell"
+app.style_point_var.set(1)
+app._on_style_point()
+assert app.style_point_var.get() == 1 and app.style_cell_var.get() == 0
 
 # --- size checkbox exclusivity ---
 app._on_size_check(9)

@@ -1246,11 +1246,11 @@ class GameGUI:
         style_frame.pack(fill=tk.X, padx=10)
         tk.Checkbutton(style_frame, text="落子交叉点",
                        variable=self.style_point_var,
-                       command=self._on_style_change).pack(side=tk.LEFT)
+                       command=self._on_style_point).pack(side=tk.LEFT)
         tk.Checkbutton(style_frame, text="落子格子",
                        variable=self.style_cell_var,
-                       command=self._on_style_change).pack(side=tk.LEFT,
-                                                           padx=10)
+                       command=self._on_style_cell).pack(side=tk.LEFT,
+                                                         padx=10)
 
         tk.Label(win, text="先手", font=("Arial", 11, "bold")).pack(anchor=tk.W, padx=10)
         first_frame = tk.Frame(win)
@@ -1304,13 +1304,22 @@ class GameGUI:
                 return n
         return None
 
-    def _on_style_change(self):
+    def _on_style_point(self):
+        if self.style_point_var.get():
+            self.style_cell_var.set(0)
+            self.board_style = "point"
+        else:
+            # One style must stay selected; restore it.
+            self.style_point_var.set(1)
+        self.draw_board()
+
+    def _on_style_cell(self):
         if self.style_cell_var.get():
             self.style_point_var.set(0)
             self.board_style = "cell"
         else:
-            self.style_point_var.set(1)
-            self.board_style = "point"
+            # One style must stay selected; restore it.
+            self.style_cell_var.set(1)
         self.draw_board()
 
     def _select_board_size_var(self, size):
