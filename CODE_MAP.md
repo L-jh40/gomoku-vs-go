@@ -103,19 +103,23 @@
 - 顶部按钮：新对局、选择模式、悔棋、Pass、AI 立即落子
 - 勾选框：黑棋 AI / 白棋 AI、玩家落子提示、显示手数、显示候选点、取消投子认负
 - 搜索设置：Minimax 层数、最短搜索时间、最长搜索时间
-- 模式窗口：先手、禁手设置、预留接口
+- 模式窗口：棋盘尺寸（9~19 奇数，新对局生效）、棋盘样式（交叉点/格子，勾选即时生效）、先手、禁手设置、预留接口
 - 统计栏：黑白 AI/人类用时、吃子
 
 ### 功能函数
 
 | 函数 | 作用 |
 |------|------|
-| `new_game` | 按模式设置开新局 |
+| `new_game` | 按模式设置开新局（含所选棋盘尺寸） |
 | `open_mode_window` | 选择模式窗口 |
 | `run_ai_move` | 启动 AI 搜索线程 |
 | `progress_callback` | AI 进度回传 |
 | `apply` | AI 结果应用与落子 |
 | `draw_board / draw_hints` | 棋盘与提示绘制 |
+| `_grid_extent / _update_origin / _point_center` | 棋盘像素范围、居中原点、逻辑坐标→画布坐标（区分交叉点/格子样式） |
+| `_on_size_check / _selected_board_size` | 棋盘尺寸复选框互斥与读取 |
+| `_on_style_point / _on_style_cell` | 棋盘样式复选框互斥与即时切换 |
+| `_apply_canvas_size` | 尺寸变化时重设画布/侧栏大小与窗口标题 |
 | `_get_candidate_display_positions` | 候选点显示 |
 | `_finish_turn_time / update_info` | 用时统计 |
 | `play_replay_black` | 复盘黑棋应对 |
@@ -155,6 +159,12 @@
 
 ### 修改距离算法
 - `board.py` → `farthest_open_positions`
+
+### 修改棋盘尺寸 / 样式 / 居中
+- `gui.py` → `BOARD_SIZES` / `STAR_POINTS`（支持尺寸与各尺寸星位）
+- `gui.py` → `_grid_extent` / `_update_origin` / `_point_center`（绘制原点与坐标换算）
+- `gui.py` → `open_mode_window`（尺寸、样式复选框）
+- `gui.py` → `new_game`（尺寸在新对局时生效）
 
 ### 修改候选点绿色显示
 - `gui.py` → `_draw_candidate_squares`
