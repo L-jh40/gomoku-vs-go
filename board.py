@@ -6,6 +6,8 @@ Cell values:
     0 = empty
     1 = black (Gomoku side, cannot capture white)
     2 = white (Go side, captures zero-liberty black groups)
+    3 = obstacle / wall (set before a game; blocks moves, liberties and
+        five-in-a-row lines exactly like the board edge)
 
 Black search-space exclusions
 ----------------------------
@@ -30,6 +32,7 @@ import numpy as np
 EMPTY = 0
 BLACK = 1
 WHITE = 2
+OBSTACLE = 3
 BOARD_SIZE = 15
 
 DIRECTIONS = ((1, 0), (0, 1), (1, 1), (1, -1))
