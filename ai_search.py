@@ -79,7 +79,8 @@ def _board_signature(board: HybridBoard) -> tuple:
         for y in range(board.size)
         if board.grid[x, y] == WHITE
     )
-    return (board.turn, black, white)
+    obstacles = tuple(sorted(board.obstacle_positions()))
+    return (board.turn, black, white, obstacles)
 
 
 # ----------------------------------------------------------------------

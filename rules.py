@@ -20,6 +20,7 @@ from board import (
     EMPTY,
     BLACK,
     WHITE,
+    OBSTACLE,
     DIRECTIONS,
     THREAT_SCORE,
     THREAT_MARKER,
@@ -53,8 +54,8 @@ def line_code(board, x: int, y: int, dx: int, dy: int,
               blockers: set | None = None, half: int = 4) -> str:
     """9-character window centred on (x,y) along direction (dx,dy).
 
-    Black cells are '1'.  White, out-of-board cells and cells listed in
-    `blockers` are '2'.  Every other empty cell is '0'.
+    Black cells are '1'.  White, obstacle / out-of-board cells and cells
+    listed in `blockers` are '2'.  Every other empty cell is '0'.
     Caller must already have placed the temporary black stone at (x,y).
     """
     blockers = blockers or set()
@@ -67,7 +68,7 @@ def line_code(board, x: int, y: int, dx: int, dy: int,
         value = int(board.grid[cx, cy])
         if value == BLACK:
             chars.append("1")
-        elif value == WHITE:
+        elif value in (WHITE, OBSTACLE):
             chars.append("2")
         elif (cx, cy) in blockers:
             chars.append("2")

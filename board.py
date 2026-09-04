@@ -168,6 +168,51 @@ class HybridBoard:
     def is_empty(self, x: int, y: int) -> bool:
         return self.in_bounds(x, y) and self.grid[x, y] == EMPTY
 
+    def is_obstacle(self, x: int, y: int) -> bool:
+        return self.in_bounds(x, y) and self.grid[x, y] == OBSTACLE
+
+    def obstacle_positions(self) -> set[tuple[int, int]]:
+        return {
+            (x, y)
+            for x in range(self.size)
+            for y in range(self.size)
+            if self.grid[x, y] == OBSTACLE
+        }
+
+    def place_random_obstacles(self, count: int, rng=None):
+        """Place up to `count` wall obstacles on empty cells.
+
+        Walls behave exactly like the board edge: no stone can be played on
+        them, they are not liberties and they block every five-in-a-row line
+        through them.  Placement is point-symmetric around the centre so the
+        walls are fair to both sides (odd counts use the centre cell).
+        Returns the sorted list of obstacle positions."""
+        import random
+        rng = rng or random
+        size = self.size
+        count = max(0, min(int(count), size * size))
+        if count == 0:
+            return []
+
+        center = (size // 2, size // 2)
+        chosen: set[tuple[int, int]] = set()
+        if count % 2 == 1:
+            chosen.add(center)
+        pool = [(x, y) for x in range(size) for y in range(size)
+                if (x, y) != center]
+        rng.shuffle(pool)
+        for cell in pool:
+            if len(chosen) >= count:
+                break
+            mirror = (size - 1 - cell[0], size - 1 - cell[1])
+            if len(chosen) + 2 <= count:
+                chosen.add(cell)
+                chosen.add(mirror)
+        for x, y in chosen:
+            self.grid[x, y] = OBSTACLE
+        self._invalidate_caches()
+        return sorted(chosen)
+
     def neighbors(self, x: int, y: int) -> list[tuple[int, int]]:
         out: list[tuple[int, int]] = []
         for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
@@ -456,15 +501,16 @@ class HybridBoard:
     # ------------------------------------------------------------------
     def _has_open_five_window(self, x: int, y: int) -> bool:
         """True if there exists an in-board 5-cell window containing (x,y)
-        with no white stone.  This is the geometric part of 'can this cell
-        ever be part of a black five'."""
+        with no white stone and no obstacle.  This is the geometric part of
+        'can this cell ever be part of a black five'."""
         for dx, dy in DIRECTIONS:
             for offset in range(-4, 1):
                 cells = [(x + (offset + i) * dx, y + (offset + i) * dy)
                          for i in range(5)]
                 if not all(self.in_bounds(cx, cy) for cx, cy in cells):
                     continue
-                if any(self.grid[cx, cy] == WHITE for cx, cy in cells):
+                if any(self.grid[cx, cy] in (WHITE, OBSTACLE)
+                       for cx, cy in cells):
                     continue
                 return True
         return False
@@ -502,7 +548,8 @@ class HybridBoard:
                     if not self.in_bounds(end_x, end_y):
                         continue
                     cells = [(x + i * dx, y + i * dy) for i in range(5)]
-                    if any(self.grid[cx, cy] == WHITE for cx, cy in cells):
+                    if any(self.grid[cx, cy] in (WHITE, OBSTACLE)
+                           for cx, cy in cells):
                         continue
                     for cx, cy in cells:
                         alive[cx, cy] = True
@@ -554,6 +601,7 @@ class HybridBoard:
                                     for cx, cy in cells)
                     blocked = any(
                         self.grid[cx, cy] == WHITE or
+                        self.grid[cx, cy] == OBSTACLE or
                         (self.grid[cx, cy] == EMPTY and (cx, cy) in blue)
                         for cx, cy in cells
                     )
@@ -1289,7 +1337,7 @@ class HybridBoard:
                     cells = [(x + i * dx, y + i * dy) for i in range(5)]
                     blocked = False
                     for cx, cy in cells:
-                        if self.grid[cx, cy] == WHITE:
+                        if self.grid[cx, cy] in (WHITE, OBSTACLE):
                             blocked = True
                             break
                         if self.grid[cx, cy] == EMPTY and (cx, cy) in blue:
@@ -1300,7 +1348,7 @@ class HybridBoard:
         return True
 
     def get_unblocked_lines(self) -> list[list[tuple[int, int]]]:
-        """Return every white/blue-free 5-cell window (used for GUI display)."""
+        """Return every white/obstacle/blue-free 5-cell window (GUI display)."""
         blue = self.get_blue_cross_positions()
         lines: list[list[tuple[int, int]]] = []
         for dx, dy in DIRECTIONS:
@@ -1310,7 +1358,7 @@ class HybridBoard:
                     if not self.in_bounds(end_x, end_y):
                         continue
                     cells = [(x + i * dx, y + i * dy) for i in range(5)]
-                    if any(self.grid[cx, cy] == WHITE or
+                    if any(self.grid[cx, cy] in (WHITE, OBSTACLE) or
                            (self.grid[cx, cy] == EMPTY and (cx, cy) in blue)
                            for cx, cy in cells):
                         continue

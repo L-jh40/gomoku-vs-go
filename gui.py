@@ -86,6 +86,8 @@ class GameGUI:
         self.board_bg = "#f0d68c"
         self.line_color = "black"
         self.star_color = "black"
+        # Obstacle cells: board background mixed 1:1 with pure black.
+        self.obstacle_color = self._mix_colors(self.board_bg, "#000000", 0.5)
 
         # "point" = stones on intersections, "cell" = stones inside cells.
         self.board_style = "point"
@@ -242,6 +244,17 @@ class GameGUI:
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+    @staticmethod
+    def _mix_colors(c1, c2, ratio=0.5):
+        """Mix two #rrggbb colors; `ratio` is the share of c1."""
+        r1, g1, b1 = int(c1[1:3], 16), int(c1[3:5], 16), int(c1[5:7], 16)
+        r2, g2, b2 = int(c2[1:3], 16), int(c2[3:5], 16), int(c2[5:7], 16)
+
+        def mix(a, b):
+            return int(round(a * ratio + b * (1 - ratio)))
+
+        return f"#{mix(r1, r2):02x}{mix(g1, g2):02x}{mix(b1, b2):02x}"
+
     def black_is_human(self):
         return (not self.black_ai_var.get() and not self.black_table_mode
                 and not self.replay_mode)
@@ -401,6 +414,16 @@ class GameGUI:
             self.canvas.create_oval(
                 cx - 3, cy - 3, cx + 3, cy + 3, fill=self.star_color
             )
+
+        # Obstacles: dark-yellow filled cells (walls).  Drawn after the grid
+        # so the surrounding lines stay visible.
+        half = CELL // 2 - 2
+        for x, y in self.board.obstacle_positions():
+            cx, cy = self._point_center(x, y)
+            self.canvas.create_rectangle(cx - half, cy - half,
+                                         cx + half, cy + half,
+                                         fill=self.obstacle_color,
+                                         outline=self.obstacle_color)
 
         move_numbers = {}
         if self.show_moves_var.get():
@@ -1276,7 +1299,9 @@ class GameGUI:
         tk.Checkbutton(win, text="环面模式",
                        variable=self.torus_mode_var).pack(anchor=tk.W, padx=10)
         tk.Checkbutton(win, text="启用障碍",
-                       variable=self.obstacle_enabled_var).pack(anchor=tk.W, padx=10)
+                       variable=self.obstacle_enabled_var,
+                       command=self._on_obstacle_toggle).pack(anchor=tk.W,
+                                                              padx=10)
         obstacle_frame = tk.Frame(win)
         obstacle_frame.pack(fill=tk.X, padx=20)
         tk.Label(obstacle_frame, text="选择障碍个数:").pack(side=tk.LEFT)
@@ -1321,6 +1346,19 @@ class GameGUI:
             # One style must stay selected; restore it.
             self.style_cell_var.set(1)
         self.draw_board()
+
+    def _on_obstacle_toggle(self):
+        if self.obstacle_enabled_var.get():
+            # Obstacles are drawn as filled cells: default to the cell style.
+            if self.board_style != "cell":
+                self.style_cell_var.set(1)
+                self._on_style_cell()
+            try:
+                count = int(self.obstacle_count_var.get())
+            except ValueError:
+                count = 0
+            if count <= 0:
+                self.obstacle_count_var.set("6")
 
     def _select_board_size_var(self, size):
         for n, var in self.board_size_vars.items():
@@ -1392,6 +1430,13 @@ class GameGUI:
         self.board._forbid_overline = bool(self.forbid_overline_var.get())
         self.board._forbid_44 = bool(self.forbid_44_var.get())
         self.board._forbid_33 = bool(self.forbid_33_var.get())
+        if self.obstacle_enabled_var.get():
+            try:
+                count = int(self.obstacle_count_var.get())
+            except ValueError:
+                count = 0
+            if count > 0:
+                self.board.place_random_obstacles(count)
         if self.first_player_var.get() == "white":
             self.current = WHITE
             self.board.turn = WHITE
