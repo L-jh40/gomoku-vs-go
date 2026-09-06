@@ -9,12 +9,13 @@
 | 文件 | 作用 |
 |------|------|
 | `main.py` | 程序入口，支持 GUI 和 CLI |
-| `gui.py` | tkinter 窗口界面、AI 线程、计时、复盘、模式窗口、候选点显示 |
-| `board.py` | 棋盘数据结构、规则相关的底层判断、候选点、评分 |
+| `gui.py` | tkinter 窗口界面、AI 搜索调度（工作进程）、计时、复盘、模式窗口、候选点显示 |
+| `board.py` | 棋盘数据结构、规则相关的底层判断、候选点、评分、障碍物 |
 | `rules.py` | 禁手判定与单方向威胁分类 |
 | `ai_search.py` | AI 搜索核心：minimax、白棋防守、黑棋算法 A、复盘表 |
 | `ai_black.py` | 黑棋 AI 对外接口 |
 | `ai_white.py` | 白棋 AI 对外接口 |
+| `ai_worker.py` | 常驻 AI 搜索工作进程（GUI 经多进程调度搜索，主窗口不卡） |
 | `tests_text.py` | text.md 局面的自动化测试 |
 | `AI_ALGORITHM.md` | 算法逻辑说明 |
 | `README.md` | 使用说明 |
@@ -25,7 +26,7 @@
 ## 2. board.py - 棋盘与底层逻辑
 
 ### 主要常量
-- `EMPTY / BLACK / WHITE`
+- `EMPTY / BLACK / WHITE / OBSTACLE`
 - `DIRECTIONS`
 - `THREAT_MARKER`
 - `THREAT_SCORE`
