@@ -479,7 +479,7 @@ class GameGUI:
         extent = self._grid_extent()
         ox = self.origin_x
         reg, bold, linespace = self._band_fonts()
-        pad = max(3, int(linespace * 0.3))
+        pad = max(3, int(linespace * 0.2))
         edge_pad = max(4, int(self._band_font_size() * 0.2))
         x_left = ox + edge_pad
         x_right = ox + extent - edge_pad
@@ -500,11 +500,11 @@ class GameGUI:
                                 tags=tag)
         self.canvas.create_text(
             x_left, line_y(1), anchor="w",
-            text=f"AI: {self._display_clock(BLACK, True)}",
+            text=f"AI | {self._display_clock(BLACK, True)}",
             font=reg, fill="#202020", tags=tag)
         self.canvas.create_text(
             x_left, line_y(2), anchor="w",
-            text=f"人类: {self._display_clock(BLACK, False)}",
+            text=f"人类 | {self._display_clock(BLACK, False)}",
             font=reg, fill="#202020", tags=tag)
         # Capture count - centred between the two clocks.
         self.canvas.create_text(ox + extent / 2, pad + 1.5 * linespace,
@@ -516,11 +516,11 @@ class GameGUI:
                                 tags=tag)
         self.canvas.create_text(
             x_right, line_y(1), anchor="e",
-            text=f"AI: {self._display_clock(WHITE, True)}",
+            text=f"AI | {self._display_clock(WHITE, True)}",
             font=reg, fill="#202020", tags=tag)
         self.canvas.create_text(
             x_right, line_y(2), anchor="e",
-            text=f"人类: {self._display_clock(WHITE, False)}",
+            text=f"人类 | {self._display_clock(WHITE, False)}",
             font=reg, fill="#202020", tags=tag)
 
     def update_info(self):
@@ -539,19 +539,16 @@ class GameGUI:
         return (self.size - 1) * CELL
 
     def _update_origin(self):
-        """Center the playing area inside the yellow canvas, keeping the
-        header readout strip free above the grid."""
+        """Place the grid directly under the header strip (the header's last
+        row is a blank line, giving exactly one-line spacing).  Only the
+        horizontal position is centred inside the yellow canvas."""
         extent = self._grid_extent()
         width = self.canvas.winfo_width()
-        height = self.canvas.winfo_height()
         if width <= 1:
             width = self.canvas_size
-        if height <= 1:
-            height = self.canvas_height
         band = self._band_height()
-        avail = max(1, height - band)
         self.origin_x = int(max(0, (width - extent) / 2))
-        self.origin_y = int(band + max(0, (avail - extent) / 2))
+        self.origin_y = int(band)
 
     def _point_center(self, x, y):
         """Canvas coords of logical point (x, y): an intersection, or the
