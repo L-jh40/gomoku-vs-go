@@ -94,13 +94,13 @@ class GameGUI:
         self.board_style = "point"
         self.hover_point = None
         # Canvas large enough for either style; draw_board centers the grid
-        # inside the yellow area below the TOP_BAND readout strip
+        # inside the yellow area below the header readout strip
         # (origin_x / origin_y).  Width is based on the cell extent plus the
-        # side margins; the extra TOP_BAND of height reserves the top strip.
+        # side margins; the extra header height is reserved above the grid.
         self.canvas_size = board_size * CELL + 2 * MARGIN
-        self.canvas_height = self.canvas_size + TOP_BAND
+        self.canvas_height = self.canvas_size + self._band_height()
         self.origin_x = MARGIN
-        self.origin_y = MARGIN + TOP_BAND
+        self.origin_y = MARGIN + self._band_height()
         self.canvas = tk.Canvas(root, width=self.canvas_size,
                                 height=self.canvas_height, bg=self.board_bg)
         self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
@@ -336,40 +336,109 @@ class GameGUI:
         self.turn_start_time = time.time()
         self.turn_start_color = color
 
-    def _total_time(self, color):
-        """Combined (AI + human) clock for one colour, live while it moves."""
+    def _color_is_ai(self, color):
+        """Is the side that currently controls `color` an AI?"""
         if color == BLACK:
-            base = self.time_black_ai + self.time_black_human
+            return not self.black_is_human()
+        return not self.white_is_human()
+
+    def _display_clock(self, color, is_ai):
+        """One side's AI or human clock (mm:ss), ticking live while that
+        controller is the one to move."""
+        if color == BLACK:
+            base = self.time_black_ai if is_ai else self.time_black_human
         else:
-            base = self.time_white_ai + self.time_white_human
-        if self.current == color and self.turn_start_time is not None:
+            base = self.time_white_ai if is_ai else self.time_white_human
+        if (self.current == color and self.turn_start_time is not None
+                and self._color_is_ai(color) == is_ai):
             base += time.time() - self.turn_start_time
         return self._format_time(base)
 
+    # ------------------------------------------------------------------
+    # Header readout strip (above the grid, inside the yellow canvas)
+    # ------------------------------------------------------------------
+    def _band_font_size(self):
+        """Header font grows with the board size: ~9pt on a 9x9 board,
+        ~20pt on 15x15 (same size as the status "白棋行棋" label), roughly
+        linear in between and continuing for larger boards."""
+        pts = 9 + (self.size - 9) * 11.0 / 6.0
+        return int(max(8, min(32, round(pts))))
+
+    def _band_fonts(self):
+        """(regular, bold, linespace) tk font objects for the current size."""
+        size_pts = self._band_font_size()
+        cache = getattr(self, "_band_font_cache", None)
+        if cache is None:
+            cache = self._band_font_cache = {}
+        if size_pts not in cache:
+            reg = tkfont.Font(root=self.root, family="Arial", size=size_pts)
+            bold = tkfont.Font(root=self.root, family="Arial",
+                               size=size_pts, weight="bold")
+            linespace = max(reg.metrics("linespace"),
+                            bold.metrics("linespace"))
+            cache[size_pts] = (reg, bold, linespace)
+        return cache[size_pts]
+
+    def _band_height(self):
+        """Pixel height reserved above the grid for the 3-line header."""
+        _reg, _bold, linespace = self._band_fonts()
+        pad = max(3, int(linespace * 0.3))
+        return 2 * pad + 3 * linespace
+
     def _draw_top_band(self):
-        """Black time / captures / white time, left-to-right, on the yellow
-        strip above the grid."""
+        """Header above the grid: black clock (3 lines), capture count,
+        white clock (3 lines).  The black block hugs the left board edge,
+        the white block the right edge, and "白吃黑 N子" is vertically
+        centred between them."""
         if getattr(self, "canvas", None) is None:
             return
         self.canvas.delete("topband")
         extent = self._grid_extent()
         ox = self.origin_x
-        y = TOP_BAND // 2
+        reg, bold, linespace = self._band_fonts()
+        pad = max(3, int(linespace * 0.3))
+        edge_pad = max(4, int(self._band_font_size() * 0.2))
+        x_left = ox + edge_pad
+        x_right = ox + extent - edge_pad
+
         cap = self.board.captured_count[WHITE]
         cap_b = self.board.captured_count[BLACK]
-        eat_text = f"吃子: {cap}"
+        eat_text = f"白吃黑 {cap}子"
         if cap_b:
-            eat_text += f"，黑自吃 {cap_b}"
-        font = ("Arial", 9, "bold")
-        self.canvas.create_text(ox + 6, y, anchor="w",
-                                text=f"黑棋时间 {self._total_time(BLACK)}",
-                                font=font, fill="black", tags="topband")
-        self.canvas.create_text(ox + extent / 2, y, anchor="center",
-                                text=eat_text, font=font,
-                                fill="#4a3300", tags="topband")
-        self.canvas.create_text(ox + extent - 6, y, anchor="e",
-                                text=f"白棋时间 {self._total_time(WHITE)}",
-                                font=font, fill="black", tags="topband")
+            eat_text += f"，黑自吃 {cap_b}子"
+
+        def line_y(i):
+            return pad + (i + 0.5) * linespace
+
+        tag = "topband"
+        # Black clock - left edge.
+        self.canvas.create_text(x_left, line_y(0), anchor="w",
+                                text="黑棋时间", font=bold, fill="black",
+                                tags=tag)
+        self.canvas.create_text(
+            x_left, line_y(1), anchor="w",
+            text=f"AI: {self._display_clock(BLACK, True)}",
+            font=reg, fill="#202020", tags=tag)
+        self.canvas.create_text(
+            x_left, line_y(2), anchor="w",
+            text=f"人类: {self._display_clock(BLACK, False)}",
+            font=reg, fill="#202020", tags=tag)
+        # Capture count - centred between the two clocks.
+        self.canvas.create_text(ox + extent / 2, pad + 1.5 * linespace,
+                                anchor="center", text=eat_text, font=bold,
+                                fill="#4a3300", tags=tag)
+        # White clock - right edge.
+        self.canvas.create_text(x_right, line_y(0), anchor="e",
+                                text="白棋时间", font=bold, fill="black",
+                                tags=tag)
+        self.canvas.create_text(
+            x_right, line_y(1), anchor="e",
+            text=f"AI: {self._display_clock(WHITE, True)}",
+            font=reg, fill="#202020", tags=tag)
+        self.canvas.create_text(
+            x_right, line_y(2), anchor="e",
+            text=f"人类: {self._display_clock(WHITE, False)}",
+            font=reg, fill="#202020", tags=tag)
 
     def update_info(self):
         self._draw_top_band()
@@ -388,7 +457,7 @@ class GameGUI:
 
     def _update_origin(self):
         """Center the playing area inside the yellow canvas, keeping the
-        TOP_BAND readout strip free above the grid."""
+        header readout strip free above the grid."""
         extent = self._grid_extent()
         width = self.canvas.winfo_width()
         height = self.canvas.winfo_height()
@@ -396,9 +465,10 @@ class GameGUI:
             width = self.canvas_size
         if height <= 1:
             height = self.canvas_height
-        avail = max(1, height - TOP_BAND)
+        band = self._band_height()
+        avail = max(1, height - band)
         self.origin_x = int(max(0, (width - extent) / 2))
-        self.origin_y = int(TOP_BAND + max(0, (avail - extent) / 2))
+        self.origin_y = int(band + max(0, (avail - extent) / 2))
 
     def _point_center(self, x, y):
         """Canvas coords of logical point (x, y): an intersection, or the
@@ -623,8 +693,9 @@ class GameGUI:
         """Preview where a left click would drop a stone.
 
         Cell style: the whole hovered cell is highlighted (translucent gold
-        overlay).  Point style: a ghost stone of the current colour is shown
-        with about 75% transparency (only ~25% of the pixels are painted)."""
+        overlay).  Point style: a ghost stone of the current colour whose
+        "75% transparency" is drawn directly - the stone colour is blended
+        with 75% of the board background colour into a solid fill."""
         if self.hover_point is None or self.board.grid[self.hover_point] != EMPTY:
             return
         if self.game_over or self.ai_thinking:
@@ -638,13 +709,11 @@ class GameGUI:
                                          fill="#d8a63f", outline="",
                                          stipple="gray50")
         else:
-            color = "black" if self.current == BLACK else "white"
+            stone = "#000000" if self.current == BLACK else "#ffffff"
+            ghost = self._mix_colors(stone, self.board_bg, 0.25)
             r = CELL // 2 - 2
-            self.canvas.create_oval(
-                cx - r, cy - r, cx + r, cy + r,
-                fill=color, outline=self.line_color, width=1,
-                stipple="gray25"
-            )
+            self.canvas.create_oval(cx - r, cy - r, cx + r, cy + r,
+                                    fill=ghost, outline=ghost)
 
     def on_click(self, event):
         if self.game_over or self.ai_thinking:
@@ -1508,7 +1577,7 @@ class GameGUI:
         if new_size == self.canvas_size:
             return
         self.canvas_size = new_size
-        self.canvas_height = new_size + TOP_BAND
+        self.canvas_height = new_size + self._band_height()
         self.canvas.configure(width=new_size, height=self.canvas_height)
         self.info.configure(height=max(self.canvas_height + 80,
                                        self.info_natural_height))
