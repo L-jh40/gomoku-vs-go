@@ -1364,11 +1364,12 @@ class GameGUI:
             )
         )
 
-    def handle_no_move(self, color, board_copy=None):
+    def handle_no_move(self, color, board_copy=None, should_pass=False):
         if color == BLACK:
             self._prompt_black_resign()
         else:
-            if board_copy is not None and ai_search.white_should_pass(board_copy):
+            if should_pass or (board_copy is not None and
+                               ai_search.white_should_pass(board_copy)):
                 self._pass_turn(manual=False)
             elif self.cancel_resign_var.get():
                 self.play_fallback_white_move()
@@ -1466,8 +1467,8 @@ class GameGUI:
                               bool(self.white_ai_var.get()))
         self.game_over = False
         self.ai_thinking = False
-        self.search_interrupt.set()
         self.search_epoch += 1
+        self._sync_worker_epoch()
         self.black_ai_var.set(0)
         self.white_ai_var.set(0)
         self.black_table_mode = False
@@ -1484,8 +1485,7 @@ class GameGUI:
         self.replay_mode = False
         self.black_table_mode = False
         self.game_over = True
-        self.ai_thinking = False
-        self.search_interrupt.set()
+        self._stop_search()
         self._restore_main_window()
         self.status_var.set("复盘失败")
         messagebox.showerror("复盘失败", "复盘失败")
@@ -1543,39 +1543,19 @@ class GameGUI:
             return
 
         # No direct forced point: calculate a black reply for this concrete
-        # position instead.
+        # position in the worker process instead.
         self.ai_thinking = True
-        self.search_interrupt.clear()
         self.thinking_label.config(text="复盘：计算黑棋下法...")
-        board_copy = self.board.copy()
-        depth = max(2, self.current_max_depth)
+        self.search_epoch += 1
         token = self.search_epoch
-
-        def work():
-            try:
-                move2 = ai_black.best_black_move(
-                    board_copy, max_depth=depth,
-                    interrupt_event=self.search_interrupt
-                )
-            except Exception:
-                move2 = None
-
-            def apply():
-                if not self.replay_mode or token != self.search_epoch:
-                    return
-                self.ai_thinking = False
-                self.search_interrupt.clear()
-                self.thinking_label.config(text="")
-                if move2 is None or not self.board.is_empty(*move2):
-                    self._replay_failed(
-                        "复盘无法继续：黑棋未能获胜。"
-                    )
-                    return
-                self._apply_replay_black_move(move2)
-
-            self.root.after(0, apply)
-
-        threading.Thread(target=work, daemon=True).start()
+        self._ensure_worker()
+        self._sync_worker_epoch()
+        self.job_queue.put({
+            "kind": "search", "epoch": token, "color": BLACK,
+            "assist": False, "board": self.board.copy(),
+            "max_depth": max(2, self.current_max_depth),
+            "min_search_time": 0.0, "replay": True,
+        })
 
     def play_table_black(self):
         move = self._choose_table_move(ai_search._board_signature(self.board))
