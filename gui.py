@@ -541,7 +541,8 @@ class GameGUI:
         self._draw_top_band()
         if not self.game_over:
             turn = "● 黑棋" if self.current == BLACK else "○ 白棋"
-            self.status_var.set(f"{turn} 行棋")
+            prefix = "复盘 " if self.replay_mode else ""
+            self.status_var.set(f"{prefix}{turn} 行棋")
 
     # ------------------------------------------------------------------
     # Drawing
