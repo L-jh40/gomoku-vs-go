@@ -1383,7 +1383,7 @@ class GameGUI:
         else:
             if should_pass or (board_copy is not None and
                                ai_search.white_should_pass(board_copy)):
-                self._pass_turn(manual=False)
+                self._pass_turn()
             elif self.cancel_resign_var.get():
                 self.play_fallback_white_move()
             else:
