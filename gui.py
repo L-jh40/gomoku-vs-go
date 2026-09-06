@@ -11,7 +11,8 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import font as tkfont
 from tkinter import messagebox
-import threading
+import multiprocessing
+import queue as queue_mod
 import time
 
 from board import EMPTY, BLACK, WHITE, HybridBoard, THREAT_MARKER
@@ -19,6 +20,7 @@ import rules
 import ai_black
 import ai_white
 import ai_search
+import ai_worker
 
 CELL = 30
 MARGIN = 24
@@ -64,7 +66,17 @@ class GameGUI:
         self.ai_thinking = False
         self.pass_count = 0
         self.search_epoch = 0
-        self.search_interrupt = threading.Event()
+        # The AI search runs in a persistent worker process so the Tk main
+        # loop never fights the search for the GIL (the window used to
+        # freeze during deep searches).  Interruption goes through a shared
+        # epoch counter: the worker aborts a job as soon as the GUI's
+        # search epoch has moved on (see ai_worker._EpochInterrupt).
+        self.mp_ctx = multiprocessing.get_context("spawn")
+        self.worker_epoch_ctl = self.mp_ctx.Value("i", 0)
+        self.job_queue = None
+        self.result_queue = None
+        self.ai_worker_proc = None
+        self.worker_poll_ms = 80
 
         # Replay / table mode.
         self.replay_mode = False
@@ -268,6 +280,10 @@ class GameGUI:
 
         # Keep the blue/green human-turn labels fresh while a human thinks.
         self.root.after(500, self._clock_ticker)
+        # Drain worker messages so progress/UI stay live during searches.
+        self.root.after(self.worker_poll_ms, self._poll_worker)
+        # Start the worker eagerly so the first AI move pays no spawn cost.
+        self._ensure_worker()
 
         if self.black_ai_var.get() and self.current == BLACK:
             self.root.after(300, self.maybe_play_ai)
