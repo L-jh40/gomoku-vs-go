@@ -310,7 +310,7 @@ class GameGUI:
         return not self.white_ai_var.get()
 
     def _on_close(self):
-        self.search_interrupt.set()
+        self._shutdown_worker()
         self._close_active_dialog()
         self._close_mode_window()
         try:
