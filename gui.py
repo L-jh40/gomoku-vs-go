@@ -1167,6 +1167,21 @@ class GameGUI:
         self.ai_thinking = False
         self._finish_finished_search(epoch, msg)
 
+    def _handle_replay_done(self, msg):
+        """A replay-mode black reply came back from the worker."""
+        if not self.replay_mode or msg["epoch"] != self.search_epoch:
+            return
+        self.ai_thinking = False
+        self.thinking_label.config(text="")
+        if msg["error"] is not None:
+            self._replay_failed("复盘无法继续：黑棋未能获胜。")
+            return
+        move = msg["move"]
+        if move is None or not self.board.is_empty(*move):
+            self._replay_failed("复盘无法继续：黑棋未能获胜。")
+            return
+        self._apply_replay_black_move(move)
+
     def _finish_finished_search(self, epoch, msg):
         """Apply a completed AI search: update clocks/labels and drop the
         stone (same logic as the former thread-side apply callback)."""
@@ -1615,8 +1630,7 @@ class GameGUI:
 
     def end_game(self, text):
         self.game_over = True
-        self.ai_thinking = False
-        self.search_interrupt.set()
+        self._stop_search()
         self._restore_main_window()
         self.status_var.set(text)
         # Draw only the board/stones after the game is over.  Computing
