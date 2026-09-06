@@ -338,30 +338,43 @@ class GameGUI:
         self.turn_start_time = time.time()
         self.turn_start_color = color
 
-    def _display_time(self, color, is_ai):
+    def _total_time(self, color):
+        """Combined (AI + human) clock for one colour, live while it moves."""
         if color == BLACK:
-            base = self.time_black_ai if is_ai else self.time_black_human
+            base = self.time_black_ai + self.time_black_human
         else:
-            base = self.time_white_ai if is_ai else self.time_white_human
+            base = self.time_white_ai + self.time_white_human
         if self.current == color and self.turn_start_time is not None:
             base += time.time() - self.turn_start_time
         return self._format_time(base)
 
-    def update_info(self):
-        black_text = (
-            f"黑: AI {self._display_time(BLACK, True)} | "
-            f"人类 {self._display_time(BLACK, False)}"
-        )
-        white_text = (
-            f"白: AI {self._display_time(WHITE, True)} | "
-            f"人类 {self._display_time(WHITE, False)}"
-        )
+    def _draw_top_band(self):
+        """Black time / captures / white time, left-to-right, on the yellow
+        strip above the grid."""
+        if getattr(self, "canvas", None) is None:
+            return
+        self.canvas.delete("topband")
+        extent = self._grid_extent()
+        ox = self.origin_x
+        y = TOP_BAND // 2
         cap = self.board.captured_count[WHITE]
         cap_b = self.board.captured_count[BLACK]
-        cap_text = f"吃子：白吃黑 {cap}"
+        eat_text = f"吃子: {cap}"
         if cap_b:
-            cap_text += f"，黑自吃 {cap_b}"
-        self.stats_var.set(f"{black_text}\n{white_text}\n{cap_text}")
+            eat_text += f"，黑自吃 {cap_b}"
+        font = ("Arial", 9, "bold")
+        self.canvas.create_text(ox + 6, y, anchor="w",
+                                text=f"黑棋时间 {self._total_time(BLACK)}",
+                                font=font, fill="black", tags="topband")
+        self.canvas.create_text(ox + extent / 2, y, anchor="center",
+                                text=eat_text, font=font,
+                                fill="#4a3300", tags="topband")
+        self.canvas.create_text(ox + extent - 6, y, anchor="e",
+                                text=f"白棋时间 {self._total_time(WHITE)}",
+                                font=font, fill="black", tags="topband")
+
+    def update_info(self):
+        self._draw_top_band()
         if not self.game_over:
             turn = "● 黑棋" if self.current == BLACK else "○ 白棋"
             self.status_var.set(f"{turn} 行棋")
@@ -376,16 +389,18 @@ class GameGUI:
         return (self.size - 1) * CELL
 
     def _update_origin(self):
-        """Center the playing area inside the yellow canvas."""
+        """Center the playing area inside the yellow canvas, keeping the
+        TOP_BAND readout strip free above the grid."""
         extent = self._grid_extent()
         width = self.canvas.winfo_width()
         height = self.canvas.winfo_height()
         if width <= 1:
             width = self.canvas_size
         if height <= 1:
-            height = self.canvas_size
+            height = self.canvas_height
+        avail = max(1, height - TOP_BAND)
         self.origin_x = int(max(0, (width - extent) / 2))
-        self.origin_y = int(max(0, (height - extent) / 2))
+        self.origin_y = int(TOP_BAND + max(0, (avail - extent) / 2))
 
     def _point_center(self, x, y):
         """Canvas coords of logical point (x, y): an intersection, or the
@@ -458,11 +473,14 @@ class GameGUI:
             self.canvas.create_oval(cx - r, cy - r, cx + r, cy + r,
                                     outline="red", width=2)
 
+        # Drop-position preview is drawn under the hint overlays so the
+        # red/blue/green markers stay fully readable on top of it.
+        self._draw_hover()
         if with_hints and self.hint_var.get():
             self.draw_hints(dead)
         elif self.show_candidates_var.get():
             self._draw_candidate_squares()
-        self._draw_hover()
+        self._draw_top_band()
 
     def draw_stone(self, x, y, color, move_num=None, dead_black=False):
         cx, cy = self._point_center(x, y)
@@ -604,24 +622,30 @@ class GameGUI:
             self.draw_board()
 
     def _draw_hover(self):
+        """Preview where a left click would drop a stone.
+
+        Cell style: the whole hovered cell is highlighted (translucent gold
+        overlay).  Point style: a ghost stone of the current colour is shown
+        with about 75% transparency (only ~25% of the pixels are painted)."""
         if self.hover_point is None or self.board.grid[self.hover_point] != EMPTY:
             return
         if self.game_over or self.ai_thinking:
             return
         x, y = self.hover_point
         cx, cy = self._point_center(x, y)
-        color = "black" if self.current == BLACK else "white"
         if self.board_style == "cell":
-            half = CELL // 2 - 1
+            half = CELL // 2
             self.canvas.create_rectangle(cx - half, cy - half,
                                          cx + half, cy + half,
-                                         outline="#b8860b", width=2,
+                                         fill="#d8a63f", outline="",
                                          stipple="gray50")
         else:
+            color = "black" if self.current == BLACK else "white"
             r = CELL // 2 - 2
             self.canvas.create_oval(
                 cx - r, cy - r, cx + r, cy + r,
-                fill=color, outline=self.line_color, stipple="gray50"
+                fill=color, outline=self.line_color, width=1,
+                stipple="gray25"
             )
 
     def on_click(self, event):
@@ -653,13 +677,58 @@ class GameGUI:
     def on_right_click(self, _event=None):
         if self.game_over or self.ai_thinking or self.replay_mode:
             return
-        if not self.hint_var.get():
+        # Right-click assists the human side only.
+        if self.current == BLACK and not self.black_is_human():
             return
-        if self.current == BLACK:
-            if self.black_is_human():
-                self.run_ai_move(BLACK)
+        if self.current == WHITE and not self.white_is_human():
+            return
+        # "显示AI候选点" on (alone or together with "玩家落子提示"):
+        # full AI search, then drop the chosen stone.
+        if self.show_candidates_var.get():
+            self._run_ai_for_human()
+            return
+        # Only "玩家落子提示" on: quick forced response - when a five-point
+        # exists, play/block it immediately instead of a full AI search.
+        if self.hint_var.get():
+            if not self._quick_forced_response():
+                self._restore_main_window()
+                messagebox.showinfo(
+                    "自动落子",
+                    "当前没有可一步成五/必应的点位。\n"
+                    "开启“显示AI候选点”后，右键将执行完整AI搜索落子。"
+                )
+            return
+        self._restore_main_window()
+        messagebox.showinfo(
+            "自动落子",
+            "请开启“玩家落子提示”（快速应对）或\n"
+            "“显示AI候选点”（完整AI搜索落子）后使用右键自动落子。"
+        )
+
+    def _run_ai_for_human(self):
+        """Full AI search + drop for the current human player."""
+        if self.current == BLACK and self.black_is_human():
+            self.run_ai_move(BLACK)
         elif self.current == WHITE and self.white_is_human():
             self.run_ai_move(WHITE)
+
+    def _quick_forced_response(self):
+        """Immediate forced drop: if a black five-point exists, play it when
+        it is Black's move or block it when it is White's move."""
+        threats = self.board.compute_threats()
+        five = [pos for pos, t in threats.items() if t == "five_point"]
+        if not five:
+            return False
+        x, y = five[0]
+        if self.current == BLACK:
+            if not self.board.is_empty(x, y):
+                return False
+            self.try_play_black(x, y)
+        elif self.current == WHITE:
+            self.try_play_white(x, y)
+        else:
+            return False
+        return True
 
     def try_play_black(self, x, y):
         if not self.board.is_empty(x, y):
@@ -1312,9 +1381,12 @@ class GameGUI:
         win = tk.Toplevel(self.root)
         self.mode_window = win
         win.title("选择模式")
-        win.geometry("420x470")
         win.transient(self.root)
         win.protocol("WM_DELETE_WINDOW", self._close_mode_window)
+
+        # 棋盘样式 no longer lives here: it is on the main window, applied
+        # immediately (style_point_var / style_cell_var / _on_style_* are
+        # reused there).
 
         tk.Label(win, text="棋盘尺寸", font=("Arial", 11, "bold")).pack(
             anchor=tk.W, padx=10)
@@ -1325,18 +1397,6 @@ class GameGUI:
                            variable=self.board_size_vars[n],
                            command=lambda n=n: self._on_size_check(n)
                            ).pack(side=tk.LEFT)
-
-        tk.Label(win, text="棋盘样式", font=("Arial", 11, "bold")).pack(
-            anchor=tk.W, padx=10, pady=(10, 0))
-        style_frame = tk.Frame(win)
-        style_frame.pack(fill=tk.X, padx=10)
-        tk.Checkbutton(style_frame, text="落子交叉点",
-                       variable=self.style_point_var,
-                       command=self._on_style_point).pack(side=tk.LEFT)
-        tk.Checkbutton(style_frame, text="落子格子",
-                       variable=self.style_cell_var,
-                       command=self._on_style_cell).pack(side=tk.LEFT,
-                                                         padx=10)
 
         tk.Label(win, text="先手", font=("Arial", 11, "bold")).pack(anchor=tk.W, padx=10)
         first_frame = tk.Frame(win)
@@ -1357,6 +1417,17 @@ class GameGUI:
         tk.Checkbutton(forbidden_frame, text="长连禁手",
                        variable=self.forbid_overline_var).pack(side=tk.LEFT)
 
+        tk.Label(win, text="白棋获胜条件", font=("Arial", 11, "bold")).pack(
+            anchor=tk.W, padx=10, pady=(10, 0))
+        white_win_frame = tk.Frame(win)
+        white_win_frame.pack(fill=tk.X, padx=10)
+        tk.Radiobutton(white_win_frame, text="全线封堵",
+                       variable=self.white_win_var,
+                       value="line_block").pack(side=tk.LEFT)
+        tk.Radiobutton(white_win_frame, text="占领全盘",
+                       variable=self.white_win_var,
+                       value="occupy").pack(side=tk.LEFT, padx=10)
+
         tk.Label(win, text="预留接口", font=("Arial", 11, "bold")).pack(
             anchor=tk.W, padx=10, pady=(10, 0))
         tk.Checkbutton(win, text="环面模式",
@@ -1375,6 +1446,12 @@ class GameGUI:
         bottom.pack(side=tk.BOTTOM, fill=tk.X, pady=10)
         tk.Button(bottom, text="新对局", command=self._apply_mode_new_game).pack(
             side=tk.TOP)
+
+        # Size the window to fit its content (width at least 440px).
+        win.update_idletasks()
+        want_w = max(440, win.winfo_reqwidth())
+        want_h = max(440, win.winfo_reqheight())
+        win.geometry(f"{want_w}x{want_h}")
 
     def _on_size_check(self, selected):
         var = self.board_size_vars[selected]
@@ -1433,8 +1510,9 @@ class GameGUI:
         if new_size == self.canvas_size:
             return
         self.canvas_size = new_size
-        self.canvas.configure(width=new_size, height=new_size)
-        self.info.configure(height=max(new_size + 80,
+        self.canvas_height = new_size + TOP_BAND
+        self.canvas.configure(width=new_size, height=self.canvas_height)
+        self.info.configure(height=max(self.canvas_height + 80,
                                        self.info_natural_height))
         self.root.title(f"Gomoku vs Go  ({self.size}x{self.size})")
         try:
