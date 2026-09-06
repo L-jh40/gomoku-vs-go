@@ -37,6 +37,20 @@ STAR_POINTS = {
 
 BOARD_SIZES = (9, 11, 13, 15, 17, 19)
 
+# ---------------------------------------------------------------------------
+# Header (top band) font size in points, per board road.  19x19 -> 20pt and
+# the smaller boards shrink evenly (currently the "折中" series).  Tune this
+# table directly and observe the result.
+# ---------------------------------------------------------------------------
+HEADER_FONT_PT = {
+    9: 9,
+    11: 11,
+    13: 13,
+    15: 16,
+    17: 18,
+    19: 20,
+}
+
 
 class GameGUI:
     def __init__(self, root: tk.Tk, board_size: int = BOARD_SIZE,
@@ -421,10 +435,12 @@ class GameGUI:
     # Header readout strip (above the grid, inside the yellow canvas)
     # ------------------------------------------------------------------
     def _band_font_size(self):
-        """Header font grows with the board size and stops at 20pt:
-        ~9pt on a 9x9 board, ~13pt at 11x11, ~16pt at 13x13, 20pt from
-        15x15 up (so 19x19 is 20pt too, the status "白棋行棋" size)."""
-        pts = 9 + (self.size - 9) * 11.0 / 6.0
+        """Header font size for the current board road, read from the
+        explicit HEADER_FONT_PT table (19x19 -> 20pt, smaller boards shrink
+        evenly).  Tweak that table to change the sizes.""" 
+        pts = HEADER_FONT_PT.get(self.size)
+        if pts is None:  # safety fallback for any other size
+            pts = 9 + (self.size - 9) * 11.0 / 10.0
         return int(max(8, min(20, round(pts))))
 
     def _band_fonts(self):
@@ -446,11 +462,11 @@ class GameGUI:
         return cache[size_pts]
 
     def _band_height(self):
-        """Pixel height reserved above the grid: the 3 header rows plus one
-        blank row so the header text stands one line away from the board."""
+        """Pixel height reserved above the grid: 3 header rows plus one blank
+        row, so the header text stands exactly one line above the board."""
         _reg, _bold, linespace = self._band_fonts()
-        pad = max(3, int(linespace * 0.3))
-        return 2 * pad + 4 * linespace
+        pad = max(3, int(linespace * 0.2))
+        return pad + 4 * linespace
 
     def _draw_top_band(self):
         """Header above the grid: black clock (3 lines), capture count,
