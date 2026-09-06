@@ -17,8 +17,6 @@ import time
 
 from board import EMPTY, BLACK, WHITE, HybridBoard, THREAT_MARKER
 import rules
-import ai_black
-import ai_white
 import ai_search
 import ai_worker
 
@@ -1865,7 +1863,6 @@ class GameGUI:
         self.black_table_mode = False
         self.replay_start_history_len = 0
         self.replay_pre_ai = (True, True)
-        self.search_interrupt.clear()
         self._start_turn_timer(self.current)
         self.thinking_label.config(text="")
         self.depth_label.config(text="")
@@ -1913,7 +1910,6 @@ class GameGUI:
         self.time_white_human = snap.get("time_white_human", 0.0)
         self.last_human_move_sec = None
         self.moves_since_new_game = 0
-        self.search_interrupt.clear()
         self._start_turn_timer(self.current)
         self.thinking_label.config(text="")
         self.depth_label.config(text="")
