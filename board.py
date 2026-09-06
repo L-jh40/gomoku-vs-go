@@ -1075,67 +1075,47 @@ class HybridBoard:
     # Farthest-open-point fallback
     # ------------------------------------------------------------------
     def farthest_open_positions(self, candidates):
-        """Return candidates sorted by the task's no-red-point distance rule.
+        """Chebyshev-distance fallback when no red position exists.
 
-        For each candidate, four direction pairs (vertical, horizontal, and
-        the two diagonals) are considered.  Each pair is represented by
-        (max distance of the two directions, min distance of the two
-        directions).  The four pairs are compared from weakest to strongest;
-        after that Chebyshev distance to the nearest blocker/edge is used,
-        and finally centre-out index order.
+        The distance of a candidate is measured in Chebyshev steps
+        (moving horizontally, vertically or diagonally all count one step)
+        to the nearest target among: the board edge, obstacles, stones,
+        white territory (grey squares) and forbidden/self-capture
+        (blue-cross) cells.  The candidate with the largest such distance
+        is chosen first; ties go to the cells closer to the centre for
+        determinism.
         """
         candidates = [p for p in candidates if self.is_empty(*p)]
         if not candidates:
             return []
-        blockers = {
+        # Targets: any occupied cell (stones, obstacles), white territory
+        # empty cells and every blue-cross (forbidden / self-capture) cell.
+        targets = {
             (x, y)
             for x in range(self.size)
             for y in range(self.size)
             if self.grid[x, y] != EMPTY
         }
-        territory = self.get_white_territory_empty_positions()
-        blockers |= territory
+        targets |= self.get_white_territory_empty_positions()
+        targets |= self.get_blue_cross_positions()
+        targets -= set(candidates)
+        size = self.size
+        center = (size - 1) / 2.0
 
-        direction_pairs = [
-            ((1, 0), (-1, 0)),
-            ((0, 1), (0, -1)),
-            ((1, 1), (-1, -1)),
-            ((1, -1), (-1, 1)),
-        ]
-        center = (self.size - 1) / 2.0
-
-        def dir_distance(x, y, dx, dy):
-            d = 0
-            nx, ny = x + dx, y + dy
-            while self.in_bounds(nx, ny) and (nx, ny) not in blockers:
-                d += 1
-                nx += dx
-                ny += dy
-            return d
-
-        def chebyshev(x, y):
-            best = min(x, y, self.size - 1 - x, self.size - 1 - y)
-            for bx, by in blockers:
-                best = min(best, max(abs(x - bx), abs(y - by)))
+        def distance_to_nearest_target(candidate):
+            x, y = candidate
+            best = min(x + 1, size - x, y + 1, size - y)
+            for bx, by in targets:
+                d = max(abs(x - bx), abs(y - by))
+                if d < best:
+                    best = d
             return best
 
         def make_key(candidate):
             x, y = candidate
-            pair_values = []
-            for (dx1, dy1), (dx2, dy2) in direction_pairs:
-                d1 = dir_distance(x, y, dx1, dy1)
-                d2 = dir_distance(x, y, dx2, dy2)
-                pair_values.append((max(d1, d2), min(d1, d2)))
-            pair_values.sort(key=lambda item: item[0])  # weakest first
-            key = []
-            for pair_max, pair_min in pair_values:
-                key.append(-pair_max)
-                key.append(-pair_min)
-            key.append(-chebyshev(x, y))
-            key.append(abs(x - center) + abs(y - center))
-            key.append(x)
-            key.append(y)
-            return tuple(key)
+            return (-distance_to_nearest_target(candidate),
+                    abs(x - center) + abs(y - center),
+                    x, y)
 
         return sorted(candidates, key=make_key)
 
