@@ -91,6 +91,7 @@ class GameGUI:
 
         # "point" = stones on intersections, "cell" = stones inside cells.
         self.board_style = "point"
+        self.hover_point = None
         # Canvas large enough for either style; draw_board centers the grid
         # inside the yellow area (origin_x / origin_y).
         self.canvas_size = board_size * CELL + 2 * MARGIN
@@ -161,7 +162,7 @@ class GameGUI:
         frame = tk.Frame(self.info)
         frame.pack(fill=tk.X, pady=1)
         tk.Label(frame, text="Minimax 层数:", font=("Arial", 9)).pack(side=tk.LEFT)
-        for value in (0, 2, 4, 6, 8):
+        for value in (0, 1, 2, 3, 4):
             tk.Radiobutton(frame, text=str(value), variable=self.depth_var,
                            value=str(value),
                            command=self._on_depth_change).pack(side=tk.LEFT)
@@ -200,7 +201,7 @@ class GameGUI:
 
         win_frame = tk.Frame(self.info)
         win_frame.pack(fill=tk.X, pady=1)
-        tk.Label(win_frame, text="白棋获胜:", font=("Arial", 9)).pack(side=tk.LEFT)
+        tk.Label(win_frame, text="白棋获胜条件:", font=("Arial", 9)).pack(side=tk.LEFT)
         self.white_win_var = tk.StringVar(value="line_block")
         tk.Radiobutton(win_frame, text="全线封堵", variable=self.white_win_var,
                        value="line_block").pack(side=tk.LEFT)
@@ -231,6 +232,8 @@ class GameGUI:
 
         self.canvas.bind("<Button-1>", self.on_click)
         self.canvas.bind("<Button-3>", self.on_right_click)
+        self.canvas.bind("<Motion>", self._on_mouse_move)
+        self.canvas.bind("<Leave>", self._on_mouse_leave)
         self.canvas.bind("<Configure>", self._on_canvas_resize)
         self.root.bind("<KeyPress-z>", self._on_key)
         self.root.bind("<KeyPress-x>", self._on_key)
@@ -449,6 +452,7 @@ class GameGUI:
             self.draw_hints(dead)
         elif self.show_candidates_var.get():
             self._draw_candidate_squares()
+        self._draw_hover()
 
     def draw_stone(self, x, y, color, move_num=None, dead_black=False):
         cx, cy = self._point_center(x, y)
@@ -561,6 +565,55 @@ class GameGUI:
     # ------------------------------------------------------------------
     # Interaction
     # ------------------------------------------------------------------
+    def _screen_to_point(self, event):
+        if self.board_style == "cell":
+            return (int((event.y - self.origin_y) // CELL),
+                    int((event.x - self.origin_x) // CELL))
+        return (round((event.y - self.origin_y) / CELL),
+                round((event.x - self.origin_x) / CELL))
+
+    def _on_mouse_move(self, event):
+        if self.game_over:
+            if self.hover_point is not None:
+                self.hover_point = None
+                self.draw_board()
+            return
+        x, y = self._screen_to_point(event)
+        if not self.board.in_bounds(x, y):
+            if self.hover_point is not None:
+                self.hover_point = None
+                self.draw_board()
+            return
+        if self.hover_point != (x, y):
+            self.hover_point = (x, y)
+            self.draw_board()
+
+    def _on_mouse_leave(self, _event=None):
+        if self.hover_point is not None:
+            self.hover_point = None
+            self.draw_board()
+
+    def _draw_hover(self):
+        if self.hover_point is None or self.board.grid[self.hover_point] != EMPTY:
+            return
+        if self.game_over or self.ai_thinking:
+            return
+        x, y = self.hover_point
+        cx, cy = self._point_center(x, y)
+        color = "black" if self.current == BLACK else "white"
+        if self.board_style == "cell":
+            half = CELL // 2 - 1
+            self.canvas.create_rectangle(cx - half, cy - half,
+                                         cx + half, cy + half,
+                                         outline="#b8860b", width=2,
+                                         stipple="gray50")
+        else:
+            r = CELL // 2 - 2
+            self.canvas.create_oval(
+                cx - r, cy - r, cx + r, cy + r,
+                fill=color, outline=self.line_color, stipple="gray50"
+            )
+
     def on_click(self, event):
         if self.game_over or self.ai_thinking:
             return
