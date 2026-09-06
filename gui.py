@@ -9,6 +9,7 @@ five line (or by capturing all black stones).
 from __future__ import annotations
 
 import tkinter as tk
+from tkinter import font as tkfont
 from tkinter import messagebox
 import threading
 import time
@@ -21,9 +22,6 @@ import ai_search
 
 CELL = 30
 MARGIN = 24
-# Pixels reserved above the grid on the yellow canvas for the time /
-# capture readouts (black time, captures, white time, left to right).
-TOP_BAND = 30
 BOARD_SIZE = 15
 
 # Standard star points (hoshi) per supported board size, in (row, col).
