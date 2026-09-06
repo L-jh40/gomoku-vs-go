@@ -21,6 +21,9 @@ import ai_search
 
 CELL = 30
 MARGIN = 24
+# Pixels reserved above the grid on the yellow canvas for the time /
+# capture readouts (black time, captures, white time, left to right).
+TOP_BAND = 30
 BOARD_SIZE = 15
 
 # Standard star points (hoshi) per supported board size, in (row, col).
@@ -93,12 +96,15 @@ class GameGUI:
         self.board_style = "point"
         self.hover_point = None
         # Canvas large enough for either style; draw_board centers the grid
-        # inside the yellow area (origin_x / origin_y).
+        # inside the yellow area below the TOP_BAND readout strip
+        # (origin_x / origin_y).  Width is based on the cell extent plus the
+        # side margins; the extra TOP_BAND of height reserves the top strip.
         self.canvas_size = board_size * CELL + 2 * MARGIN
+        self.canvas_height = self.canvas_size + TOP_BAND
         self.origin_x = MARGIN
-        self.origin_y = MARGIN
+        self.origin_y = MARGIN + TOP_BAND
         self.canvas = tk.Canvas(root, width=self.canvas_size,
-                                height=self.canvas_size, bg=self.board_bg)
+                                height=self.canvas_height, bg=self.board_bg)
         self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
         self.info = tk.Frame(root, width=300)
@@ -107,10 +113,6 @@ class GameGUI:
         self.status_var = tk.StringVar(value="黑棋先行")
         tk.Label(self.info, textvariable=self.status_var,
                  font=("Arial", 20, "bold")).pack(pady=(4, 1))
-
-        self.stats_var = tk.StringVar(value="黑: 0  白: 0\n黑被吃: 0")
-        tk.Label(self.info, textvariable=self.stats_var,
-                 font=("Arial", 10)).pack(pady=1)
 
         self.thinking_label = tk.Label(self.info, text="", fg="blue",
                                        font=("Arial", 9))
@@ -158,6 +160,19 @@ class GameGUI:
                        variable=self.white_ai_var,
                        command=self.update_mode_label).pack(anchor=tk.W)
 
+        # Board style lives on the main window (outside the mode window).
+        style_row = tk.Frame(self.info)
+        style_row.pack(fill=tk.X, pady=1)
+        tk.Label(style_row, text="棋盘样式:", font=("Arial", 9)).pack(
+            side=tk.LEFT)
+        tk.Checkbutton(style_row, text="落子交叉点",
+                       variable=self.style_point_var,
+                       command=self._on_style_point).pack(side=tk.LEFT)
+        tk.Checkbutton(style_row, text="落子格子",
+                       variable=self.style_cell_var,
+                       command=self._on_style_cell).pack(side=tk.LEFT,
+                                                         padx=(6, 0))
+
         self.depth_var = tk.StringVar(value="2")
         frame = tk.Frame(self.info)
         frame.pack(fill=tk.X, pady=1)
@@ -199,14 +214,9 @@ class GameGUI:
         tk.Checkbutton(self.info, text="取消投子认负",
                        variable=self.cancel_resign_var).pack(anchor=tk.W)
 
-        win_frame = tk.Frame(self.info)
-        win_frame.pack(fill=tk.X, pady=1)
-        tk.Label(win_frame, text="白棋获胜条件:", font=("Arial", 9)).pack(side=tk.LEFT)
+        # "白棋获胜条件" selection moved into the mode window
+        # (open_mode_window); auto/manual judgement stays on the main window.
         self.white_win_var = tk.StringVar(value="line_block")
-        tk.Radiobutton(win_frame, text="全线封堵", variable=self.white_win_var,
-                       value="line_block").pack(side=tk.LEFT)
-        tk.Radiobutton(win_frame, text="占领全盘", variable=self.white_win_var,
-                       value="occupy").pack(side=tk.LEFT)
 
         self.auto_white_win_var = tk.IntVar(value=1)
         tk.Checkbutton(self.info, text="自动判定白棋获胜",
@@ -226,7 +236,7 @@ class GameGUI:
             self.info_natural_height = max(self.info.winfo_reqheight(), 1)
         except Exception:
             self.info_natural_height = 1
-        self.info.configure(height=max(self.canvas_size + 80,
+        self.info.configure(height=max(self.canvas_height + 80,
                                        self.info_natural_height))
         self.info.pack_propagate(False)
 
