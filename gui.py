@@ -1015,7 +1015,7 @@ class GameGUI:
         if self.ai_thinking:
             # "AI 立即落子" during a search interrupts the current depth and
             # commits the last completed even-depth move.
-            self.search_interrupt.set()
+            self._abort_active_search()
             return
         if self.replay_mode:
             return
@@ -1040,13 +1040,280 @@ class GameGUI:
         if self.ai_thinking:
             # Same effect as clicking "AI 立即落子": interrupt the current
             # depth and commit the best completed/partial result.
-            self.search_interrupt.set()
+            self._abort_active_search()
+
+    # ------------------------------------------------------------------
+    # Worker process management (the AI search runs out of process)
+    # ------------------------------------------------------------------
+    def _ensure_worker(self):
+        """(Re)start the persistent AI worker process if it is not running."""
+        if self.ai_worker_proc is not None and self.ai_worker_proc.is_alive():
+            return
+        self.job_queue = self.mp_ctx.Queue()
+        self.result_queue = self.mp_ctx.Queue()
+        self.ai_worker_proc = self.mp_ctx.Process(
+            target=ai_worker.worker_main,
+            args=(self.job_queue, self.result_queue, self.worker_epoch_ctl),
+            daemon=True,
+        )
+        self.ai_worker_proc.start()
+
+    def _shutdown_worker(self):
+        proc = self.ai_worker_proc
+        self.ai_worker_proc = None
+        self.job_queue = None
+        self.result_queue = None
+        if proc is not None:
+            try:
+                proc.terminate()
+            except Exception:
+                pass
+
+    def _sync_worker_epoch(self):
+        """Mirror the GUI's search epoch into the shared counter: every
+        job whose epoch differs is aborted inside the worker."""
+        try:
+            self.worker_epoch_ctl.value = self.search_epoch
+        except Exception:
+            pass
+
+    def _abort_active_search(self):
+        """Interrupt the running search without invalidating its result:
+        the worker commits the best completed depth and returns it."""
+        try:
+            self.worker_epoch_ctl.value += 1
+        except Exception:
+            pass
 
     def _stop_search(self):
         self.search_epoch += 1
-        self.search_interrupt.set()
         self.ai_thinking = False
         self._cancel_max_search_timer()
+        self._sync_worker_epoch()
+
+    def _poll_worker(self):
+        """Recurring drain of the worker's result queue (main thread)."""
+        try:
+            if self.root.winfo_exists():
+                self.root.after(self.worker_poll_ms, self._poll_worker)
+        except Exception:
+            return
+        if self.result_queue is None:
+            return
+        refresh = False
+        done_msgs = []
+        try:
+            while True:
+                msg = self.result_queue.get_nowait()
+                kind = msg.get("kind")
+                if kind == "progress":
+                    self._worker_progress(msg)
+                elif kind == "refresh":
+                    refresh = True
+                elif kind == "done":
+                    done_msgs.append(msg)
+        except queue_mod.Empty:
+            pass
+        except Exception:
+            return
+        # Collapse refresh requests: at most one redraw per poll.
+        if refresh:
+            self.draw_board()
+        for msg in done_msgs:
+            self._handle_worker_done(msg)
+        # A crashed worker must never leave the GUI in "thinking" state.
+        if (self.ai_thinking and self.ai_worker_proc is not None
+                and not self.ai_worker_proc.is_alive()):
+            self._stop_search()
+            self._show_search_error("AI 工作进程异常退出")
+
+    def _worker_progress(self, msg):
+        epoch = msg["epoch"]
+        if epoch != self.search_epoch:
+            return
+        completed_depth = msg["completed_depth"]
+        elapsed_layer = msg["elapsed_layer"]
+        finished = msg["finished"]
+        focused = msg["focused"]
+        if focused:
+            if completed_depth < self.last_focused_depth:
+                return
+            self.last_focused_depth = completed_depth
+        if completed_depth > self.last_layer_depth:
+            self.prev_layer_depth = self.last_layer_depth
+            self.prev_layer_time = self.last_layer_time
+        self.last_even_depth = completed_depth
+        self.last_even_time = elapsed_layer
+        self.last_layer_depth = completed_depth
+        self.last_layer_time = elapsed_layer
+        self.depth0_unfinished = (completed_depth == 0 and not finished)
+        self.last_focused = focused
+        # Throttle actual Tk label updates: the state above is updated
+        # immediately, but the main loop is poked at most twice per second
+        # so depth-0 updates do not slow the UI.
+        now = time.monotonic()
+        if now - self._last_progress_ui_time >= 0.5:
+            self._last_progress_ui_time = now
+            self._update_search_progress(completed_depth, elapsed_layer)
+
+    def _handle_worker_done(self, msg):
+        epoch = msg["epoch"]
+        if msg.get("replay"):
+            self._handle_replay_done(msg)
+            return
+        if epoch != self.search_epoch or self.game_over:
+            return
+        self._cancel_max_search_timer()
+        self.ai_thinking = False
+        self._finish_finished_search(epoch, msg)
+
+    def _finish_finished_search(self, epoch, msg):
+        """Apply a completed AI search: update clocks/labels and drop the
+        stone (same logic as the former thread-side apply callback)."""
+        color = msg["color"]
+        move = msg["move"]
+        depth = msg["depth"]
+        error = msg["error"]
+        assist = msg["assist"]
+        if error is not None:
+            self._show_search_error(error)
+            return
+        total = time.time() - self.search_start_time
+        if assist:
+            # AI helped the human: this time belongs to the human.
+            self._record_human_move_time(color)
+            self._finish_turn_time(color, False)
+        else:
+            # Automatic AI turn: clock it by the real search time (the same
+            # figure the blue label reports).
+            self._add_ai_search_time(color, total)
+        b_time = self.prev_layer_time if self.prev_layer_depth >= 0 else (
+            self.last_layer_time if self.last_layer_time else total
+        )
+        if self.depth0_unfinished:
+            self.thinking_label.config(
+                text=f"AI搜索中，用时: {total:.2f}，未完成搜索"
+            )
+        elif self.last_focused:
+            self.thinking_label.config(
+                text=(
+                    f"AI专注搜索中，用时: {total:.2f}s / "
+                    f"{b_time:.2f}s，深度: {self.last_layer_depth}"
+                )
+            )
+        else:
+            self.thinking_label.config(
+                text=(
+                    f"AI搜索中，用时: {total:.2f}s / "
+                    f"{b_time:.2f}s，深度: {self.last_layer_depth}"
+                )
+            )
+        self.depth_label.config(
+            text=f"上一步AI用时: {total:.2f}s | 搜索深度: {depth}"
+        )
+        if move is None:
+            # Replay-table data the search produced (if any).
+            self.board._black_replay_map = msg["replay_map"]
+            self.board._last_black_win_path = msg["win_path"]
+            self.handle_no_move(color, self.board, msg["should_pass"])
+            return
+        x, y = move
+        if color == BLACK:
+            ok, _ = self.board.play_black(x, y)
+            if not ok:
+                self.end_game("黑棋 AI 落子失败")
+                return
+            self.last_move = (x, y)
+            self.pass_count = 0
+            self.pass_log = []
+            self._register_move()
+            # If the AI reported a forced table win, switch Black to table
+            # mode from now on.
+            if msg["replay_map"] or msg["win_path"]:
+                self.black_table_mode = True
+                self.replay_map = dict(msg["replay_map"])
+                self.replay_black_moves = list(msg["win_path"])
+            if self.board.check_black_five(x, y):
+                self.draw_board(with_hints=False)
+                self.end_game("黑棋连五，黑胜!")
+                return
+            self.current = WHITE
+            self._start_turn_timer(WHITE)
+        else:
+            ok, _ = self.board.play_white(x, y)
+            if not ok:
+                self.end_game("白棋 AI 落子失败")
+                return
+            self.last_move = (x, y)
+            self.pass_count = 0
+            self.pass_log = []
+            self._register_move()
+            if self.check_white_win():
+                return
+            self.current = BLACK
+            self._start_turn_timer(BLACK)
+        self.draw_board()
+        self.update_info()
+        self.root.after(300, self.maybe_play_ai)
+
+    def run_ai_move(self, color, assist=False):
+        """Run a full AI search and drop the chosen stone.
+
+        The search itself runs in the persistent worker process; this only
+        submits the job and returns immediately, so the window stays fluid.
+
+        assist=True means the AI moved on behalf of a human (right click):
+        the time is charged to that colour's human clock and the search is
+        not counted in the AI (thinking) row."""
+        if self.game_over:
+            return
+        self.ai_thinking = True
+        self.search_epoch += 1
+        epoch = self.search_epoch
+        self.last_even_depth = 0
+        self.last_even_time = 0.0
+        self.last_layer_depth = 0
+        self.last_layer_time = 0.0
+        self._last_progress_ui_time = 0.0
+        self.depth0_unfinished = False
+        self.last_focused = False
+        self.last_focused_depth = -1
+        self.prev_layer_depth = -1
+        self.prev_layer_time = 0.0
+        self.search_start_time = time.time()
+        self.thinking_label.config(text="AI 搜索中...")
+        self.root.update_idletasks()
+        self._schedule_search_ticker()
+
+        max_depth = self.current_max_depth
+        try:
+            min_search_time = float(self.min_search_time_var.get())
+        except ValueError:
+            min_search_time = 0.0
+        if min_search_time < 0:
+            min_search_time = 0.0
+        try:
+            max_search_time = float(self.max_search_time_var.get())
+        except ValueError:
+            max_search_time = 0.0
+        if max_search_time < 0:
+            max_search_time = 0.0
+
+        if max_search_time > 0:
+            self._cancel_max_search_timer()
+            self.max_time_after_id = self.root.after(
+                int(max_search_time * 1000), self._on_max_search_time
+            )
+
+        self._ensure_worker()
+        # Abort any still-running stale job, then submit this one.
+        self._sync_worker_epoch()
+        self.job_queue.put({
+            "kind": "search", "epoch": epoch, "color": color,
+            "assist": assist, "board": self.board.copy(),
+            "max_depth": max_depth, "min_search_time": min_search_time,
+            "replay": False,
+        })
 
     def run_ai_move(self, color, assist=False):
         """Run a full AI search and drop the chosen stone.
