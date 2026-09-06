@@ -114,7 +114,11 @@
 |------|------|
 | `new_game` | 按模式设置开新局（含所选棋盘尺寸） |
 | `open_mode_window` | 选择模式窗口 |
-| `run_ai_move` | 启动 AI 搜索线程 |
+| `run_ai_move` | 向 AI 工作进程提交搜索任务（立即返回，不阻塞界面） |
+| `_ensure_worker / _shutdown_worker / _poll_worker` | AI 工作进程的启动/关闭与结果队列轮询 |
+| `_sync_worker_epoch / _abort_active_search / _stop_search` | 跨进程中断：纪元计数器同步、“AI 立即落子”中断、废弃搜索 |
+| `_worker_progress / _handle_worker_done / _finish_finished_search` | 工作进程进度回传与搜索结果落子 |
+| `_handle_replay_done` | 复盘模式下工作进程算出的黑棋应手 |
 | `progress_callback` | AI 进度回传 |
 | `apply` | AI 结果应用与落子 |
 | `draw_board / draw_hints / _draw_hover / _draw_top_band` | 棋盘、悬停落点提示与顶部统计绘制 |
