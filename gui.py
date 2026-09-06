@@ -191,7 +191,7 @@ class GameGUI:
                        variable=self.show_moves_var,
                        command=self.draw_board).pack(anchor=tk.W)
         self.show_candidates_var = tk.IntVar(value=0)
-        tk.Checkbutton(self.info, text="显示候选点",
+        tk.Checkbutton(self.info, text="显示AI候选点",
                        variable=self.show_candidates_var,
                        command=self.draw_board).pack(anchor=tk.W)
         self.cancel_resign_var = tk.IntVar(value=0)
@@ -433,7 +433,7 @@ class GameGUI:
         for x in range(size):
             for y in range(size):
                 v = self.board.grid[x, y]
-                if v != EMPTY:
+                if v in (BLACK, WHITE):
                     self.draw_stone(x, y, v, move_numbers.get((x, y)),
                                     dead_black=(v == BLACK and (x, y) in dead))
 
@@ -1278,9 +1278,9 @@ class GameGUI:
         tk.Label(win, text="先手", font=("Arial", 11, "bold")).pack(anchor=tk.W, padx=10)
         first_frame = tk.Frame(win)
         first_frame.pack(fill=tk.X, padx=10)
-        tk.Radiobutton(first_frame, text="黑棋先手（五子棋规则）",
+        tk.Radiobutton(first_frame, text="黑棋（五子棋规则）先手",
                        variable=self.first_player_var, value="black").pack(side=tk.LEFT)
-        tk.Radiobutton(first_frame, text="白棋先手（围棋规则）",
+        tk.Radiobutton(first_frame, text="白棋（围棋规则）先手",
                        variable=self.first_player_var, value="white").pack(side=tk.LEFT, padx=10)
 
         tk.Label(win, text="禁手设置", font=("Arial", 11, "bold")).pack(
