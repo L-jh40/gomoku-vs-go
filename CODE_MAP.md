@@ -183,7 +183,11 @@
 ```text
 GUI 点击/自动触发
     ↓
-run_ai_move()
+run_ai_move()  ──job_queue──▶  ai_worker 工作进程（搜索不占 GUI 进程的 GIL）
+    ↓                                ↓
+（界面保持流畅，_poll_worker 轮询）   result_queue（progress / done 消息）
+    ↓
+gui._handle_worker_done → 落子 / 弹窗 / 复盘应手
     ↓
 ai_black.best_black_move / ai_white.best_white_move
     ↓
