@@ -1540,12 +1540,12 @@ class GameGUI:
             return
 
         # The player chose a move outside the searched replies.  Report the
-        # table miss first, then fall back to direct/AI play.
+        # table miss, then follow the fallback order: first a solid circle,
+        # then a triangle; only if neither exists is the replay reported as
+        # an error (no more AI-search fallback).
         self._restore_main_window()
-        messagebox.showwarning("复盘查表失败", "未找到对应应手，改用 AI 搜索。")
+        messagebox.showwarning("复盘查表失败", "未找到对应应手，按实心圆/三角形顺序落子。")
 
-        # If Black already has a direct winning point or triangle, play the
-        # first one immediately instead of starting an expensive search.
         threats = self.board.compute_threats()
         five = ai_search._five_points(threats)
         if five:
@@ -1556,20 +1556,8 @@ class GameGUI:
             self._apply_replay_black_move(tri[0])
             return
 
-        # No direct forced point: calculate a black reply for this concrete
-        # position in the worker process instead.
-        self.ai_thinking = True
-        self.thinking_label.config(text="复盘：计算黑棋下法...")
-        self.search_epoch += 1
-        token = self.search_epoch
-        self._ensure_worker()
-        self._sync_worker_epoch()
-        self.job_queue.put({
-            "kind": "search", "epoch": token, "color": BLACK,
-            "assist": False, "board": self.board.copy(),
-            "max_depth": max(2, self.current_max_depth),
-            "min_search_time": 0.0, "replay": True,
-        })
+        # No solid circle and no triangle available: the replay cannot go on.
+        self._replay_failed("复盘查表无对应应手，且黑棋没有实心圆/三角形可落。")
 
     def play_table_black(self):
         move = self._choose_table_move(ai_search._board_signature(self.board))

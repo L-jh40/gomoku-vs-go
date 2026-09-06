@@ -905,12 +905,18 @@ class HybridBoard:
         return {pos for pos, t in threats.items() if t in THREAT_MARKER}
 
     def get_hollow_triangles(self, threats=None) -> set[tuple[int, int]]:
-        """Triangles which are fragile.
+        """Triangles which are hollow (White can still respond).
 
-        A triangle is hollow when, after Black plays it, one of the attacking
-        one-liberty black groups can be captured and that capture removes all
-        solid circles AND all triangles.  Such triangles still count as
-        forced threats, but their score is 250 instead of 625.
+        A triangle is hollow when it passes the real-combat test: assume
+        Black plays the triangle point and then run White's candidate
+        algorithm on the resulting position.  If White still has candidates,
+        the triangle is hollow.  The test inherits the exact candidate
+        semantics, so one-liberty captures, self-capture positions and
+        forbidden (blue-cross) points all affect the outcome - e.g. a
+        four-three whose second five point is a forbidden move for Black
+        leaves White with a single reply and is therefore hollow.
+        Solid triangles still count as forced threats, but hollow ones score
+        HOLLOW_TRIANGLE_SCORE (250) instead of the full triangle score.
         """
         if self._hollow_triangles_cache is not None:
             return set(self._hollow_triangles_cache)
@@ -925,19 +931,16 @@ class HybridBoard:
             ok, _ = after_black.play_black(*pos)
             if not ok:
                 continue
-            for stones, liberties in after_black.get_black_groups():
-                if len(liberties) != 1:
-                    continue
-                liberty = next(iter(liberties))
-                after_capture = after_black.copy()
-                ok_w, _ = after_capture.play_white(*liberty)
-                if not ok_w:
-                    continue
-                remaining = after_capture.compute_threats()
-                if not any(tt in FORCED_THREAT_TYPES
-                           for tt in remaining.values()):
-                    hollow.add(pos)
-                    break
+            after_threats = after_black.compute_threats()
+            # Black's triangle move must leave a forced threat; if it does
+            # not, the position is not a real triangle for this purpose.
+            if not any(tt in FORCED_THREAT_TYPES
+                       for tt in after_threats.values()):
+                continue
+            # Real-combat test: does White's candidate algorithm still find
+            # at least one resolving move after Black played the triangle?
+            if after_black.get_white_defense_candidates(after_threats):
+                hollow.add(pos)
         self._hollow_triangles_cache = set(hollow)
         return set(hollow)
 
