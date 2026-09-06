@@ -343,36 +343,58 @@ class GameGUI:
         return not self.white_is_human()
 
     def _display_clock(self, color, is_ai):
-        """One side's AI or human clock (mm:ss), ticking live while that
-        controller is the one to move."""
+        """One side's AI or human clock (mm:ss).  The human row ticks live
+        while a human is thinking; the AI row only shows the accumulated
+        search (thinking) time and updates when a search finishes, so it
+        matches the sum of the blue "用时" figures.  Human + AI for a
+        colour equals that colour's total move time."""
         if color == BLACK:
             base = self.time_black_ai if is_ai else self.time_black_human
         else:
             base = self.time_white_ai if is_ai else self.time_white_human
-        if (self.current == color and self.turn_start_time is not None
-                and self._color_is_ai(color) == is_ai):
+        if (not is_ai and self.current == color
+                and self.turn_start_time is not None
+                and not self._color_is_ai(color)):
             base += time.time() - self.turn_start_time
         return self._format_time(base)
+
+    def _add_ai_search_time(self, color, seconds):
+        """Add an actual AI search duration (the same figure the blue label
+        reports) to the colour's AI clock - auto AI turns only."""
+        seconds = max(0.0, seconds)
+        if color == BLACK:
+            self.time_black_ai += seconds
+        else:
+            self.time_white_ai += seconds
+
+    def _record_human_move_time(self, color):
+        """Remember the wall time of a just-finished human move/pass."""
+        if self.turn_start_time is not None and self.turn_start_color == color:
+            self.last_human_move_sec = max(
+                0.0, time.time() - self.turn_start_time)
 
     # ------------------------------------------------------------------
     # Header readout strip (above the grid, inside the yellow canvas)
     # ------------------------------------------------------------------
     def _band_font_size(self):
-        """Header font grows with the board size: ~9pt on a 9x9 board,
-        ~20pt on 15x15 (same size as the status "白棋行棋" label), roughly
-        linear in between and continuing for larger boards."""
+        """Header font grows with the board size and stops at 20pt:
+        ~9pt on a 9x9 board, ~13pt at 11x11, ~16pt at 13x13, 20pt from
+        15x15 up (so 19x19 is 20pt too, the status "白棋行棋" size)."""
         pts = 9 + (self.size - 9) * 11.0 / 6.0
-        return int(max(8, min(32, round(pts))))
+        return int(max(8, min(20, round(pts))))
 
     def _band_fonts(self):
-        """(regular, bold, linespace) tk font objects for the current size."""
+        """(regular, bold, linespace) tk font objects for the current size.
+        Microsoft YaHei UI has a real bold CJK face, avoiding the uneven
+        fake-bold strokes Arial produces for Chinese glyphs at ~13-16pt."""
         size_pts = self._band_font_size()
         cache = getattr(self, "_band_font_cache", None)
         if cache is None:
             cache = self._band_font_cache = {}
         if size_pts not in cache:
-            reg = tkfont.Font(root=self.root, family="Arial", size=size_pts)
-            bold = tkfont.Font(root=self.root, family="Arial",
+            reg = tkfont.Font(root=self.root, family="Microsoft YaHei UI",
+                              size=size_pts)
+            bold = tkfont.Font(root=self.root, family="Microsoft YaHei UI",
                                size=size_pts, weight="bold")
             linespace = max(reg.metrics("linespace"),
                             bold.metrics("linespace"))
@@ -380,10 +402,11 @@ class GameGUI:
         return cache[size_pts]
 
     def _band_height(self):
-        """Pixel height reserved above the grid for the 3-line header."""
+        """Pixel height reserved above the grid: the 3 header rows plus one
+        blank row so the header text stands one line away from the board."""
         _reg, _bold, linespace = self._band_fonts()
         pad = max(3, int(linespace * 0.3))
-        return 2 * pad + 3 * linespace
+        return 2 * pad + 4 * linespace
 
     def _draw_top_band(self):
         """Header above the grid: black clock (3 lines), capture count,
@@ -712,8 +735,15 @@ class GameGUI:
             stone = "#000000" if self.current == BLACK else "#ffffff"
             ghost = self._mix_colors(stone, self.board_bg, 0.25)
             r = CELL // 2 - 2
-            self.canvas.create_oval(cx - r, cy - r, cx + r, cy + r,
-                                    fill=ghost, outline=ghost)
+            if self.current == WHITE:
+                # light ghost fill needs a dark (black+75% bg) ring to be
+                # recognisable against the yellow board.
+                ring = self._mix_colors("#000000", self.board_bg, 0.25)
+                self.canvas.create_oval(cx - r, cy - r, cx + r, cy + r,
+                                        fill=ghost, outline=ring, width=1)
+            else:
+                self.canvas.create_oval(cx - r, cy - r, cx + r, cy + r,
+                                        fill=ghost, outline="")
 
     def on_click(self, event):
         if self.game_over or self.ai_thinking:
