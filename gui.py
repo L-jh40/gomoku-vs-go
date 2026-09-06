@@ -83,6 +83,9 @@ class GameGUI:
         self.time_white_human = 0.0
         self.turn_start_time = None
         self.turn_start_color = None
+        # Wall time of the most recent human move/pass (shown in the green
+        # label while a human is thinking); None before any human move.
+        self.last_human_move_sec = None
 
         self.board_bg = "#f0d68c"
         self.line_color = "black"
@@ -249,6 +252,9 @@ class GameGUI:
         self.draw_board()
         self.update_mode_label()
 
+        # Keep the blue/green human-turn labels fresh while a human thinks.
+        self.root.after(500, self._clock_ticker)
+
         if self.black_ai_var.get() and self.current == BLACK:
             self.root.after(300, self.maybe_play_ai)
 
@@ -372,6 +378,44 @@ class GameGUI:
         if self.turn_start_time is not None and self.turn_start_color == color:
             self.last_human_move_sec = max(
                 0.0, time.time() - self.turn_start_time)
+
+    def _refresh_human_clock_labels(self):
+        """While a human is thinking, the blue label shows this step's
+        elapsed time and the green label the previous human step's time."""
+        if self.game_over or self.ai_thinking or self.replay_mode:
+            return
+        color = self.current
+        if (color == BLACK and not self.black_is_human()) or \
+                (color == WHITE and not self.white_is_human()):
+            return
+        live = 0.0
+        if self.turn_start_time is not None and self.turn_start_color == color:
+            live = max(0.0, time.time() - self.turn_start_time)
+        self.thinking_label.config(
+            text=f"人类思考中，用时: {live:.2f}s", fg="blue")
+        if self.last_human_move_sec is None:
+            self.depth_label.config(text="上一手人类思考用时: --", fg="green")
+        else:
+            self.depth_label.config(
+                text=f"上一手人类思考用时: {self.last_human_move_sec:.2f}s",
+                fg="green")
+
+    def _clock_ticker(self):
+        """Lightweight 0.25s loop: keeps the top-band clocks and the
+        blue/green human-turn labels live while no AI search is running.
+        (AI searches keep their own 2s ticker.)"""
+        try:
+            if not self.root.winfo_exists():
+                return
+        except Exception:
+            return
+        try:
+            if not self.game_over and not self.ai_thinking:
+                self.update_info()
+                self._refresh_human_clock_labels()
+        except Exception:
+            pass
+        self.root.after(250, self._clock_ticker)
 
     # ------------------------------------------------------------------
     # Header readout strip (above the grid, inside the yellow canvas)
@@ -803,11 +847,12 @@ class GameGUI:
         )
 
     def _run_ai_for_human(self):
-        """Full AI search + drop for the current human player."""
+        """Full AI search + drop for the current human player.  Runs as an
+        assist so its time is charged to the human clock, not the AI row."""
         if self.current == BLACK and self.black_is_human():
-            self.run_ai_move(BLACK)
+            self.run_ai_move(BLACK, assist=True)
         elif self.current == WHITE and self.white_is_human():
-            self.run_ai_move(WHITE)
+            self.run_ai_move(WHITE, assist=True)
 
     def _quick_forced_response(self):
         """Immediate forced drop: if a black five-point exists, play it when
@@ -831,7 +876,10 @@ class GameGUI:
         if not self.board.is_empty(x, y):
             return
         self._stop_search()
-        self._finish_turn_time(BLACK, False)
+        was_human = self.black_is_human()
+        if was_human:
+            self._record_human_move_time(BLACK)
+        self._finish_turn_time(BLACK, not was_human)
         ok, _ftype = rules.is_black_legal_move(self.board, x, y)
         if not ok:
             messagebox.showinfo("禁手", "黑棋不能落在此处")
@@ -859,7 +907,10 @@ class GameGUI:
         if not self.board.is_empty(x, y):
             return
         self._stop_search()
-        self._finish_turn_time(WHITE, False)
+        was_human = self.white_is_human()
+        if was_human:
+            self._record_human_move_time(WHITE)
+        self._finish_turn_time(WHITE, not was_human)
         ok, _ = self.board.play_white(x, y)
         if not ok:
             messagebox.showinfo("落子失败", "白棋不能落在此处")
@@ -892,6 +943,8 @@ class GameGUI:
             not self.black_is_human() if color == BLACK
             else not self.white_is_human()
         )
+        if not is_ai:
+            self._record_human_move_time(color)
         self._finish_turn_time(color, is_ai)
         self.pass_log.append(color)
         self.pass_count += 1
@@ -966,7 +1019,12 @@ class GameGUI:
         self.ai_thinking = False
         self._cancel_max_search_timer()
 
-    def run_ai_move(self, color):
+    def run_ai_move(self, color, assist=False):
+        """Run a full AI search and drop the chosen stone.
+
+        assist=True means the AI moved on behalf of a human (right click):
+        the time is charged to that colour's human clock and the search is
+        not counted in the AI (thinking) row."""
         if self.game_over:
             return
         self.ai_thinking = True
@@ -1069,8 +1127,15 @@ class GameGUI:
                 self._cancel_max_search_timer()
                 self.ai_thinking = False
                 self.search_interrupt.clear()
-                self._finish_turn_time(color, True)
                 total = time.time() - self.search_start_time
+                if assist:
+                    # AI helped the human: this time belongs to the human.
+                    self._record_human_move_time(color)
+                    self._finish_turn_time(color, False)
+                else:
+                    # Automatic AI turn: clock it by the real search time
+                    # (the same figure the blue label reports).
+                    self._add_ai_search_time(color, total)
                 b_time = self.prev_layer_time if self.prev_layer_depth >= 0 else (
                     self.last_layer_time if self.last_layer_time else total
                 )
@@ -1689,6 +1754,7 @@ class GameGUI:
         self.time_black_human = 0.0
         self.time_white_ai = 0.0
         self.time_white_human = 0.0
+        self.last_human_move_sec = None
         self.replay_mode = False
         self.replay_new_stones = set()
         self.replay_map = {}
@@ -1742,6 +1808,7 @@ class GameGUI:
         self.time_black_human = snap.get("time_black_human", 0.0)
         self.time_white_ai = snap.get("time_white_ai", 0.0)
         self.time_white_human = snap.get("time_white_human", 0.0)
+        self.last_human_move_sec = None
         self.moves_since_new_game = 0
         self.search_interrupt.clear()
         self._start_turn_timer(self.current)
