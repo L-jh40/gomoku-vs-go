@@ -1265,6 +1265,70 @@ class HybridBoard:
                     if 0 < len(flibs) <= 2:
                         resolve.update(flibs)
 
+            # Extension (a): produced SOLID triangles must also be
+            # eliminated within the same two steps.  A produced triangle
+            # is solid when Black playing it leaves White with no
+            # candidate at all; hollow ones can be answered later.
+            produced_tri = [
+                p for p, t in after_threats.items()
+                if t in ("four_three", "open_four")
+            ]
+            for tri_pos in produced_tri:
+                t_after = board_after.copy()
+                ok_t, _ = t_after.play_black(*tri_pos)
+                if not ok_t:
+                    continue
+                if t_after.get_white_defense_candidates(
+                        t_after.compute_threats()):
+                    continue  # hollow
+                # Solid: White's current move must also prevent it.
+                resolve.add(tri_pos)
+                resolve |= attack_liberties(board_after, tri_pos, 2)
+                sub_five = [
+                    p for p, t in t_after.compute_threats().items()
+                    if t == "five_point"
+                ]
+                for fpos in sub_five:
+                    resolve.add(fpos)
+                    fw = t_after.copy()
+                    okf, _ = fw.play_black(*fpos)
+                    if okf:
+                        _s, flibs = fw.get_group(*fpos)
+                        if 0 < len(flibs) <= 2:
+                            resolve.update(flibs)
+                # One Qi set per produced circle of this solid triangle,
+                # union size <= 2.
+                attack_sets = []
+                for fpos in sub_five:
+                    fw = t_after.copy()
+                    okf, _ = fw.play_black(*fpos)
+                    fset = []
+                    if okf:
+                        for dx2, dy2 in DIRECTIONS:
+                            t2 = rules.classify_direction_after_move(
+                                fw, *fpos, dx2, dy2
+                            )
+                            if t2 not in ("five", "open_four",
+                                          "rush_four", "open_three"):
+                                continue
+                            line2 = set()
+                            for step in range(-4, 5):
+                                nx, ny = fpos[0] + step * dx2,
+                                         fpos[1] + step * dy2
+                                if fw.in_bounds(nx, ny) and \
+                                        fw.grid[nx, ny] == BLACK:
+                                    line2.add((nx, ny))
+                            for ax, ay in sorted(line2):
+                                _stones, libs = fw.get_group(ax, ay)
+                                if 0 < len(libs) <= 2:
+                                    fset.append(set(libs))
+                    attack_sets.append(fset)
+                if attack_sets:
+                    for combo in itertools.product(*attack_sets):
+                        u = set().union(*combo)
+                        if len(u) <= 2:
+                            resolve |= u
+
             resolves.append(resolve)
             if not resolve:
                 return []
