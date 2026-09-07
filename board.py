@@ -1313,8 +1313,8 @@ class HybridBoard:
                                 continue
                             line2 = set()
                             for step in range(-4, 5):
-                                nx, ny = fpos[0] + step * dx2,
-                                         fpos[1] + step * dy2
+                                nx, ny = (fpos[0] + step * dx2,
+                                          fpos[1] + step * dy2)
                                 if fw.in_bounds(nx, ny) and \
                                         fw.grid[nx, ny] == BLACK:
                                     line2.add((nx, ny))
