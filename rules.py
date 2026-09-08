@@ -59,12 +59,17 @@ def line_code(board, x: int, y: int, dx: int, dy: int,
     Caller must already have placed the temporary black stone at (x,y).
     """
     blockers = blockers or set()
+    torus = bool(getattr(board, "torus", False))
+    size = board.size
     chars: list[str] = []
     for step in range(-half, half + 1):
-        cx, cy = x + step * dx, y + step * dy
-        if not board.in_bounds(cx, cy):
-            chars.append("2")
-            continue
+        if torus:
+            cx, cy = (x + step * dx) % size, (y + step * dy) % size
+        else:
+            cx, cy = x + step * dx, y + step * dy
+            if not board.in_bounds(cx, cy):
+                chars.append("2")
+                continue
         value = int(board.grid[cx, cy])
         if value == BLACK:
             chars.append("1")
@@ -102,23 +107,25 @@ def classify_direction_after_move(board, x: int, y: int, dx: int, dy: int,
                                   blockers: set | None = None) -> str | None:
     """Classify the threat on one direction after black has been placed at
     (x,y).  Returns 'five' / 'overline' / a threat-type or None."""
+    torus = bool(getattr(board, "torus", False))
+    size = board.size
     run = 1
-    i = 1
-    while True:
-        cx, cy = x - i * dx, y - i * dy
-        if board.in_bounds(cx, cy) and board.grid[cx, cy] == BLACK:
-            run += 1
-            i += 1
-        else:
-            break
-    i = 1
-    while True:
-        cx, cy = x + i * dx, y + i * dy
-        if board.in_bounds(cx, cy) and board.grid[cx, cy] == BLACK:
-            run += 1
-            i += 1
-        else:
-            break
+    for sign in (-1, 1):
+        i = 1
+        while i < size:
+            if torus:
+                cx, cy = (x + sign * i * dx) % size, (y + sign * i * dy) % size
+            else:
+                cx, cy = x + sign * i * dx, y + sign * i * dy
+                if not board.in_bounds(cx, cy):
+                    break
+            if board.grid[cx, cy] == BLACK:
+                run += 1
+                i += 1
+            else:
+                break
+    if torus and run > size:
+        run = size
 
     if run == 5:
         return "five"
@@ -141,8 +148,13 @@ def classify_direction_after_move(board, x: int, y: int, dx: int, dy: int,
         # self-capture or overline) must not be reported as a four.
         completions = 0
         for step in range(-4, 5):
-            cx, cy = x + step * dx, y + step * dy
-            if not board.in_bounds(cx, cy) or board.grid[cx, cy] != EMPTY:
+            if torus:
+                cx, cy = (x + step * dx) % size, (y + step * dy) % size
+            else:
+                cx, cy = x + step * dx, y + step * dy
+                if not board.in_bounds(cx, cy):
+                    continue
+            if board.grid[cx, cy] != EMPTY:
                 continue
             board.grid[cx, cy] = BLACK
             try:
