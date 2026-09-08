@@ -620,49 +620,51 @@ class GameGUI:
         self.canvas.delete("all")
         self.canvas.configure(bg=self.board_bg)
         self._update_origin()
-        size = self.size
+        dn = self._display_size()
         ox, oy = self.origin_x, self.origin_y
         if self.board_style == "cell":
-            # Stones sit inside cells: draw (size + 1) lines per direction.
-            end = size * CELL
-            for i in range(size + 1):
+            # Stones sit inside cells: draw (dn + 1) lines per direction.
+            end = dn * CELL
+            for i in range(dn + 1):
                 p = i * CELL
                 self.canvas.create_line(ox + p, oy, ox + p, oy + end,
                                         fill=self.line_color)
                 self.canvas.create_line(ox, oy + p, ox + end, oy + p,
                                         fill=self.line_color)
         else:
-            end = (size - 1) * CELL
-            for i in range(size):
+            end = (dn - 1) * CELL
+            for i in range(dn):
                 p = i * CELL
                 self.canvas.create_line(ox + p, oy, ox + p, oy + end,
                                         fill=self.line_color)
                 self.canvas.create_line(ox, oy + p, ox + end, oy + p,
                                         fill=self.line_color)
 
-        for sx, sy in STAR_POINTS.get(size, []):
-            cx, cy = self._point_center(sx, sy)
-            self.canvas.create_oval(
-                cx - 3, cy - 3, cx + 3, cy + 3, fill=self.star_color
-            )
+        for sx, sy in STAR_POINTS.get(self.size, []):
+            for dx, dy in self._display_copies(sx, sy):
+                cx, cy = self._display_center(dx, dy)
+                self.canvas.create_oval(
+                    cx - 3, cy - 3, cx + 3, cy + 3, fill=self.star_color
+                )
 
         # Obstacles: dark-yellow filled cells (walls).  Drawn after the grid
         # so the surrounding lines stay visible.
         half = CELL // 2 - 2
         for x, y in self.board.obstacle_positions():
-            cx, cy = self._point_center(x, y)
-            self.canvas.create_rectangle(cx - half, cy - half,
-                                         cx + half, cy + half,
-                                         fill=self.obstacle_color,
-                                         outline=self.obstacle_color)
+            for dx, dy in self._display_copies(x, y):
+                cx, cy = self._display_center(dx, dy)
+                self.canvas.create_rectangle(cx - half, cy - half,
+                                             cx + half, cy + half,
+                                             fill=self.obstacle_color,
+                                             outline=self.obstacle_color)
 
         move_numbers = {}
         if self.show_moves_var.get():
             move_numbers = self.get_move_numbers()
 
         dead = self.board.get_dead_positions() if with_hints else set()
-        for x in range(size):
-            for y in range(size):
+        for x in range(self.size):
+            for y in range(self.size):
                 v = self.board.grid[x, y]
                 if v in (BLACK, WHITE):
                     self.draw_stone(x, y, v, move_numbers.get((x, y)),
@@ -670,11 +672,12 @@ class GameGUI:
 
         if self.last_move is not None and self.board.grid[self.last_move] != EMPTY:
             lx, ly = self.last_move
-            cx, cy = self._point_center(lx, ly)
             r = 10 if self.replay_mode and (lx, ly) in self.replay_new_stones \
                 else CELL // 2 - 2
-            self.canvas.create_oval(cx - r, cy - r, cx + r, cy + r,
-                                    outline="red", width=2)
+            for dx, dy in self._display_copies(lx, ly):
+                cx, cy = self._display_center(dx, dy)
+                self.canvas.create_oval(cx - r, cy - r, cx + r, cy + r,
+                                        outline="red", width=2)
 
         # Drop-position preview is drawn under the hint overlays so the
         # red/blue/green markers stay fully readable on top of it.
@@ -686,20 +689,22 @@ class GameGUI:
         self._draw_top_band()
 
     def draw_stone(self, x, y, color, move_num=None, dead_black=False):
-        cx, cy = self._point_center(x, y)
         r = 10 if self.replay_mode and (x, y) in self.replay_new_stones \
             else CELL // 2 - 2
         fill = "black" if color == BLACK else "white"
-        self.canvas.create_oval(cx - r, cy - r, cx + r, cy + r,
-                                fill=fill, outline=self.line_color)
-        if dead_black:
-            s = 6
-            self.canvas.create_rectangle(cx - s, cy - s, cx + s, cy + s,
-                                         fill="gray", outline="darkgray")
-        if move_num is not None:
-            text_color = "white" if color == BLACK else "black"
-            self.canvas.create_text(cx, cy, text=str(move_num),
-                                    fill=text_color, font=("Arial", 8, "bold"))
+        for dx, dy in self._display_copies(x, y):
+            cx, cy = self._display_center(dx, dy)
+            self.canvas.create_oval(cx - r, cy - r, cx + r, cy + r,
+                                    fill=fill, outline=self.line_color)
+            if dead_black:
+                s = 6
+                self.canvas.create_rectangle(cx - s, cy - s, cx + s, cy + s,
+                                             fill="gray", outline="darkgray")
+            if move_num is not None:
+                text_color = "white" if color == BLACK else "black"
+                self.canvas.create_text(cx, cy, text=str(move_num),
+                                        fill=text_color,
+                                        font=("Arial", 8, "bold"))
 
     def draw_hints(self, dead):
         size = self.size
