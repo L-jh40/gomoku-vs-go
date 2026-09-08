@@ -139,6 +139,10 @@ def _apply_move(board: HybridBoard, move: tuple[int, int], black_turn: bool):
 # ----------------------------------------------------------------------
 # White forced-defence search
 # ----------------------------------------------------------------------
+_DEFENSE_CACHE: dict = {}
+_DEFENSE_CACHE_LIMIT = 50000
+
+
 def _white_defense(board: HybridBoard, depth: int,
                    black_path: list | None = None,
                    replay_map: dict | None = None,
@@ -155,6 +159,16 @@ def _white_defense(board: HybridBoard, depth: int,
       * for every such black move which really creates a forced threat,
         White must again have a clearing move.
     """
+    # Pure queries (no path/replay recording, no progress callback) are
+    # deterministic and memoised: the forced-defence tree revisits the same
+    # positions many times during minimax.
+    cache_key = None
+    if black_path is None and replay_map is None and progress_callback is None:
+        cache_key = (_board_signature(board), depth)
+        if cache_key in _DEFENSE_CACHE:
+            cached = _DEFENSE_CACHE[cache_key]
+            return None if cached is None else list(cached)
+
     threats = board.compute_threats()
     _check_interrupt(interrupt_event, None)
     if start_time is None:
@@ -165,11 +179,16 @@ def _white_defense(board: HybridBoard, depth: int,
     def finish(result):
         if progress_callback is not None and depth >= 0:
             progress_callback(depth, time.monotonic() - start_time, False, True)
+        if cache_key is not None:
+            if len(_DEFENSE_CACHE) > _DEFENSE_CACHE_LIMIT:
+                _DEFENSE_CACHE.clear()
+            _DEFENSE_CACHE[cache_key] = (
+                None if result is None else tuple(result))
         return result
 
     forced = _forced(threats)
     if not forced:
-        return []
+        return finish([])
     if depth <= 0:
         # Search budget exhausted.  Only a position where black already has
         # multiple five points and White cannot remove all of them in one
