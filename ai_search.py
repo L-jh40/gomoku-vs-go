@@ -80,7 +80,7 @@ def _board_signature(board: HybridBoard) -> tuple:
         if board.grid[x, y] == WHITE
     )
     obstacles = tuple(sorted(board.obstacle_positions()))
-    return (board.turn, black, white, obstacles)
+    return (board.turn, black, white, obstacles, bool(getattr(board, "torus", False)))
 
 
 # ----------------------------------------------------------------------
