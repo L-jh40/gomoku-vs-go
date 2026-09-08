@@ -965,6 +965,11 @@ class HybridBoard:
         """
         if self._hollow_triangles_cache is not None:
             return set(self._hollow_triangles_cache)
+        key = _board_state_key(self)
+        cached = _HOLLOW_CACHE.get(key)
+        if cached is not None:
+            self._hollow_triangles_cache = set(cached)
+            return set(cached)
         if threats is None:
             threats = self.compute_threats()
         hollow: set[tuple[int, int]] = set()
@@ -987,6 +992,9 @@ class HybridBoard:
             if after_black.get_white_defense_candidates(after_threats):
                 hollow.add(pos)
         self._hollow_triangles_cache = set(hollow)
+        if len(_HOLLOW_CACHE) > _CACHE_LIMIT:
+            _HOLLOW_CACHE.clear()
+        _HOLLOW_CACHE[key] = tuple(hollow)
         return set(hollow)
 
     def is_hollow_triangle(self, pos, threat_type=None) -> bool:
@@ -1209,6 +1217,10 @@ class HybridBoard:
         - for every triangle, build one resolve set;
         - return the intersection of all resolve sets.
         """
+        key = _board_state_key(self) + (bool(expand_produced),)
+        cached = _CANDIDATE_CACHE.get(key)
+        if cached is not None:
+            return list(cached)
         if threats is None:
             threats = self.compute_threats()
         import rules
@@ -1403,7 +1415,11 @@ class HybridBoard:
         common = set.intersection(*resolves)
         if not common:
             return []
-        return sorted(p for p in common if self.is_empty(*p))
+        result = sorted(p for p in common if self.is_empty(*p))
+        if len(_CANDIDATE_CACHE) > _CACHE_LIMIT:
+            _CANDIDATE_CACHE.clear()
+        _CANDIDATE_CACHE[key] = tuple(result)
+        return result
 
     def get_white_blocking_candidates(self, threats=None) -> list[tuple[int, int]]:
         """Compatibility alias."""
