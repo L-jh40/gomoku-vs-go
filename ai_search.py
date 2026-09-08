@@ -442,6 +442,95 @@ def _order_moves(board: HybridBoard, moves: list, threats: dict,
     return sorted(moves, key=key)
 
 
+
+# ----------------------------------------------------------------------
+# Lexicographic preliminary candidate filter (open_two / sleep_three)
+# ----------------------------------------------------------------------
+SMALL_THREAT_TYPES = ("open_two", "sleep_three")
+# Extra Black moves searched when deepening from a move that creates at
+# least two 活二/眠三.  1 means one further Black move (0-1 step search).
+SMALL_THREAT_FILTER_PLIES = 1
+
+
+def _small_threat_count(threats: dict) -> int:
+    """Number of 活二/眠三 (open_two / sleep_three) threats."""
+    return sum(1 for t in threats.values() if t in SMALL_THREAT_TYPES)
+
+
+def _max_small_threats_within(board: HybridBoard, plies: int,
+                              interrupt_event=None) -> int:
+    """Optimistic maximum 活二+眠三 count reachable by Black in `plies`
+    further Black moves (White replies are ignored - this is an upper
+    bound used only for pruning)."""
+    threats = board.compute_threats()
+    best = _small_threat_count(threats)
+    if plies <= 0:
+        return best
+    moves = board.get_black_priority_candidates(threats)
+    if not moves:
+        moves = board.get_black_candidate_moves(threats)
+    for move in moves:
+        _check_interrupt(interrupt_event, None)
+        child = board.copy()
+        ok, _ = child.play_black(*move)
+        if not ok:
+            continue
+        value = _max_small_threats_within(child, plies - 1, interrupt_event)
+        if value > best:
+            best = value
+    return best
+
+
+def _lexicographic_small_filter(board: HybridBoard, candidates: list,
+                                plies: int = SMALL_THREAT_FILTER_PLIES,
+                                interrupt_event=None) -> list:
+    """Preliminary lexicographic filter for Black's candidates.
+
+    If some candidate creates at least two 活二/眠三 threats, deepen from
+    the best such move to obtain the maximum 活二+眠三 count reachable
+    within `plies` extra Black moves, then drop every candidate whose
+    optimistic upper bound (immediate count + 4 per extra Black move)
+    cannot reach that value.  The survivors go to the normal-score
+    Minimax.  Returns the original list when no move creates two.
+    """
+    if not candidates:
+        return candidates
+    counts: dict[tuple[int, int], int] = {}
+    best = -1
+    best_moves: list[tuple[int, int]] = []
+    for move in candidates:
+        _check_interrupt(interrupt_event, None)
+        child = board.copy()
+        ok, _ = child.play_black(*move)
+        if not ok:
+            continue
+        count = _small_threat_count(child.compute_threats())
+        counts[move] = count
+        if count > best:
+            best = count
+            best_moves = [move]
+        elif count == best:
+            best_moves.append(move)
+    if best < 2:
+        return candidates
+    target = best
+    for move in best_moves:
+        child = board.copy()
+        ok, _ = child.play_black(*move)
+        if not ok:
+            continue
+        value = _max_small_threats_within(child, plies, interrupt_event)
+        if value > target:
+            target = value
+    # Optimistic bound: immediate count + at most 4 new 活二/眠三 per extra
+    # Black move (one per direction).
+    keep = [move for move in candidates
+            if counts.get(move, 0) + 4 * plies >= target]
+    if keep:
+        return keep
+    # Nothing reaches the deepened maximum: keep the best immediate moves.
+    return best_moves or candidates
+
 def _moves_for_player(board: HybridBoard, black_turn: bool,
                       threats: dict | None = None,
                       defense_depth: int = 4,
@@ -465,6 +554,10 @@ def _moves_for_player(board: HybridBoard, black_turn: bool,
         if not candidates:
             far = _farthest_move(board, True)
             return [far] if far is not None else []
+        # Preliminary lexicographic filter: keep only candidates that can
+        # still reach the best 活二+眠三 count, then normal-score Minimax.
+        candidates = _lexicographic_small_filter(
+            board, candidates, SMALL_THREAT_FILTER_PLIES, interrupt_event)
         return _order_moves(board, candidates, threats, True)
 
     # White to move.
