@@ -707,28 +707,29 @@ class GameGUI:
                                         font=("Arial", 8, "bold"))
 
     def draw_hints(self, dead):
-        size = self.size
         # White territory: grey square on the upper layer.
         for x, y in dead:
             if self.board.grid[x, y] != EMPTY:
                 continue
-            cx, cy = self._point_center(x, y)
-            s = 6
-            self.canvas.create_rectangle(cx - s, cy - s, cx + s, cy + s,
-                                         fill="white", outline="gray",
-                                         stipple="gray50")
+            for dx, dy in self._display_copies(x, y):
+                cx, cy = self._display_center(dx, dy)
+                s = 6
+                self.canvas.create_rectangle(cx - s, cy - s, cx + s, cy + s,
+                                             fill="white", outline="gray",
+                                             stipple="gray50")
 
         # Blue crosses: forbidden / no-liberty points (cached).
         blue_crosses = self.board.get_blue_cross_positions()
         for x, y in blue_crosses:
             if not self.board.is_empty(x, y):
                 continue
-            cx, cy = self._point_center(x, y)
-            r = 6
-            self.canvas.create_line(cx - r, cy - r, cx + r, cy + r,
-                                    fill="blue", width=2)
-            self.canvas.create_line(cx - r, cy + r, cx + r, cy - r,
-                                    fill="blue", width=2)
+            for dx, dy in self._display_copies(x, y):
+                cx, cy = self._display_center(dx, dy)
+                r = 6
+                self.canvas.create_line(cx - r, cy - r, cx + r, cy + r,
+                                        fill="blue", width=2)
+                self.canvas.create_line(cx - r, cy + r, cx + r, cy - r,
+                                        fill="blue", width=2)
 
         # Candidate squares are below red markers.
         self._draw_candidate_squares()
@@ -738,34 +739,37 @@ class GameGUI:
         for (x, y), threat in threats.items():
             if not self.board.is_empty(x, y):
                 continue
-            cx, cy = self._point_center(x, y)
-            if threat == "five_point":
-                r = 8
-                self.canvas.create_oval(cx - r, cy - r, cx + r, cy + r,
-                                        fill="red", outline="darkred")
-            elif threat in ("four_three", "open_four"):
-                r = 8
-                if self.board.is_hollow_triangle((x, y), threat):
-                    self.canvas.create_polygon(
-                        cx, cy - r, cx - r, cy + r, cx + r, cy + r,
-                        outline="red", width=2, fill=""
-                    )
-                else:
-                    self.canvas.create_polygon(
-                        cx, cy - r, cx - r, cy + r, cx + r, cy + r,
-                        fill="red", outline="darkred"
-                    )
-            elif threat in ("rush_four", "open_three"):
-                r = 8
-                self.canvas.create_oval(cx - r, cy - r, cx + r, cy + r,
-                                        outline="red", width=2)
-            elif threat in ("sleep_three", "open_two"):
-                r = 5
-                self.canvas.create_oval(cx - r, cy - r, cx + r, cy + r,
-                                        outline="red", width=2)
-            elif threat == "sleep_two":
-                self.canvas.create_oval(cx - 2, cy - 2, cx + 2, cy + 2,
-                                        fill="red", outline="red")
+            hollow = (threat in ("four_three", "open_four")
+                      and self.board.is_hollow_triangle((x, y), threat))
+            for dx, dy in self._display_copies(x, y):
+                cx, cy = self._display_center(dx, dy)
+                if threat == "five_point":
+                    r = 8
+                    self.canvas.create_oval(cx - r, cy - r, cx + r, cy + r,
+                                            fill="red", outline="darkred")
+                elif threat in ("four_three", "open_four"):
+                    r = 8
+                    if hollow:
+                        self.canvas.create_polygon(
+                            cx, cy - r, cx - r, cy + r, cx + r, cy + r,
+                            outline="red", width=2, fill=""
+                        )
+                    else:
+                        self.canvas.create_polygon(
+                            cx, cy - r, cx - r, cy + r, cx + r, cy + r,
+                            fill="red", outline="darkred"
+                        )
+                elif threat in ("rush_four", "open_three"):
+                    r = 8
+                    self.canvas.create_oval(cx - r, cy - r, cx + r, cy + r,
+                                            outline="red", width=2)
+                elif threat in ("sleep_three", "open_two"):
+                    r = 5
+                    self.canvas.create_oval(cx - r, cy - r, cx + r, cy + r,
+                                            outline="red", width=2)
+                elif threat == "sleep_two":
+                    self.canvas.create_oval(cx - 2, cy - 2, cx + 2, cy + 2,
+                                            fill="red", outline="red")
 
     def _draw_candidate_squares(self):
         if not self.show_candidates_var.get():
@@ -774,11 +778,12 @@ class GameGUI:
         for x, y in self._get_candidate_display_positions():
             if not self.board.is_empty(x, y):
                 continue
-            cx, cy = self._point_center(x, y)
-            self.canvas.create_rectangle(
-                cx - r, cy - r, cx + r, cy + r,
-                outline="green", width=2
-            )
+            for dx, dy in self._display_copies(x, y):
+                cx, cy = self._display_center(dx, dy)
+                self.canvas.create_rectangle(
+                    cx - r, cy - r, cx + r, cy + r,
+                    outline="green", width=2
+                )
 
     def _get_candidate_display_positions(self):
         threats = self.board.compute_threats()
@@ -801,12 +806,22 @@ class GameGUI:
     # ------------------------------------------------------------------
     # Interaction
     # ------------------------------------------------------------------
-    def _screen_to_point(self, event):
+    def _screen_to_display(self, event):
+        """Display-grid index under the mouse (may be outside the grid)."""
         if self.board_style == "cell":
             return (int((event.y - self.origin_y) // CELL),
                     int((event.x - self.origin_x) // CELL))
         return (round((event.y - self.origin_y) / CELL),
                 round((event.x - self.origin_x) / CELL))
+
+    def _screen_to_point(self, event):
+        i, j = self._screen_to_display(event)
+        dn = self._display_size()
+        if self.board.torus:
+            if not (0 <= i < dn and 0 <= j < dn):
+                return None
+            return self._display_to_actual(i, j)
+        return (i, j)
 
     def _on_mouse_move(self, event):
         if self.game_over:
@@ -814,19 +829,24 @@ class GameGUI:
                 self.hover_point = None
                 self.draw_board()
             return
-        x, y = self._screen_to_point(event)
-        if not self.board.in_bounds(x, y):
+        point = self._screen_to_point(event)
+        if point is None or not self.board.in_bounds(*point):
             if self.hover_point is not None:
                 self.hover_point = None
+                self.hover_display = None
                 self.draw_board()
             return
-        if self.hover_point != (x, y):
+        x, y = point
+        i, j = self._screen_to_display(event)
+        if self.hover_point != (x, y) or self.hover_display != (i, j):
             self.hover_point = (x, y)
+            self.hover_display = (i, j)
             self.draw_board()
 
     def _on_mouse_leave(self, _event=None):
         if self.hover_point is not None:
             self.hover_point = None
+            self.hover_display = None
             self.draw_board()
 
     def _draw_hover(self):
@@ -841,7 +861,8 @@ class GameGUI:
         if self.game_over or self.ai_thinking:
             return
         x, y = self.hover_point
-        cx, cy = self._point_center(x, y)
+        di, dj = self.hover_display if self.hover_display else (x, y)
+        cx, cy = self._display_center(di, dj)
         if self.board_style == "cell":
             half = CELL // 2
             self.canvas.create_rectangle(cx - half, cy - half,
@@ -865,14 +886,10 @@ class GameGUI:
     def on_click(self, event):
         if self.game_over or self.ai_thinking:
             return
-        if self.board_style == "cell":
-            x = int((event.y - self.origin_y) // CELL)
-            y = int((event.x - self.origin_x) // CELL)
-        else:
-            x = round((event.y - self.origin_y) / CELL)
-            y = round((event.x - self.origin_x) / CELL)
-        if not self.board.in_bounds(x, y):
+        point = self._screen_to_point(event)
+        if point is None or not self.board.in_bounds(*point):
             return
+        x, y = point
         if self.replay_mode and self.current == BLACK:
             return
         if self.current == BLACK and self.black_is_human():
