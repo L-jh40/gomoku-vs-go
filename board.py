@@ -626,26 +626,19 @@ class HybridBoard:
         blue = self.get_blue_cross_positions()
         total = np.zeros((self.size, self.size), dtype=np.int16)
         good = np.zeros((self.size, self.size), dtype=np.int16)
-        for dx, dy in DIRECTIONS:
-            for x in range(self.size):
-                for y in range(self.size):
-                    end_x, end_y = x + 4 * dx, y + 4 * dy
-                    if not self.in_bounds(end_x, end_y):
-                        continue
-                    cells = [(x + i * dx, y + i * dy) for i in range(5)]
-                    for cx, cy in cells:
-                        total[cx, cy] += 1
-                    has_black = any(self.grid[cx, cy] == BLACK
-                                    for cx, cy in cells)
-                    blocked = any(
-                        self.grid[cx, cy] == WHITE or
-                        self.grid[cx, cy] == OBSTACLE or
-                        (self.grid[cx, cy] == EMPTY and (cx, cy) in blue)
-                        for cx, cy in cells
-                    )
-                    if has_black and not blocked:
-                        for cx, cy in cells:
-                            good[cx, cy] += 1
+        for cells in self._five_windows():
+            for cx, cy in cells:
+                total[cx, cy] += 1
+            has_black = any(self.grid[cx, cy] == BLACK for cx, cy in cells)
+            blocked = any(
+                self.grid[cx, cy] == WHITE or
+                self.grid[cx, cy] == OBSTACLE or
+                (self.grid[cx, cy] == EMPTY and (cx, cy) in blue)
+                for cx, cy in cells
+            )
+            if has_black and not blocked:
+                for cx, cy in cells:
+                    good[cx, cy] += 1
         out: set[tuple[int, int]] = set()
         for x in range(self.size):
             for y in range(self.size):
@@ -1224,9 +1217,9 @@ class HybridBoard:
                     continue
                 line_black: set[tuple[int, int]] = set()
                 for step in range(-4, 5):
-                    nx, ny = pos[0] + step * dx, pos[1] + step * dy
-                    if work.in_bounds(nx, ny) and work.grid[nx, ny] == BLACK:
-                        line_black.add((nx, ny))
+                    cell = work.step_from(pos[0], pos[1], dx, dy, step)
+                    if cell is not None and work.grid[cell] == BLACK:
+                        line_black.add(cell)
                 for ax, ay in sorted(line_black):
                     if (ax, ay) in seen:
                         continue
@@ -1286,10 +1279,10 @@ class HybridBoard:
                         continue
                     line_black: set[tuple[int, int]] = set()
                     for step in range(-4, 5):
-                        nx, ny = five_pos[0] + step * dx, five_pos[1] + step * dy
-                        if five_work.in_bounds(nx, ny) and \
-                                five_work.grid[nx, ny] == BLACK:
-                            line_black.add((nx, ny))
+                        cell = five_work.step_from(
+                            five_pos[0], five_pos[1], dx, dy, step)
+                        if cell is not None and five_work.grid[cell] == BLACK:
+                            line_black.add(cell)
                     for ax, ay in sorted(line_black):
                         if (ax, ay) in seen:
                             continue
@@ -1365,11 +1358,10 @@ class HybridBoard:
                                 continue
                             line2 = set()
                             for step in range(-4, 5):
-                                nx, ny = (fpos[0] + step * dx2,
-                                          fpos[1] + step * dy2)
-                                if fw.in_bounds(nx, ny) and \
-                                        fw.grid[nx, ny] == BLACK:
-                                    line2.add((nx, ny))
+                                cell = fw.step_from(
+                                    fpos[0], fpos[1], dx2, dy2, step)
+                                if cell is not None and fw.grid[cell] == BLACK:
+                                    line2.add(cell)
                             for ax, ay in sorted(line2):
                                 _stones, libs = fw.get_group(ax, ay)
                                 if 0 < len(libs) <= 2:

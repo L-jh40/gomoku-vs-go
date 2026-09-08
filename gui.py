@@ -1969,8 +1969,10 @@ class GameGUI:
         self.board = snap["board"]
         if self.board.size != self.size:
             self.size = self.board.size
-            self._apply_canvas_size()
             self._select_board_size_var(self.size)
+        # Re-apply the canvas geometry: the restored game may use a
+        # different board size and/or torus mode.
+        self._apply_canvas_size()
         self.current = snap["current"]
         self.last_move = snap["last_move"]
         self.game_over = snap["game_over"]
