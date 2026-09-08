@@ -547,11 +547,51 @@ class GameGUI:
     # ------------------------------------------------------------------
     # Drawing
     # ------------------------------------------------------------------
+    def _display_size(self):
+        """Grid size shown on screen: n on a normal board, n + 4 on a torus
+        (2 wrapped rows/columns on every side)."""
+        return self.size + 4 if self.board.torus else self.size
+
+    def _display_offset(self):
+        """Display index offset of actual cell (0, 0)."""
+        return 2 if self.board.torus else 0
+
+    def _display_center(self, dx, dy):
+        """Canvas coords of display-grid index (dx, dy)."""
+        if self.board_style == "cell":
+            return (self.origin_x + (dy + 0.5) * CELL,
+                    self.origin_y + (dx + 0.5) * CELL)
+        return (self.origin_x + dy * CELL, self.origin_y + dx * CELL)
+
+    def _display_copies(self, x, y):
+        """Every display index that shows actual cell (x, y)."""
+        if not self.board.torus:
+            return [(x, y)]
+        n = self.size
+        off = self._display_offset()
+        out = []
+        for i in range(self._display_size()):
+            if (i - off) % n != x % n:
+                continue
+            for j in range(self._display_size()):
+                if (j - off) % n == y % n:
+                    out.append((i, j))
+        return out
+
+    def _display_to_actual(self, i, j):
+        """Actual board cell shown at display index (i, j)."""
+        if not self.board.torus:
+            return i, j
+        n = self.size
+        off = self._display_offset()
+        return (i - off) % n, (j - off) % n
+
     def _grid_extent(self):
         """Pixel span of the playing area for the current board style."""
+        n = self._display_size()
         if self.board_style == "cell":
-            return self.size * CELL
-        return (self.size - 1) * CELL
+            return n * CELL
+        return (n - 1) * CELL
 
     def _update_origin(self):
         """Place the grid directly under the header strip (the header's last
