@@ -1145,6 +1145,20 @@ class HybridBoard:
 
         def distance_to_nearest_target(candidate):
             x, y = candidate
+            if self.torus:
+                # No board edge on a torus: use cyclic Chebyshev distance.
+                if not targets:
+                    return size // 2
+                best = None
+                for bx, by in targets:
+                    dx = abs(x - bx)
+                    dx = min(dx, size - dx)
+                    dy = abs(y - by)
+                    dy = min(dy, size - dy)
+                    d = max(dx, dy)
+                    if best is None or d < best:
+                        best = d
+                return best
             best = min(x + 1, size - x, y + 1, size - y)
             for bx, by in targets:
                 d = max(abs(x - bx), abs(y - by))
@@ -1410,44 +1424,55 @@ class HybridBoard:
     def white_wins_by_occupy(self) -> bool:
         return not np.any(self.grid != WHITE)
 
-    def white_wins_by_line_block(self) -> bool:
-        blue = self.get_blue_cross_positions()
+    def _five_windows(self):
+        """Yield every 5-cell line window (torus-aware, deduplicated)."""
+        seen: set[tuple] = set()
         for dx, dy in DIRECTIONS:
             for x in range(self.size):
                 for y in range(self.size):
-                    end_x = x + 4 * dx
-                    end_y = y + 4 * dy
-                    if not (self.in_bounds(end_x, end_y)):
+                    cells: list[tuple[int, int]] = []
+                    valid = True
+                    visited: set[tuple[int, int]] = set()
+                    for i in range(5):
+                        cell = self.step_from(x, y, dx, dy, i)
+                        if cell is None or cell in visited:
+                            valid = False
+                            break
+                        visited.add(cell)
+                        cells.append(cell)
+                    if not valid:
                         continue
-                    cells = [(x + i * dx, y + i * dy) for i in range(5)]
-                    blocked = False
-                    for cx, cy in cells:
-                        if self.grid[cx, cy] in (WHITE, OBSTACLE):
-                            blocked = True
-                            break
-                        if self.grid[cx, cy] == EMPTY and (cx, cy) in blue:
-                            blocked = True
-                            break
-                    if not blocked:
-                        return False
+                    key = tuple(sorted(cells))
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    yield cells
+
+    def white_wins_by_line_block(self) -> bool:
+        blue = self.get_blue_cross_positions()
+        for cells in self._five_windows():
+            blocked = False
+            for cx, cy in cells:
+                if self.grid[cx, cy] in (WHITE, OBSTACLE):
+                    blocked = True
+                    break
+                if self.grid[cx, cy] == EMPTY and (cx, cy) in blue:
+                    blocked = True
+                    break
+            if not blocked:
+                return False
         return True
 
     def get_unblocked_lines(self) -> list[list[tuple[int, int]]]:
         """Return every white/obstacle/blue-free 5-cell window (GUI display)."""
         blue = self.get_blue_cross_positions()
         lines: list[list[tuple[int, int]]] = []
-        for dx, dy in DIRECTIONS:
-            for x in range(self.size):
-                for y in range(self.size):
-                    end_x, end_y = x + 4 * dx, y + 4 * dy
-                    if not self.in_bounds(end_x, end_y):
-                        continue
-                    cells = [(x + i * dx, y + i * dy) for i in range(5)]
-                    if any(self.grid[cx, cy] in (WHITE, OBSTACLE) or
-                           (self.grid[cx, cy] == EMPTY and (cx, cy) in blue)
-                           for cx, cy in cells):
-                        continue
-                    lines.append(cells)
+        for cells in self._five_windows():
+            if any(self.grid[cx, cy] in (WHITE, OBSTACLE) or
+                   (self.grid[cx, cy] == EMPTY and (cx, cy) in blue)
+                   for cx, cy in cells):
+                continue
+            lines.append(list(cells))
         return lines
 
     # ------------------------------------------------------------------
