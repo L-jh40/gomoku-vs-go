@@ -1184,7 +1184,9 @@ class HybridBoard:
             groups.append((stones, liberties))
         return groups
 
-    def get_white_defense_candidates(self, threats=None) -> list[tuple[int, int]]:
+    def get_white_defense_candidates(self, threats=None,
+                                     expand_produced: bool = True
+                                     ) -> list[tuple[int, int]]:
         """Candidate set used when black has solid circles or triangles.
 
         The algorithm follows the requested "resolve_i / resolve_j"
@@ -1318,13 +1320,17 @@ class HybridBoard:
                 p for p, t in after_threats.items()
                 if t in ("four_three", "open_four")
             ]
+            if not expand_produced:
+                # Nested calls expand only one level, keeping the search
+                # finite (each level consumes a black stone).
+                produced_tri = []
             for tri_pos in produced_tri:
                 t_after = board_after.copy()
                 ok_t, _ = t_after.play_black(*tri_pos)
                 if not ok_t:
                     continue
                 if t_after.get_white_defense_candidates(
-                        t_after.compute_threats()):
+                        t_after.compute_threats(), expand_produced=False):
                     continue  # hollow
                 # Solid: White's current move must also prevent it.
                 resolve.add(tri_pos)
