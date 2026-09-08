@@ -120,6 +120,7 @@ class GameGUI:
         # "point" = stones on intersections, "cell" = stones inside cells.
         self.board_style = "point"
         self.hover_point = None
+        self.hover_display = None
         # Canvas large enough for either style; draw_board centers the grid
         # inside the yellow area below the header readout strip
         # (origin_x / origin_y).  Width is based on the cell extent plus the
@@ -340,8 +341,10 @@ class GameGUI:
         bh = "人类" if self.black_is_human() else "AI"
         wh = "人类" if self.white_is_human() else "AI"
         extra = " | 黑棋查表必胜" if self.black_table_mode else ""
+        torus = " | 环面" if self.board.torus else ""
         self.mode_label.config(
-            text=f"模式: 黑({bh}) vs 白({wh}) | 深度 {self.depth_var.get()}{extra}"
+            text=f"模式: 黑({bh}) vs 白({wh}) | 深度 {self.depth_var.get()}"
+                 f"{extra}{torus}"
         )
         self.draw_board()
 
@@ -1667,12 +1670,35 @@ class GameGUI:
             messagebox.showinfo("判定", "白棋尚未获胜。")
             self.draw_board()
 
+    def _display_chain(self, cells):
+        """Display indices for a line of cells, choosing wrapped copies that
+        keep consecutive centres close together."""
+        if not cells:
+            return []
+        def center(disp):
+            return self._display_center(*disp)
+        def mid():
+            return (self.origin_x + self._grid_extent() / 2,
+                    self.origin_y + self._grid_extent() / 2)
+        mx, my = mid()
+        chain = [min(self._display_copies(*cells[0]),
+                     key=lambda p: abs(center(p)[0] - mx) +
+                                   abs(center(p)[1] - my))]
+        for cell in cells[1:]:
+            px, py = center(chain[-1])
+            chain.append(min(self._display_copies(*cell),
+                             key=lambda p: abs(center(p)[0] - px) +
+                                           abs(center(p)[1] - py)))
+        return chain
+
     def _show_unblocked_lines(self):
         for line in self.board.get_unblocked_lines():
-            cx1, cy1 = self._point_center(*line[0])
-            cx2, cy2 = self._point_center(*line[-1])
-            self.canvas.create_line(cx1, cy1, cx2, cy2,
-                                    fill="red", width=1)
+            chain = self._display_chain(line)
+            pts = []
+            for disp in chain:
+                pts.extend(self._display_center(*disp))
+            if len(pts) >= 4:
+                self.canvas.create_line(*pts, fill="red", width=1)
 
     def end_game(self, text):
         self.game_over = True
@@ -1741,8 +1767,10 @@ class GameGUI:
 
         tk.Label(win, text="预留接口", font=("Arial", 11, "bold")).pack(
             anchor=tk.W, padx=10, pady=(10, 0))
-        tk.Checkbutton(win, text="环面模式",
-                       variable=self.torus_mode_var).pack(anchor=tk.W, padx=10)
+        tk.Checkbutton(win, text="环面模式（新对局生效）",
+                       variable=self.torus_mode_var,
+                       command=self.update_mode_label).pack(anchor=tk.W,
+                                                            padx=10)
         tk.Checkbutton(win, text="启用障碍",
                        variable=self.obstacle_enabled_var,
                        command=self._on_obstacle_toggle).pack(anchor=tk.W,
@@ -1816,10 +1844,16 @@ class GameGUI:
             var.set(1 if n == size else 0)
 
     def _apply_canvas_size(self):
-        """Resize the canvas / side panel for the current board size."""
-        new_size = self.size * CELL + 2 * MARGIN
-        if new_size == self.canvas_size:
+        """Resize the canvas / side panel for the current board size.
+
+        In torus mode the shown grid is n + 4, so the canvas grows with the
+        two wrapped rows/columns on every side.
+        """
+        new_size = self._display_size() * CELL + 2 * MARGIN
+        if new_size == self.canvas_size and \
+                getattr(self, "_canvas_torus", None) == self.board.torus:
             return
+        self._canvas_torus = self.board.torus
         self.canvas_size = new_size
         self.canvas_height = new_size + self._band_height()
         self.canvas.configure(width=new_size, height=self.canvas_height)
@@ -1879,6 +1913,7 @@ class GameGUI:
         if selected_size is not None:
             self.size = selected_size
         self.board = HybridBoard(self.size)
+        self.board.torus = bool(self.torus_mode_var.get())
         self.board._forbid_overline = bool(self.forbid_overline_var.get())
         self.board._forbid_44 = bool(self.forbid_44_var.get())
         self.board._forbid_33 = bool(self.forbid_33_var.get())
