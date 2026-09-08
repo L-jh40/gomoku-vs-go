@@ -105,6 +105,9 @@ class HybridBoard:
         self.history: list[tuple[int, int, int, list]] = []
         self.captured_count = {BLACK: 0, WHITE: 0}
         self.turn = BLACK
+        # Torus mode: top/bottom and left/right edges are connected, so
+        # liberties and five-in-a-row lines wrap around the board.
+        self.torus = False
 
         # Caches.  They are invalidated by every real move.
         self._blue_cross_cache: set | None = None
@@ -131,6 +134,7 @@ class HybridBoard:
     # ------------------------------------------------------------------
     def copy(self) -> "HybridBoard":
         nb = HybridBoard(self.size)
+        nb.torus = self.torus
         nb.grid = self.grid.copy()
         nb.history = list(self.history)
         nb.captured_count = dict(self.captured_count)
@@ -164,6 +168,23 @@ class HybridBoard:
 
     def in_bounds(self, x: int, y: int) -> bool:
         return 0 <= x < self.size and 0 <= y < self.size
+
+    def wrap(self, x: int, y: int) -> tuple[int, int]:
+        """Normalise coordinates onto the board (torus wrapping)."""
+        return x % self.size, y % self.size
+
+    def step_from(self, x: int, y: int, dx: int, dy: int, k: int = 1):
+        """Cell k steps from (x, y) along (dx, dy).
+
+        Returns None when the step leaves the board in normal mode; in torus
+        mode the coordinates wrap around and are always valid.
+        """
+        if self.torus:
+            return ((x + k * dx) % self.size, (y + k * dy) % self.size)
+        nx, ny = x + k * dx, y + k * dy
+        if self.in_bounds(nx, ny):
+            return (nx, ny)
+        return None
 
     def is_empty(self, x: int, y: int) -> bool:
         return self.in_bounds(x, y) and self.grid[x, y] == EMPTY
@@ -216,9 +237,9 @@ class HybridBoard:
     def neighbors(self, x: int, y: int) -> list[tuple[int, int]]:
         out: list[tuple[int, int]] = []
         for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
-            nx, ny = x + dx, y + dy
-            if self.in_bounds(nx, ny):
-                out.append((nx, ny))
+            cell = self.step_from(x, y, dx, dy)
+            if cell is not None and cell not in out:
+                out.append(cell)
         return out
 
     def get_group(self, x: int, y: int):
@@ -324,9 +345,9 @@ class HybridBoard:
         out: set[tuple[int, int]] = set()
         for dx, dy in DIRECTIONS:
             for step in range(-radius, radius + 1):
-                nx, ny = x + step * dx, y + step * dy
-                if self.in_bounds(nx, ny):
-                    out.add((nx, ny))
+                cell = self.step_from(x, y, dx, dy, step)
+                if cell is not None:
+                    out.add(cell)
         return out
 
     def affected_positions_around(self, cells, radius: int = 4):
@@ -436,25 +457,25 @@ class HybridBoard:
     # Five / overline
     # ------------------------------------------------------------------
     def black_run_length(self, x: int, y: int) -> int:
+        """Longest consecutive black run through (x, y).
+
+        In torus mode the scan wraps; a full cycle of n stones counts as n
+        (both directions would otherwise count the cycle twice).
+        """
         best = 1
+        n = self.size
         for dx, dy in DIRECTIONS:
             run = 1
-            i = 1
-            while True:
-                cx, cy = x - i * dx, y - i * dy
-                if self.in_bounds(cx, cy) and self.grid[cx, cy] == BLACK:
+            for sign in (-1, 1):
+                i = 1
+                while i < n:
+                    cell = self.step_from(x, y, sign * dx, sign * dy, i)
+                    if cell is None or self.grid[cell] != BLACK:
+                        break
                     run += 1
                     i += 1
-                else:
-                    break
-            i = 1
-            while True:
-                cx, cy = x + i * dx, y + i * dy
-                if self.in_bounds(cx, cy) and self.grid[cx, cy] == BLACK:
-                    run += 1
-                    i += 1
-                else:
-                    break
+            if self.torus and run > n:
+                run = n
             best = max(best, run)
         return best
 
@@ -500,14 +521,23 @@ class HybridBoard:
     # White territory / dead positions
     # ------------------------------------------------------------------
     def _has_open_five_window(self, x: int, y: int) -> bool:
-        """True if there exists an in-board 5-cell window containing (x,y)
-        with no white stone and no obstacle.  This is the geometric part of
-        'can this cell ever be part of a black five'."""
+        """True if there exists a 5-cell window containing (x,y) with no
+        white stone and no obstacle.  This is the geometric part of
+        'can this cell ever be part of a black five'.  On a torus the
+        windows wrap around the edges."""
         for dx, dy in DIRECTIONS:
             for offset in range(-4, 1):
-                cells = [(x + (offset + i) * dx, y + (offset + i) * dy)
-                         for i in range(5)]
-                if not all(self.in_bounds(cx, cy) for cx, cy in cells):
+                cells: list[tuple[int, int]] = []
+                valid = True
+                seen: set[tuple[int, int]] = set()
+                for i in range(5):
+                    cell = self.step_from(x, y, dx, dy, offset + i)
+                    if cell is None or cell in seen:
+                        valid = False
+                        break
+                    seen.add(cell)
+                    cells.append(cell)
+                if not valid:
                     continue
                 if any(self.grid[cx, cy] in (WHITE, OBSTACLE)
                        for cx, cy in cells):
@@ -544,10 +574,18 @@ class HybridBoard:
         for dx, dy in DIRECTIONS:
             for x in range(self.size):
                 for y in range(self.size):
-                    end_x, end_y = x + 4 * dx, y + 4 * dy
-                    if not self.in_bounds(end_x, end_y):
+                    cells: list[tuple[int, int]] = []
+                    valid = True
+                    seen: set[tuple[int, int]] = set()
+                    for i in range(5):
+                        cell = self.step_from(x, y, dx, dy, i)
+                        if cell is None or cell in seen:
+                            valid = False
+                            break
+                        seen.add(cell)
+                        cells.append(cell)
+                    if not valid:
                         continue
-                    cells = [(x + i * dx, y + i * dy) for i in range(5)]
                     if any(self.grid[cx, cy] in (WHITE, OBSTACLE)
                            for cx, cy in cells):
                         continue
