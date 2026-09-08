@@ -98,6 +98,20 @@ def b_limit_for_threat(threat_type: str) -> int:
     return 6 - THREAT_N.get(threat_type, 5)
 
 
+# Cross-instance memoisation: the AI search creates many board copies of the
+# same position, and these two computations dominate the search cost.
+_HOLLOW_CACHE: dict = {}
+_CANDIDATE_CACHE: dict = {}
+_CACHE_LIMIT = 20000
+
+
+def _board_state_key(board):
+    return (board.size, bool(board.torus),
+            bool(board._forbid_overline), bool(board._forbid_44),
+            bool(board._forbid_33), bool(board._update_forbidden_blue),
+            board.grid.tobytes())
+
+
 class HybridBoard:
     def __init__(self, size: int = 15):
         self.size = int(size)
