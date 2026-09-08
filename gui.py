@@ -1539,13 +1539,10 @@ class GameGUI:
             self._apply_replay_black_move(move)
             return
 
-        # The player chose a move outside the searched replies.  Report the
-        # table miss, then follow the fallback order: first a solid circle,
-        # then a triangle; only if neither exists is the replay reported as
-        # an error (no more AI-search fallback).
-        self._restore_main_window()
-        messagebox.showwarning("复盘查表失败", "未找到对应应手，按实心圆/三角形顺序落子。")
-
+        # The player chose a move outside the searched replies.  No error is
+        # shown while Black still has a solid circle or a triangle: follow
+        # the fallback order (solid circle first, then triangle).  Only when
+        # neither exists is the replay reported as failed.
         threats = self.board.compute_threats()
         five = ai_search._five_points(threats)
         if five:
