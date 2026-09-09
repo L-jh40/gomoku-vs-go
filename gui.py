@@ -147,6 +147,12 @@ class GameGUI:
         self.info.pack(side=tk.RIGHT, fill=tk.Y, padx=6, pady=4)
 
         self.status_var = tk.StringVar(value="黑棋先行")
+        # Fallback readout when the header cannot fit above the board: the
+        # times/captures are shown beside the board in the side panel.
+        self.stats_var = tk.StringVar(value="")
+        self.stats_label = tk.Label(self.info, textvariable=self.stats_var,
+                                    font=("Arial", 9), fg="#4a3300",
+                                    justify=tk.LEFT)
         tk.Label(self.info, textvariable=self.status_var,
                  font=("Arial", 20, "bold")).pack(pady=(4, 1))
 
@@ -208,6 +214,19 @@ class GameGUI:
                        variable=self.style_cell_var,
                        command=self._on_style_cell).pack(side=tk.LEFT,
                                                          padx=(6, 0))
+
+        # Mirrored hint ring (torus display only): on/off and 2 or 4 cells.
+        hint_row = tk.Frame(self.info)
+        hint_row.pack(fill=tk.X, pady=1)
+        tk.Checkbutton(hint_row, text="环面提示",
+                       variable=self.torus_hint_var,
+                       command=self._on_torus_hint_change).pack(side=tk.LEFT)
+        tk.Radiobutton(hint_row, text="2格",
+                       variable=self.torus_hint_width_var, value=2,
+                       command=self._on_torus_hint_change).pack(side=tk.LEFT)
+        tk.Radiobutton(hint_row, text="4格",
+                       variable=self.torus_hint_width_var, value=4,
+                       command=self._on_torus_hint_change).pack(side=tk.LEFT)
 
         self.depth_var = tk.StringVar(value="2")
         frame = tk.Frame(self.info)
@@ -503,6 +522,8 @@ class GameGUI:
         if getattr(self, "canvas", None) is None:
             return
         self.canvas.delete("topband")
+        if self.header_in_panel:
+            return
         extent = self._grid_extent()
         ox = self.origin_x
         reg, bold, linespace = self._band_fonts()
@@ -2028,11 +2049,12 @@ class GameGUI:
         In torus mode the shown grid is n + 4, so the canvas grows with the
         two wrapped rows/columns on every side.
         """
+        self._fit_cell()
         new_size = self._display_size() * self.cell + 2 * MARGIN
-        if new_size == self.canvas_size and \
-                getattr(self, "_canvas_torus", None) == self.board.torus:
+        key = (new_size, self.cell, self._torus_pad(), bool(self.board.torus))
+        if key == self._canvas_key:
             return
-        self._canvas_torus = self.board.torus
+        self._canvas_key = key
         self.canvas_size = new_size
         self.canvas_height = new_size + self._band_height()
         self.canvas.configure(width=new_size, height=self.canvas_height)
