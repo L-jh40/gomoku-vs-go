@@ -677,35 +677,117 @@ class GameGUI:
     def _on_canvas_resize(self, _event=None):
         self.draw_board()
 
+    def _draw_extension_background(self, dn):
+        """Fade the mirrored ring background towards white."""
+        if not self.board.torus:
+            return
+        h = CELL / 2
+        for i in range(dn):
+            for j in range(dn):
+                if self._in_actual_region(i, j):
+                    continue
+                ring = self._ring_distance(i, j)
+                ratio = min(0.72, 0.28 + 0.22 * (ring - 1))
+                color = self._mix_colors(self.board_bg, "#ffffff", 1 - ratio)
+                cx, cy = self._display_center(i, j)
+                self.canvas.create_rectangle(cx - h, cy - h, cx + h, cy + h,
+                                             fill=color, outline="")
+
+    def _grid_line_colour(self, ring):
+        if ring <= 0:
+            return self.line_color
+        ratio = min(0.85, 0.50 + 0.18 * (ring - 1))
+        return self._mix_colors(self._to_hex(self.line_color), "#ffffff",
+                                ratio)
+
+    def _draw_grid(self, dn, ox, oy):
+        if not self.board.torus:
+            if self.board_style == "cell":
+                end = dn * CELL
+                for i in range(dn + 1):
+                    p = i * CELL
+                    self.canvas.create_line(ox + p, oy, ox + p, oy + end,
+                                            fill=self.line_color)
+                    self.canvas.create_line(ox, oy + p, ox + end, oy + p,
+                                            fill=self.line_color)
+            else:
+                end = (dn - 1) * CELL
+                for i in range(dn):
+                    p = i * CELL
+                    self.canvas.create_line(ox + p, oy, ox + p, oy + end,
+                                            fill=self.line_color)
+                    self.canvas.create_line(ox, oy + p, ox + end, oy + p,
+                                            fill=self.line_color)
+            return
+        if self.board_style == "cell":
+            for i in range(dn + 1):
+                x = ox + i * CELL
+                for j in range(dn):
+                    ring = self._segment_ring(i, j)
+                    y1 = oy + j * CELL
+                    self.canvas.create_line(x, y1, x, y1 + CELL,
+                                            fill=self._grid_line_colour(ring))
+            for j in range(dn + 1):
+                y = oy + j * CELL
+                for i in range(dn):
+                    ring = self._segment_ring(j, i)
+                    x1 = ox + i * CELL
+                    self.canvas.create_line(x1, y, x1 + CELL, y,
+                                            fill=self._grid_line_colour(ring))
+        else:
+            for i in range(dn):
+                x = ox + i * CELL
+                for j in range(dn - 1):
+                    ring = self._segment_ring(i, j)
+                    y1 = oy + j * CELL
+                    self.canvas.create_line(x, y1, x, y1 + CELL,
+                                            fill=self._grid_line_colour(ring))
+            for j in range(dn):
+                y = oy + j * CELL
+                for i in range(dn - 1):
+                    ring = self._segment_ring(j, i)
+                    x1 = ox + i * CELL
+                    self.canvas.create_line(x1, y, x1 + CELL, y,
+                                            fill=self._grid_line_colour(ring))
+
+    def _draw_board_frame(self, dn, ox, oy):
+        """Mirror-like white frame around the real board."""
+        if not self.board.torus:
+            return
+        off = self._display_offset()
+        n = self.size
+        if self.board_style == "cell":
+            left = ox + off * CELL
+            top = oy + off * CELL
+            right = ox + (off + n) * CELL
+            bottom = oy + (off + n) * CELL
+        else:
+            left = ox + (off - 0.5) * CELL
+            top = oy + (off - 0.5) * CELL
+            right = ox + (off + n - 0.5) * CELL
+            bottom = oy + (off + n - 0.5) * CELL
+        self.canvas.create_rectangle(left, top, right, bottom,
+                                     outline="#f2f2f2", width=3)
+        self.canvas.create_rectangle(left - 2, top - 2, right + 2, bottom + 2,
+                                     outline="#cfcfcf", width=2)
     def draw_board(self, with_hints=True):
         self.canvas.delete("all")
         self.canvas.configure(bg=self.board_bg)
         self._update_origin()
         dn = self._display_size()
         ox, oy = self.origin_x, self.origin_y
-        if self.board_style == "cell":
-            # Stones sit inside cells: draw (dn + 1) lines per direction.
-            end = dn * CELL
-            for i in range(dn + 1):
-                p = i * CELL
-                self.canvas.create_line(ox + p, oy, ox + p, oy + end,
-                                        fill=self.line_color)
-                self.canvas.create_line(ox, oy + p, ox + end, oy + p,
-                                        fill=self.line_color)
-        else:
-            end = (dn - 1) * CELL
-            for i in range(dn):
-                p = i * CELL
-                self.canvas.create_line(ox + p, oy, ox + p, oy + end,
-                                        fill=self.line_color)
-                self.canvas.create_line(ox, oy + p, ox + end, oy + p,
-                                        fill=self.line_color)
+        self._draw_extension_background(dn)
+        self._draw_grid(dn, ox, oy)
+        self._draw_board_frame(dn, ox, oy)
 
         for sx, sy in STAR_POINTS.get(self.size, []):
             for dx, dy in self._display_copies(sx, sy):
                 cx, cy = self._display_center(dx, dy)
+                fill = self.star_color
+                if not self._in_actual_region(dx, dy):
+                    fill = self._fake_mix(fill)
                 self.canvas.create_oval(
-                    cx - 3, cy - 3, cx + 3, cy + 3, fill=self.star_color
+                    cx - 3, cy - 3, cx + 3, cy + 3, fill=fill
                 )
 
         # Obstacles: dark-yellow filled cells (walls).  Drawn after the grid
@@ -714,10 +796,12 @@ class GameGUI:
         for x, y in self.board.obstacle_positions():
             for dx, dy in self._display_copies(x, y):
                 cx, cy = self._display_center(dx, dy)
+                color = self.obstacle_color
+                if not self._in_actual_region(dx, dy):
+                    color = self._fake_mix(color)
                 self.canvas.create_rectangle(cx - half, cy - half,
                                              cx + half, cy + half,
-                                             fill=self.obstacle_color,
-                                             outline=self.obstacle_color)
+                                             fill=color, outline=color)
 
         move_numbers = {}
         if self.show_moves_var.get():
@@ -737,8 +821,11 @@ class GameGUI:
                 else CELL // 2 - 2
             for dx, dy in self._display_copies(lx, ly):
                 cx, cy = self._display_center(dx, dy)
+                color = "red"
+                if not self._in_actual_region(dx, dy):
+                    color = self._fake_mix("red")
                 self.canvas.create_oval(cx - r, cy - r, cx + r, cy + r,
-                                        outline="red", width=2)
+                                        outline=color, width=2)
 
         # Drop-position preview is drawn under the hint overlays so the
         # red/blue/green markers stay fully readable on top of it.
@@ -755,29 +842,43 @@ class GameGUI:
         fill = "black" if color == BLACK else "white"
         for dx, dy in self._display_copies(x, y):
             cx, cy = self._display_center(dx, dy)
+            fake = not self._in_actual_region(dx, dy)
+            stone_fill = self._fake_mix(fill) if fake else fill
+            outline = self._fake_mix(self.line_color) if fake \
+                else self.line_color
             self.canvas.create_oval(cx - r, cy - r, cx + r, cy + r,
-                                    fill=fill, outline=self.line_color)
+                                    fill=stone_fill, outline=outline)
             if dead_black:
                 s = 6
+                dead_fill = self._fake_mix("gray") if fake else "gray"
+                dead_outline = self._fake_mix("darkgray") if fake \
+                    else "darkgray"
                 self.canvas.create_rectangle(cx - s, cy - s, cx + s, cy + s,
-                                             fill="gray", outline="darkgray")
+                                             fill=dead_fill, outline=dead_outline)
             if move_num is not None:
                 text_color = "white" if color == BLACK else "black"
+                if fake:
+                    text_color = self._fake_mix(text_color)
                 self.canvas.create_text(cx, cy, text=str(move_num),
                                         fill=text_color,
                                         font=("Arial", 8, "bold"))
 
     def draw_hints(self, dead):
+        def paint(color, fake):
+            return self._fake_mix(color) if fake else color
+
         # White territory: grey square on the upper layer.
         for x, y in dead:
             if self.board.grid[x, y] != EMPTY:
                 continue
             for dx, dy in self._display_copies(x, y):
                 cx, cy = self._display_center(dx, dy)
+                fake = not self._in_actual_region(dx, dy)
                 s = 6
-                self.canvas.create_rectangle(cx - s, cy - s, cx + s, cy + s,
-                                             fill="white", outline="gray",
-                                             stipple="gray50")
+                self.canvas.create_rectangle(
+                    cx - s, cy - s, cx + s, cy + s,
+                    fill=paint("white", fake), outline=paint("gray", fake),
+                    stipple="gray50")
 
         # Blue crosses: forbidden / no-liberty points (cached).
         blue_crosses = self.board.get_blue_cross_positions()
@@ -786,11 +887,13 @@ class GameGUI:
                 continue
             for dx, dy in self._display_copies(x, y):
                 cx, cy = self._display_center(dx, dy)
+                fake = not self._in_actual_region(dx, dy)
+                color = paint("blue", fake)
                 r = 6
                 self.canvas.create_line(cx - r, cy - r, cx + r, cy + r,
-                                        fill="blue", width=2)
+                                        fill=color, width=2)
                 self.canvas.create_line(cx - r, cy + r, cx + r, cy - r,
-                                        fill="blue", width=2)
+                                        fill=color, width=2)
 
         # Candidate squares are below red markers.
         self._draw_candidate_squares()
@@ -804,33 +907,36 @@ class GameGUI:
                       and self.board.is_hollow_triangle((x, y), threat))
             for dx, dy in self._display_copies(x, y):
                 cx, cy = self._display_center(dx, dy)
+                fake = not self._in_actual_region(dx, dy)
+                red = paint("red", fake)
+                dark = paint("darkred", fake)
                 if threat == "five_point":
                     r = 8
                     self.canvas.create_oval(cx - r, cy - r, cx + r, cy + r,
-                                            fill="red", outline="darkred")
+                                            fill=red, outline=dark)
                 elif threat in ("four_three", "open_four"):
                     r = 8
                     if hollow:
                         self.canvas.create_polygon(
                             cx, cy - r, cx - r, cy + r, cx + r, cy + r,
-                            outline="red", width=2, fill=""
+                            outline=red, width=2, fill=""
                         )
                     else:
                         self.canvas.create_polygon(
                             cx, cy - r, cx - r, cy + r, cx + r, cy + r,
-                            fill="red", outline="darkred"
+                            fill=red, outline=dark
                         )
                 elif threat in ("rush_four", "open_three"):
                     r = 8
                     self.canvas.create_oval(cx - r, cy - r, cx + r, cy + r,
-                                            outline="red", width=2)
+                                            outline=red, width=2)
                 elif threat in ("sleep_three", "open_two"):
                     r = 5
                     self.canvas.create_oval(cx - r, cy - r, cx + r, cy + r,
-                                            outline="red", width=2)
+                                            outline=red, width=2)
                 elif threat == "sleep_two":
                     self.canvas.create_oval(cx - 2, cy - 2, cx + 2, cy + 2,
-                                            fill="red", outline="red")
+                                            fill=red, outline=red)
 
     def _draw_candidate_squares(self):
         if not self.show_candidates_var.get():
@@ -841,9 +947,12 @@ class GameGUI:
                 continue
             for dx, dy in self._display_copies(x, y):
                 cx, cy = self._display_center(dx, dy)
+                color = "green"
+                if not self._in_actual_region(dx, dy):
+                    color = self._fake_mix(color)
                 self.canvas.create_rectangle(
                     cx - r, cy - r, cx + r, cy + r,
-                    outline="green", width=2
+                    outline=color, width=2
                 )
 
     def _get_candidate_display_positions(self):
@@ -922,7 +1031,13 @@ class GameGUI:
         if self.game_over or self.ai_thinking:
             return
         x, y = self.hover_point
-        di, dj = self.hover_display if self.hover_display else (x, y)
+        if self.board.torus:
+            # The ghost is shown on the real board cell, even when the mouse
+            # is over a mirrored copy in the ring.
+            off = self._display_offset()
+            di, dj = x + off, y + off
+        else:
+            di, dj = x, y
         cx, cy = self._display_center(di, dj)
         if self.board_style == "cell":
             half = CELL // 2

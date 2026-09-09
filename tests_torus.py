@@ -165,8 +165,9 @@ def test_gui_torus():
 
     # grid lines: point style draws one line per display index per direction
     lines = [i for i in g.canvas.find_all() if g.canvas.type(i) == "line"]
-    check("grid lines drawn for the whole extended grid",
-          len(lines) == 2 * g._display_size(), str(len(lines)))
+    dn = g._display_size()
+    check("grid drawn as ring-coloured segments over the extended grid",
+          len(lines) == 2 * dn * (dn - 1), str(len(lines)))
 
     # copies of an actual cell
     copies = g._display_copies(0, 0)
@@ -181,7 +182,8 @@ def test_gui_torus():
               if g.canvas.type(i) == "oval"
               and g.canvas.itemcget(i, "fill") == "black"
               and (g.canvas.bbox(i)[2] - g.canvas.bbox(i)[0]) > 8]
-    check("stone drawn once per wrapped copy", len(stones) == 4, str(len(stones)))
+    check("real stone drawn once (ring copies are faded)",
+          len(stones) == 1, str(len(stones)))
 
     # screen -> actual mapping through a wrapped copy
     disp = copies[-1]
@@ -208,6 +210,73 @@ def test_gui_torus():
     check("clicking a wrapped copy plays on the actual cell",
           g.board.grid[7, 7] == BLACK, str(g.board.grid[7, 7]))
 
+    # --- mirror / faded ring rendering ---
+    g.board.grid.fill(0)
+    g.board.grid[0, 0] = BLACK
+    g.board._invalidate_caches()
+    g.hover_point = None
+    g.draw_board()
+    bg = g.board_bg
+    fake_black = g._mix_colors("#000000", bg, 0.5)
+    def stone_ovals(fill):
+        out = []
+        for i in g.canvas.find_all():
+            if g.canvas.type(i) != "oval":
+                continue
+            if g.canvas.itemcget(i, "fill") != fill:
+                continue
+            x1, y1, x2, y2 = g.canvas.bbox(i)
+            if x2 - x1 > 8:
+                out.append(i)
+        return out
+    fake_stones = stone_ovals(fake_black)
+    real_stones = stone_ovals("black")
+    check("ring stones use 50% stone + 50% board background",
+          len(fake_stones) == 3 and len(real_stones) == 1,
+          f"fake={len(fake_stones)} real={len(real_stones)}")
+    line_colors = {g.canvas.itemcget(i, "fill")
+                   for i in g.canvas.find_all()
+                   if g.canvas.type(i) == "line"}
+    check("ring grid lines fade to white",
+          "black" in line_colors and len(line_colors) > 1,
+          str(sorted(line_colors)))
+    frames = [i for i in g.canvas.find_all()
+              if g.canvas.type(i) == "rectangle"
+              and g.canvas.itemcget(i, "outline") in ("#f2f2f2", "#cfcfcf")]
+    check("mirror frame drawn around the real board", len(frames) == 2,
+          str(len(frames)))
+    ext_fills = {g.canvas.itemcget(i, "fill")
+                 for i in g.canvas.find_all()
+                 if g.canvas.type(i) == "rectangle"
+                 and g.canvas.itemcget(i, "outline") == ""}
+    check("ring background fades towards white",
+          any(f and f != bg for f in ext_fills), str(sorted(ext_fills)))
+    # ghost appears on the real cell even when hovering a ring copy
+    g.board.grid[0, 0] = 0
+    g.board._invalidate_caches()
+    g.current = BLACK
+    g.game_over = False
+    g.ai_thinking = False
+    disp3 = g._display_copies(3, 3)[0]
+    cx3, cy3 = g._display_center(*disp3)
+    g._on_mouse_move(types.SimpleNamespace(x=int(cx3), y=int(cy3)))
+    g.draw_board()
+    ghost_fill = g._mix_colors("#000000", bg, 0.25)
+    off = g._display_offset()
+    gx, gy = g._display_center(3 + off, 3 + off)
+    ghosts = []
+    for i in g.canvas.find_all():
+        if g.canvas.type(i) != "oval":
+            continue
+        if g.canvas.itemcget(i, "fill") != ghost_fill:
+            continue
+        x1, y1, x2, y2 = g.canvas.bbox(i)
+        if abs((x1 + x2) / 2 - gx) <= 2 and abs((y1 + y2) / 2 - gy) <= 2:
+            ghosts.append(i)
+    check("ghost shown on the real cell for ring hover", len(ghosts) == 1,
+          str(len(ghosts)))
+    check("board model stays n x n (AI never sees the ring)",
+          g.board.grid.shape == (g.size, g.size), str(g.board.grid.shape))
     # torus off: back to n grid and n canvas
     g.torus_mode_var.set(0)
     g.new_game()
