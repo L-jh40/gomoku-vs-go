@@ -686,9 +686,8 @@ class GameGUI:
             for j in range(dn):
                 if self._in_actual_region(i, j):
                     continue
-                ring = self._ring_distance(i, j)
-                ratio = min(0.72, 0.28 + 0.22 * (ring - 1))
-                color = self._mix_colors(self.board_bg, "#ffffff", 1 - ratio)
+                # No gradient: every wrapped ring uses the first-ring tint.
+                color = self._mix_colors(self.board_bg, "#ffffff", 0.72)
                 cx, cy = self._display_center(i, j)
                 self.canvas.create_rectangle(cx - h, cy - h, cx + h, cy + h,
                                              fill=color, outline="")
@@ -696,9 +695,8 @@ class GameGUI:
     def _grid_line_colour(self, ring):
         if ring <= 0:
             return self.line_color
-        ratio = min(0.85, 0.50 + 0.18 * (ring - 1))
-        return self._mix_colors(self._to_hex(self.line_color), "#ffffff",
-                                ratio)
+        # Uniform 50% white for every wrapped ring (no gradient).
+        return self._mix_colors(self._to_hex(self.line_color), "#ffffff", 0.5)
 
     def _draw_grid(self, dn, ox, oy):
         if not self.board.torus:
@@ -768,8 +766,6 @@ class GameGUI:
             bottom = oy + (off + n - 0.5) * CELL
         self.canvas.create_rectangle(left, top, right, bottom,
                                      outline="#f2f2f2", width=3)
-        self.canvas.create_rectangle(left - 2, top - 2, right + 2, bottom + 2,
-                                     outline="#cfcfcf", width=2)
     def draw_board(self, with_hints=True):
         self.canvas.delete("all")
         self.canvas.configure(bg=self.board_bg)
