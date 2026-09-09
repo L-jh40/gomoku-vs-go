@@ -589,6 +589,64 @@ class GameGUI:
         off = self._display_offset()
         return (i - off) % n, (j - off) % n
 
+    @staticmethod
+    def _to_hex(color):
+        """Hex form of the few named colours used for mixing."""
+        named = {
+            "black": "#000000", "white": "#ffffff", "red": "#ff0000",
+            "blue": "#0000ff", "green": "#00a000", "gray": "#808080",
+            "darkred": "#8b0000", "darkgray": "#a9a9a9",
+        }
+        return named.get(color, color)
+
+    def _in_actual_region(self, i, j):
+        """Is display index (i, j) part of the real n x n board?"""
+        if not self.board.torus:
+            return True
+        off = self._display_offset()
+        n = self.size
+        return off <= i < off + n and off <= j < off + n
+
+    def _ring_distance(self, i, j):
+        """0 inside the real board, 1, 2, ... for each wrapped ring."""
+        if not self.board.torus:
+            return 0
+        off = self._display_offset()
+        n = self.size
+
+        def dist(v):
+            if v < off:
+                return off - v
+            if v > off + n - 1:
+                return v - (off + n - 1)
+            return 0
+
+        return max(dist(i), dist(j))
+
+    def _segment_ring(self, fixed, along):
+        """Ring of a grid-line segment: fixed is the line index, along the
+        index of the segment running along it."""
+        if not self.board.torus:
+            return 0
+        off = self._display_offset()
+        n = self.size
+        cell_style = self.board_style == "cell"
+        line_hi = off + n if cell_style else off + n - 1
+        seg_lo, seg_hi = off, off + n - 1
+
+        def dist(v, lo, hi):
+            if v < lo:
+                return lo - v
+            if v > hi:
+                return v - hi
+            return 0
+
+        return max(dist(fixed, off, line_hi), dist(along, seg_lo, seg_hi))
+
+    def _fake_mix(self, color, ratio=0.5):
+        """Faded colour used for everything drawn in the mirrored ring."""
+        return self._mix_colors(self._to_hex(color), self.board_bg, ratio)
+
     def _grid_extent(self):
         """Pixel span of the playing area for the current board style."""
         n = self._display_size()
