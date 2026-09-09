@@ -125,7 +125,7 @@ class GameGUI:
         # inside the yellow area below the header readout strip
         # (origin_x / origin_y).  Width is based on the cell extent plus the
         # side margins; the extra header height is reserved above the grid.
-        self.canvas_size = board_size * CELL + 2 * MARGIN
+        self.canvas_size = board_size * self.cell + 2 * MARGIN
         self.canvas_height = self.canvas_size + self._band_height()
         self.origin_x = MARGIN
         self.origin_y = MARGIN + self._band_height()
@@ -562,9 +562,9 @@ class GameGUI:
     def _display_center(self, dx, dy):
         """Canvas coords of display-grid index (dx, dy)."""
         if self.board_style == "cell":
-            return (self.origin_x + (dy + 0.5) * CELL,
-                    self.origin_y + (dx + 0.5) * CELL)
-        return (self.origin_x + dy * CELL, self.origin_y + dx * CELL)
+            return (self.origin_x + (dy + 0.5) * self.cell,
+                    self.origin_y + (dx + 0.5) * self.cell)
+        return (self.origin_x + dy * self.cell, self.origin_y + dx * self.cell)
 
     def _display_copies(self, x, y):
         """Every display index that shows actual cell (x, y)."""
@@ -651,8 +651,8 @@ class GameGUI:
         """Pixel span of the playing area for the current board style."""
         n = self._display_size()
         if self.board_style == "cell":
-            return n * CELL
-        return (n - 1) * CELL
+            return n * self.cell
+        return (n - 1) * self.cell
 
     def _update_origin(self):
         """Place the grid directly under the header strip (the header's last
@@ -670,9 +670,9 @@ class GameGUI:
         """Canvas coords of logical point (x, y): an intersection, or the
         center of the matching cell in cell style."""
         if self.board_style == "cell":
-            return (self.origin_x + (y + 0.5) * CELL,
-                    self.origin_y + (x + 0.5) * CELL)
-        return (self.origin_x + y * CELL, self.origin_y + x * CELL)
+            return (self.origin_x + (y + 0.5) * self.cell,
+                    self.origin_y + (x + 0.5) * self.cell)
+        return (self.origin_x + y * self.cell, self.origin_y + x * self.cell)
 
     def _on_canvas_resize(self, _event=None):
         self.draw_board()
@@ -681,7 +681,7 @@ class GameGUI:
         """Fade the mirrored ring background towards white."""
         if not self.board.torus:
             return
-        h = CELL / 2
+        h = self.cell / 2
         for i in range(dn):
             for j in range(dn):
                 if self._in_actual_region(i, j):
@@ -701,17 +701,17 @@ class GameGUI:
     def _draw_grid(self, dn, ox, oy):
         if not self.board.torus:
             if self.board_style == "cell":
-                end = dn * CELL
+                end = dn * self.cell
                 for i in range(dn + 1):
-                    p = i * CELL
+                    p = i * self.cell
                     self.canvas.create_line(ox + p, oy, ox + p, oy + end,
                                             fill=self.line_color)
                     self.canvas.create_line(ox, oy + p, ox + end, oy + p,
                                             fill=self.line_color)
             else:
-                end = (dn - 1) * CELL
+                end = (dn - 1) * self.cell
                 for i in range(dn):
-                    p = i * CELL
+                    p = i * self.cell
                     self.canvas.create_line(ox + p, oy, ox + p, oy + end,
                                             fill=self.line_color)
                     self.canvas.create_line(ox, oy + p, ox + end, oy + p,
@@ -719,33 +719,33 @@ class GameGUI:
             return
         if self.board_style == "cell":
             for i in range(dn + 1):
-                x = ox + i * CELL
+                x = ox + i * self.cell
                 for j in range(dn):
                     ring = self._segment_ring(i, j)
-                    y1 = oy + j * CELL
-                    self.canvas.create_line(x, y1, x, y1 + CELL,
+                    y1 = oy + j * self.cell
+                    self.canvas.create_line(x, y1, x, y1 + self.cell,
                                             fill=self._grid_line_colour(ring))
             for j in range(dn + 1):
-                y = oy + j * CELL
+                y = oy + j * self.cell
                 for i in range(dn):
                     ring = self._segment_ring(j, i)
-                    x1 = ox + i * CELL
-                    self.canvas.create_line(x1, y, x1 + CELL, y,
+                    x1 = ox + i * self.cell
+                    self.canvas.create_line(x1, y, x1 + self.cell, y,
                                             fill=self._grid_line_colour(ring))
         else:
             for i in range(dn):
-                x = ox + i * CELL
+                x = ox + i * self.cell
                 for j in range(dn - 1):
                     ring = self._segment_ring(i, j)
-                    y1 = oy + j * CELL
-                    self.canvas.create_line(x, y1, x, y1 + CELL,
+                    y1 = oy + j * self.cell
+                    self.canvas.create_line(x, y1, x, y1 + self.cell,
                                             fill=self._grid_line_colour(ring))
             for j in range(dn):
-                y = oy + j * CELL
+                y = oy + j * self.cell
                 for i in range(dn - 1):
                     ring = self._segment_ring(j, i)
-                    x1 = ox + i * CELL
-                    self.canvas.create_line(x1, y, x1 + CELL, y,
+                    x1 = ox + i * self.cell
+                    self.canvas.create_line(x1, y, x1 + self.cell, y,
                                             fill=self._grid_line_colour(ring))
 
     def _draw_board_frame(self, dn, ox, oy):
@@ -755,15 +755,15 @@ class GameGUI:
         off = self._display_offset()
         n = self.size
         if self.board_style == "cell":
-            left = ox + off * CELL
-            top = oy + off * CELL
-            right = ox + (off + n) * CELL
-            bottom = oy + (off + n) * CELL
+            left = ox + off * self.cell
+            top = oy + off * self.cell
+            right = ox + (off + n) * self.cell
+            bottom = oy + (off + n) * self.cell
         else:
-            left = ox + (off - 0.5) * CELL
-            top = oy + (off - 0.5) * CELL
-            right = ox + (off + n - 0.5) * CELL
-            bottom = oy + (off + n - 0.5) * CELL
+            left = ox + (off - 0.5) * self.cell
+            top = oy + (off - 0.5) * self.cell
+            right = ox + (off + n - 0.5) * self.cell
+            bottom = oy + (off + n - 0.5) * self.cell
         self.canvas.create_rectangle(left, top, right, bottom,
                                      outline="#f2f2f2", width=3)
     def draw_board(self, with_hints=True):
@@ -788,7 +788,7 @@ class GameGUI:
 
         # Obstacles: dark-yellow filled cells (walls).  Drawn after the grid
         # so the surrounding lines stay visible.
-        half = CELL // 2 - 2
+        half = self.cell // 2 - 2
         for x, y in self.board.obstacle_positions():
             for dx, dy in self._display_copies(x, y):
                 cx, cy = self._display_center(dx, dy)
@@ -814,7 +814,7 @@ class GameGUI:
         if self.last_move is not None and self.board.grid[self.last_move] != EMPTY:
             lx, ly = self.last_move
             r = 10 if self.replay_mode and (lx, ly) in self.replay_new_stones \
-                else CELL // 2 - 2
+                else self.cell // 2 - 2
             for dx, dy in self._display_copies(lx, ly):
                 cx, cy = self._display_center(dx, dy)
                 color = "red"
@@ -834,7 +834,7 @@ class GameGUI:
 
     def draw_stone(self, x, y, color, move_num=None, dead_black=False):
         r = 10 if self.replay_mode and (x, y) in self.replay_new_stones \
-            else CELL // 2 - 2
+            else self.cell // 2 - 2
         fill = "black" if color == BLACK else "white"
         for dx, dy in self._display_copies(x, y):
             cx, cy = self._display_center(dx, dy)
@@ -975,10 +975,10 @@ class GameGUI:
     def _screen_to_display(self, event):
         """Display-grid index under the mouse (may be outside the grid)."""
         if self.board_style == "cell":
-            return (int((event.y - self.origin_y) // CELL),
-                    int((event.x - self.origin_x) // CELL))
-        return (round((event.y - self.origin_y) / CELL),
-                round((event.x - self.origin_x) / CELL))
+            return (int((event.y - self.origin_y) // self.cell),
+                    int((event.x - self.origin_x) // self.cell))
+        return (round((event.y - self.origin_y) / self.cell),
+                round((event.x - self.origin_x) / self.cell))
 
     def _screen_to_point(self, event):
         i, j = self._screen_to_display(event)
@@ -1036,7 +1036,7 @@ class GameGUI:
             di, dj = x, y
         cx, cy = self._display_center(di, dj)
         if self.board_style == "cell":
-            half = CELL // 2
+            half = self.cell // 2
             self.canvas.create_rectangle(cx - half, cy - half,
                                          cx + half, cy + half,
                                          fill="#d8a63f", outline="",
@@ -1044,7 +1044,7 @@ class GameGUI:
         else:
             stone = "#000000" if self.current == BLACK else "#ffffff"
             ghost = self._mix_colors(stone, self.board_bg, 0.25)
-            r = CELL // 2 - 2
+            r = self.cell // 2 - 2
             if self.current == WHITE:
                 # light ghost fill needs a dark (black+75% bg) ring to be
                 # recognisable against the yellow board.
@@ -2018,7 +2018,7 @@ class GameGUI:
         In torus mode the shown grid is n + 4, so the canvas grows with the
         two wrapped rows/columns on every side.
         """
-        new_size = self._display_size() * CELL + 2 * MARGIN
+        new_size = self._display_size() * self.cell + 2 * MARGIN
         if new_size == self.canvas_size and \
                 getattr(self, "_canvas_torus", None) == self.board.torus:
             return
