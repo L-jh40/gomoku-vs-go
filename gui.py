@@ -162,6 +162,7 @@ class GameGUI:
         self.depth_label = tk.Label(self.info, text="", fg="green",
                                     font=("Arial", 9))
         self.depth_label.pack(pady=1)
+        self.stats_label.pack(pady=1)
 
         top_buttons = tk.Frame(self.info)
         top_buttons.pack(fill=tk.X, pady=1)
@@ -573,6 +574,20 @@ class GameGUI:
 
     def update_info(self):
         self._draw_top_band()
+        if self.header_in_panel:
+            cap = self.board.captured_count[WHITE]
+            cap_b = self.board.captured_count[BLACK]
+            eat = f"白吃黑 {cap}子"
+            if cap_b:
+                eat += f"，黑自吃 {cap_b}子"
+            self.stats_var.set(
+                f"黑棋时间\nAI | {self._display_clock(BLACK, True)}\n"
+                f"人类 | {self._display_clock(BLACK, False)}\n"
+                f"白棋时间\nAI | {self._display_clock(WHITE, True)}\n"
+                f"人类 | {self._display_clock(WHITE, False)}\n{eat}"
+            )
+        else:
+            self.stats_var.set("")
         if not self.game_over:
             turn = "● 黑棋" if self.current == BLACK else "○ 白棋"
             prefix = "复盘 " if self.replay_mode else ""
@@ -706,6 +721,10 @@ class GameGUI:
         return (self.origin_x + y * self.cell, self.origin_y + x * self.cell)
 
     def _on_canvas_resize(self, _event=None):
+        # Re-fit the board to the (possibly resized) window, then redraw.
+        if not getattr(self, "_fitting", False):
+            self._fit_cell()
+            self._apply_canvas_size()
         self.draw_board()
 
     def _draw_extension_background(self, dn):

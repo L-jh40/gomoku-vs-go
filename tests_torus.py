@@ -159,9 +159,11 @@ def test_gui_torus():
     check("board.torus set by new game", g.board.torus)
     check("display size = n + 4", g._display_size() == g.size + 4,
           f"{g._display_size()} vs {g.size}")
-    check("canvas size follows display grid",
-          g.canvas_size == g._display_size() * CELL + 2 * MARGIN,
+    check("canvas size follows display grid (dynamic cell)",
+          g.canvas_size == g._display_size() * g.cell + 2 * MARGIN,
           str(g.canvas_size))
+    check("cell size fitted into the window (<= base, >= 50%)",
+          15 <= g.cell <= CELL, str(g.cell))
 
     # grid lines: point style draws one line per display index per direction
     lines = [i for i in g.canvas.find_all() if g.canvas.type(i) == "line"]
@@ -283,8 +285,48 @@ def test_gui_torus():
     root.update()
     check("torus off restores normal display",
           (not g.board.torus and g._display_size() == g.size
-           and g.canvas_size == g.size * CELL + 2 * MARGIN),
+           and g.canvas_size == g.size * g.cell + 2 * MARGIN),
           f"{g._display_size()} {g.canvas_size}")
+
+    # --- hint ring switch: off / 4 cells / small-window fallback ---
+    g.torus_mode_var.set(1)
+    g.torus_hint_var.set(0)
+    g.new_game()
+    root.update()
+    check("hint off: no mirrored ring",
+          g._display_size() == g.size and g._torus_pad() == 0,
+          f"{g._display_size()} pad={g._torus_pad()}")
+    g.torus_hint_var.set(1)
+    g.torus_hint_width_var.set(4)
+    g.new_game()
+    root.update()
+    check("hint 4 cells: display n + 8",
+          g._display_size() == g.size + 8 and g._torus_pad() == 4,
+          f"{g._display_size()} pad={g._torus_pad()}")
+    ring_cells = [i for i in g.canvas.find_all()
+                  if g.canvas.type(i) == "rectangle"
+                  and g.canvas.itemcget(i, "outline") == ""
+                  and g.canvas.itemcget(i, "fill")
+                  == g._mix_colors(g.board_bg, "#ffffff", 0.72)]
+    check("4-cell ring fills all wrapped cells",
+          len(ring_cells) == (g.size + 8) ** 2 - g.size ** 2,
+          str(len(ring_cells)))
+
+    # small window: board shrinks to 50% and the readout moves to the panel
+    g._available_area = lambda: (150, 150)
+    g._fit_cell()
+    g._apply_canvas_size()
+    g.draw_board()
+    g.update_info()
+    root.update()
+    check("tiny window: cell shrinks to 50% floor", g.cell == 15, str(g.cell))
+    check("tiny window: readout moves beside the board",
+          g.header_in_panel and "黑棋时间" in g.stats_var.get()
+          and not [i for i in g.canvas.find_all()
+                   if "topband" in g.canvas.gettags(i)],
+          g.stats_var.get().replace(chr(10), " / "))
+    del g._available_area
+    g.torus_hint_width_var.set(2)
 
     root.destroy()
     fails = [x for x in ok if not x[1]]
