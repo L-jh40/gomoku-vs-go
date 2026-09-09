@@ -121,11 +121,21 @@ class GameGUI:
         self.board_style = "point"
         self.hover_point = None
         self.hover_display = None
+        # Layout state: cell size is dynamic (fitted to the window) and the
+        # torus hint ring can be 2 or 4 cells wide (or off).
+        self.cell = CELL
+        self.info_width = 300
+        self.torus_hint_var = tk.IntVar(value=1)
+        self.torus_hint_width_var = tk.IntVar(value=2)
+        self.header_in_panel = False
+        self._canvas_key = None
+        self._fitting = False
+        self._fit_cell()
         # Canvas large enough for either style; draw_board centers the grid
         # inside the yellow area below the header readout strip
         # (origin_x / origin_y).  Width is based on the cell extent plus the
         # side margins; the extra header height is reserved above the grid.
-        self.canvas_size = board_size * self.cell + 2 * MARGIN
+        self.canvas_size = self._display_size() * self.cell + 2 * MARGIN
         self.canvas_height = self.canvas_size + self._band_height()
         self.origin_x = MARGIN
         self.origin_y = MARGIN + self._band_height()
@@ -133,7 +143,7 @@ class GameGUI:
                                 height=self.canvas_height, bg=self.board_bg)
         self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        self.info = tk.Frame(root, width=300)
+        self.info = tk.Frame(root, width=self.info_width)
         self.info.pack(side=tk.RIGHT, fill=tk.Y, padx=6, pady=4)
 
         self.status_var = tk.StringVar(value="黑棋先行")
