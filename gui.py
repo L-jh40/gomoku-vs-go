@@ -488,7 +488,63 @@ class GameGUI:
         pts = HEADER_FONT_PT.get(self.size)
         if pts is None:  # safety fallback for any other size
             pts = 9 + (self.size - 9) * 11.0 / 10.0
-        return int(max(8, min(20, round(pts))))
+        pts = int(max(8, min(20, round(pts))))
+        # Fit the header into the vertical room left after the board.
+        room = self._header_room()
+        max_pts = int(max(8, (room - 8) / (4 * 1.55)))
+        return max(8, min(pts, max_pts))
+
+    def _available_area(self):
+        """Usable canvas area (pixels) for the board, from the window/screen."""
+        try:
+            win_w = self.root.winfo_width()
+            win_h = self.root.winfo_height()
+        except Exception:
+            win_w = win_h = 0
+        if win_w <= 1 or win_h <= 1:
+            avail_w = self.root.winfo_screenwidth() - self.info_width - 90
+            avail_h = self.root.winfo_screenheight() - 130
+        else:
+            avail_w = win_w - self.info_width - 40
+            avail_h = win_h - 90
+        avail_w = min(avail_w, self.root.winfo_screenwidth()
+                      - self.info_width - 90)
+        avail_h = min(avail_h, self.root.winfo_screenheight() - 130)
+        return max(120, avail_w), max(120, avail_h)
+
+    def _fit_cell(self):
+        """Scale the cell size so the whole board fits the window.
+
+        The board is shown completely first; the cell shrinks proportionally
+        but never below 50% of the base size (15px).
+        """
+        if getattr(self, "_fitting", False):
+            return
+        self._fitting = True
+        try:
+            dn = self._display_size()
+            avail_w, avail_h = self._available_area()
+            board_w = dn * CELL + 2 * MARGIN
+            board_h = dn * CELL + 2 * MARGIN
+            scale = min(1.0, avail_w / board_w, avail_h / (board_h + 12))
+            scale = max(0.5, scale)
+            self.cell = max(15, min(CELL, int(round(CELL * scale))))
+            room = avail_h - dn * self.cell - 2 * MARGIN
+            self.header_in_panel = room < 8 * 4 * 1.55
+        finally:
+            self._fitting = False
+
+    def _header_room(self):
+        """Vertical room left above the board for the header, in pixels."""
+        _w, avail_h = self._available_area()
+        dn = self._display_size()
+        return max(0, avail_h - dn * self.cell - 2 * MARGIN)
+
+    def _on_torus_hint_change(self):
+        self._fit_cell()
+        self._apply_canvas_size()
+        self.draw_board()
+        self.update_info()
 
     def _band_fonts(self):
         """(regular, bold, linespace) tk font objects for the current size.
@@ -596,14 +652,19 @@ class GameGUI:
     # ------------------------------------------------------------------
     # Drawing
     # ------------------------------------------------------------------
+    def _torus_pad(self):
+        """Width of the mirrored hint ring in cells (0, 2 or 4)."""
+        if not self.board.torus or not self.torus_hint_var.get():
+            return 0
+        return 4 if int(self.torus_hint_width_var.get()) >= 4 else 2
+
     def _display_size(self):
-        """Grid size shown on screen: n on a normal board, n + 4 on a torus
-        (2 wrapped rows/columns on every side)."""
-        return self.size + 4 if self.board.torus else self.size
+        """Grid size shown on screen: n plus the hint ring on both sides."""
+        return self.size + 2 * self._torus_pad()
 
     def _display_offset(self):
         """Display index offset of actual cell (0, 0)."""
-        return 2 if self.board.torus else 0
+        return self._torus_pad()
 
     def _display_center(self, dx, dy):
         """Canvas coords of display-grid index (dx, dy)."""
@@ -614,10 +675,10 @@ class GameGUI:
 
     def _display_copies(self, x, y):
         """Every display index that shows actual cell (x, y)."""
-        if not self.board.torus:
+        off = self._torus_pad()
+        if off == 0:
             return [(x, y)]
         n = self.size
-        off = self._display_offset()
         out = []
         for i in range(self._display_size()):
             if (i - off) % n != x % n:
@@ -647,17 +708,17 @@ class GameGUI:
 
     def _in_actual_region(self, i, j):
         """Is display index (i, j) part of the real n x n board?"""
-        if not self.board.torus:
+        off = self._torus_pad()
+        if off == 0:
             return True
-        off = self._display_offset()
         n = self.size
         return off <= i < off + n and off <= j < off + n
 
     def _ring_distance(self, i, j):
         """0 inside the real board, 1, 2, ... for each wrapped ring."""
-        if not self.board.torus:
+        off = self._torus_pad()
+        if off == 0:
             return 0
-        off = self._display_offset()
         n = self.size
 
         def dist(v):
@@ -672,9 +733,9 @@ class GameGUI:
     def _segment_ring(self, fixed, along):
         """Ring of a grid-line segment: fixed is the line index, along the
         index of the segment running along it."""
-        if not self.board.torus:
+        off = self._torus_pad()
+        if off == 0:
             return 0
-        off = self._display_offset()
         n = self.size
         cell_style = self.board_style == "cell"
         line_hi = off + n if cell_style else off + n - 1
@@ -728,8 +789,8 @@ class GameGUI:
         self.draw_board()
 
     def _draw_extension_background(self, dn):
-        """Fade the mirrored ring background towards white."""
-        if not self.board.torus:
+        """Tint every mirrored ring cell with one uniform colour."""
+        if self._torus_pad() == 0:
             return
         h = self.cell / 2
         for i in range(dn):
@@ -749,7 +810,7 @@ class GameGUI:
         return self._mix_colors(self._to_hex(self.line_color), "#ffffff", 0.5)
 
     def _draw_grid(self, dn, ox, oy):
-        if not self.board.torus:
+        if not self.board.torus or self._torus_pad() == 0:
             if self.board_style == "cell":
                 end = dn * self.cell
                 for i in range(dn + 1):
@@ -800,7 +861,7 @@ class GameGUI:
 
     def _draw_board_frame(self, dn, ox, oy):
         """Mirror-like white frame around the real board."""
-        if not self.board.torus:
+        if self._torus_pad() == 0:
             return
         off = self._display_offset()
         n = self.size
@@ -1033,10 +1094,12 @@ class GameGUI:
     def _screen_to_point(self, event):
         i, j = self._screen_to_display(event)
         dn = self._display_size()
-        if self.board.torus:
+        if self._torus_pad() > 0:
             if not (0 <= i < dn and 0 <= j < dn):
                 return None
             return self._display_to_actual(i, j)
+        if not (0 <= i < self.size and 0 <= j < self.size):
+            return None
         return (i, j)
 
     def _on_mouse_move(self, event):
@@ -1077,10 +1140,10 @@ class GameGUI:
         if self.game_over or self.ai_thinking:
             return
         x, y = self.hover_point
-        if self.board.torus:
+        off = self._torus_pad()
+        if off:
             # The ghost is shown on the real board cell, even when the mouse
             # is over a mirrored copy in the ring.
-            off = self._display_offset()
             di, dj = x + off, y + off
         else:
             di, dj = x, y

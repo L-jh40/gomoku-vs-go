@@ -244,9 +244,9 @@ def test_gui_torus():
           str(sorted(line_colors)))
     frames = [i for i in g.canvas.find_all()
               if g.canvas.type(i) == "rectangle"
-              and g.canvas.itemcget(i, "outline") in ("#f2f2f2", "#cfcfcf")]
-    check("mirror frame drawn around the real board", len(frames) == 2,
-          str(len(frames)))
+              and g.canvas.itemcget(i, "outline") == "#f2f2f2"]
+    check("single #f2f2f2 mirror frame around the real board",
+          len(frames) == 1, str(len(frames)))
     ext_fills = {g.canvas.itemcget(i, "fill")
                  for i in g.canvas.find_all()
                  if g.canvas.type(i) == "rectangle"
