@@ -294,7 +294,20 @@ def _three_sets(board, x: int, y: int, dx: int, dy: int, stack: set) -> set:
         empties = [c for c, v in zip(cells, values) if v == EMPTY]
         if len(empties) < 2:
             continue
-        for empty_cell in empties:
+        # Only a point directly next to the three's own stones can extend it
+        # (Rapfi stops at the first empty cell past its stones); a farther
+        # empty point cannot revive a blocked three.
+        adjacent = []
+        for cell in empties:
+            for sign in (-1, 1):
+                neighbour = board.step_from(cell[0], cell[1],
+                                            sign * dx, sign * dy)
+                if neighbour is not None and neighbour in black_set:
+                    adjacent.append(cell)
+                    break
+        if not adjacent:
+            continue
+        for empty_cell in adjacent:
             board.grid[empty_cell] = BLACK
             live = False
             try:
