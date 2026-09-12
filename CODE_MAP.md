@@ -16,6 +16,8 @@
 | `ai_black.py` | 黑棋 AI 对外接口 |
 | `ai_white.py` | 白棋 AI 对外接口 |
 | `ai_worker.py` | 常驻 AI 搜索工作进程（GUI 经多进程调度搜索，主窗口不卡） |
+| `board_tools.py` | 棋盘文本导出/解析与分析 CLI（威胁、蓝叉、禁手地图、AI 着法） |
+| `tests_torus.py` | 环面/禁手/GUI 自动化测试（`python tests_torus.py`） |
 | `tests_text.py` | text.md 局面的自动化测试 |
 | `AI_ALGORITHM.md` | 算法逻辑说明 |
 | `README.md` | 使用说明 |
@@ -71,7 +73,7 @@
 | `is_black_legal_move` | 黑棋合法/禁手判断：五连优先→长连→两四（四四）→两真活三（三三）→白棋吃子可消除的不算禁手；按棋盘状态缓存 |
 | `_windows_containing` | 枚举含该落点的 5 格线窗 |
 | `_four_sets` | 四的集合（4 子 + 1 空成五），去重：活四计 1，一线两侧两个冲四计 2（四四） |
-| `_three_sets` | 真活三集合：延伸点必须紧邻该三的子、可落（非真禁手/不被吃）且能形成四；一线两侧两个活三计 2（三三） |
+| `_three_sets` | 真活三集合：按 6 格窗匹配活三棋形（直 011100 / 跳 011010，眠三 10101 不算）；延伸点须紧邻该三、可落（非自吃/真禁手）且能形成四；一线两侧两个活三计 2（三三） |
 | `_count_foul_shapes` | 统计四数与真活三数 |
 | `_black_one_liberty_liberties` | 白棋一步可提的黑棋块（用于吃子阻挡判定） |
 | `find_all_threats` | 兼容接口 |

@@ -306,6 +306,20 @@ def test_gui_torus():
           str(sorted(g._display_copies(0, 0))[:2]))
     g._on_key(types.SimpleNamespace(keysym="Left", widget=None))
     g.display_shift = [0, 0]
+    # board export/import round-trip (the channel for reporting positions)
+    g.board.grid.fill(0)
+    g.board.grid[7, 7] = BLACK
+    g.board.grid[7, 8] = WHITE
+    g.board.grid[6, 6] = 3
+    g.board._invalidate_caches()
+    import board_tools
+    with open("board_dump_test.txt", "w", encoding="utf-8") as fh:
+        fh.write(g.export_board_text())
+    b_rt, _named = board_tools.load_board("board_dump_test.txt")
+    check("board export/import round-trips",
+          b_rt.grid.tobytes() == g.board.grid.tobytes()
+          and b_rt.size == g.size, str(b_rt.size))
+    os.remove("board_dump_test.txt")
     # torus off: back to n grid and n canvas
     g.torus_mode_var.set(0)
     g.new_game()
