@@ -222,7 +222,7 @@ def classify_position_after_move(board, x: int, y: int,
 
 
 # Legality cache for top-level queries.  The AI threat pre-filter calls this
-# function for many empty cells, so results are memoised by board state.
+# function for very many empty cells, so results are memoised by board state.
 _LEGAL_CACHE: dict = {}
 _LEGAL_CACHE_LIMIT = 200000
 
@@ -235,91 +235,87 @@ def _legal_cache_key(board, x: int, y: int):
             x, y, board.grid.tobytes())
 
 
-def _simple_foul(board, cx: int, cy: int) -> bool:
-    """Cheap combat test for a simulated Black stone at (cx, cy).
+def _extension_is_viable(board, ex: int, ey: int, dx: int, dy: int,
+                         stack: set) -> bool:
+    """Rapfi-style check for one open-three extension point.
 
-    Returns True when the placement is clearly not usable as a live-three
-    extension: self-capture, overline (when forbidden), a four-four foul, or
-    a group left with a single liberty (White captures it next, so the shape
-    disappears).  An exact five always wins, so it returns False.
-
-    This stays strictly one level deep: no three-three recursion, which is
-    what makes the old implementation slow.  The board is restored.
+    The point counts as a live-three extension when, with Black there, the
+    direction becomes a flexible four (or a five), the new group is not
+    immediately capturable by White (>= 2 liberties), and the point is not a
+    real forbidden point (a pseudo-forbidden point that is not actually
+    forbidden still counts, as in Rapfi).  Positions already on the search
+    stack are treated as legal so the recursion cannot loop.
     """
-    board.grid[cx, cy] = BLACK
+    board.grid[ex, ey] = BLACK
     try:
-        _stones, liberties = board.get_group(cx, cy)
-        if not liberties:
+        _stones, liberties = board.get_group(ex, ey)
+        threat = classify_direction_after_move(board, ex, ey, dx, dy)
+        if threat == "five":
             return True
-        run = board.black_run_length(cx, cy)
-        if run == 5:
+        if threat != "open_four":
             return False
-        if getattr(board, "_forbid_overline", True) and run >= 6:
-            return True
-        if len(liberties) == 1:
-            # White can capture this group at once: the shape is not durable.
-            return True
-        fours = 0
-        for dx, dy in DIRECTIONS:
-            threat = classify_direction_after_move(board, cx, cy, dx, dy)
-            if threat in ("open_four", "rush_four"):
-                fours += 1
-        if getattr(board, "_forbid_44", True) and fours >= 2:
-            return True
-        return False
+        if len(liberties) <= 1:
+            # White captures this group next, so the four is not durable.
+            return False
     finally:
-        board.grid[cx, cy] = EMPTY
+        board.grid[ex, ey] = EMPTY
+    if (ex, ey) in stack:
+        return True
+    ok, _ = is_black_legal_move(board, ex, ey, _stack=stack | {(ex, ey)})
+    return ok
 
 
-def _live_three(board, x: int, y: int, dx: int, dy: int) -> bool:
-    """Is the three formed at (x, y) in direction (dx, dy) a real open three?
+def _live_three(board, x: int, y: int, dx: int, dy: int,
+                stack: set) -> bool:
+    """Is the open three formed at (x, y) in direction (dx, dy) genuine?
 
-    It must be extendable into an open four by a move that is itself usable
-    (see _simple_foul).  Blocked threes (opponent stones, edges, forbidden
-    extensions, capturable extensions) therefore do not count towards a
-    three-three foul.  Exactly one level of combat checking is performed.
+    Exactly Rapfi's idea: look along the line for an empty point where Black
+    would make a flexible four; the search stops at the first opponent stone
+    or board edge on each side.  Blocked threes (opponent stones, edges,
+    forbidden extensions, capturable extensions) do not count.
     """
     for step in range(-4, 5):
         cx, cy = x + step * dx, y + step * dy
         if not board.in_bounds(cx, cy) or board.grid[cx, cy] != EMPTY:
             continue
-        if _simple_foul(board, cx, cy):
-            continue
-        board.grid[cx, cy] = BLACK
-        try:
-            threat = classify_direction_after_move(board, cx, cy, dx, dy)
-        finally:
-            board.grid[cx, cy] = EMPTY
-        if threat == "open_four":
+        if _extension_is_viable(board, cx, cy, dx, dy, stack):
             return True
     return False
 
 
-def is_black_legal_move(board, x: int, y: int):
+def is_black_legal_move(board, x: int, y: int, _stack: set | None = None):
     """Return (ok, foul_type).  The board is never mutated.
 
-    Renju fouls are judged by counting the shapes the move creates:
-      * an exact five always wins (checked first);
+    Ported from Rapfi's checkForbiddenPoint, then extended with this game's
+    capture rule:
+      * exact five wins immediately (checked first);
       * overline (6+) is a foul when enabled;
-      * two fours (open or rush) are a four-four foul.  No further foul
-        recursion is needed: five has priority and a four cannot be blocked
-        by another foul, only by White's capture rule;
-      * two REAL open threes are a three-three foul.  A three counts only
-        when it can be extended into an open four by a usable move; a three
-        blocked into a sleep three does not count.
+      * two fours (open or rush) are a four-four foul - no recursive foul
+        check is needed, since five has priority and only White's capture
+        can block a four;
+      * two genuine open threes are a three-three foul; a three counts only
+        when an extension point exists that makes a flexible four and is
+        itself playable (not a real foul, not immediately capturable);
+      * if the played group has a single liberty, White captures it at once,
+        so a shape that only exists through it is not a lasting foul.
     """
     if not board.in_bounds(x, y) or not board.is_empty(x, y):
         return False, "occupied"
 
-    cache_key = _legal_cache_key(board, x, y)
-    cached = _LEGAL_CACHE.get(cache_key)
-    if cached is not None:
-        return cached
+    top_level = _stack is None
+    stack = _stack or set()
+    cache_key = None
+    if top_level:
+        cache_key = _legal_cache_key(board, x, y)
+        cached = _LEGAL_CACHE.get(cache_key)
+        if cached is not None:
+            return cached
 
     def finish(result):
-        if len(_LEGAL_CACHE) > _LEGAL_CACHE_LIMIT:
-            _LEGAL_CACHE.clear()
-        _LEGAL_CACHE[cache_key] = result
+        if cache_key is not None:
+            if len(_LEGAL_CACHE) > _LEGAL_CACHE_LIMIT:
+                _LEGAL_CACHE.clear()
+            _LEGAL_CACHE[cache_key] = result
         return result
 
     board.grid[x, y] = BLACK
@@ -334,19 +330,34 @@ def is_black_legal_move(board, x: int, y: int):
         if getattr(board, "_forbid_overline", True) and run >= 6:
             return finish((False, "overline"))
 
-        four_count = 0
-        three_count = 0
-        for dx, dy in DIRECTIONS:
-            threat = classify_direction_after_move(board, x, y, dx, dy)
-            if threat in ("open_four", "rush_four"):
-                four_count += 1
-            elif threat == "open_three":
-                if _live_three(board, x, y, dx, dy):
-                    three_count += 1
+        # Capture-rule blocking: a single-liberty group is taken by White on
+        # the next move, so the shapes it forms cannot make a lasting foul.
+        if len(liberties) == 1:
+            return finish((True, None))
 
+        threats = [classify_direction_after_move(board, x, y, dx, dy)
+                   for dx, dy in DIRECTIONS]
+        four_count = sum(1 for t in threats
+                         if t in ("open_four", "rush_four"))
         if getattr(board, "_forbid_44", True) and four_count >= 2:
             return finish((False, "four_four"))
-        if getattr(board, "_forbid_33", True) and three_count >= 2:
+
+        if not getattr(board, "_forbid_33", True):
+            return finish((True, None))
+        open_three_dirs = [(dx, dy) for (dx, dy), t in zip(DIRECTIONS, threats)
+                           if t == "open_three"]
+        # Fast reject (Rapfi's pattern4 != FORBID shortcut): a single open
+        # three can never be a three-three foul.
+        if len(open_three_dirs) < 2:
+            return finish((True, None))
+
+        three_count = 0
+        for dx, dy in open_three_dirs:
+            if _live_three(board, x, y, dx, dy, stack):
+                three_count += 1
+                if three_count >= 2:
+                    break
+        if three_count >= 2:
             return finish((False, "three_three"))
         return finish((True, None))
     finally:
