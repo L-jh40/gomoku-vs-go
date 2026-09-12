@@ -922,9 +922,9 @@ class HybridBoard:
         for x, y in sorted(self.relevant_empty_positions()):
             if (x, y) in blue or (x, y) in dead:
                 continue  # territory and blue crosses are never red
-            ok, _ = rules.is_black_legal_move(self, x, y)
-            if not ok:
-                continue
+            # The blue-cross set already contains every cell where Black may
+            # not play (forbidden / self-capture), so no extra legality call
+            # is needed here - this used to dominate the redraw cost.
             self.grid[x, y] = BLACK
             try:
                 # No-liberty empty cells after this hypothetical move act as

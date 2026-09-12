@@ -125,6 +125,8 @@ class GameGUI:
         # Display-only shift of the wrapped board (row, col), moved by
         # W/A/S/D or the arrow keys; the Board itself never changes.
         self.display_shift = [0, 0]
+        # Cells of the last forbidden move (drawn in red by draw_board).
+        self.foul_lines = []
         # Layout state: cell size is dynamic (fitted to the window) and the
         # torus hint ring can be 2 or 4 cells wide (or off).
         self.cell = CELL
@@ -307,8 +309,7 @@ class GameGUI:
         self.canvas.bind("<Motion>", self._on_mouse_move)
         self.canvas.bind("<Leave>", self._on_mouse_leave)
         self.canvas.bind("<Configure>", self._on_canvas_resize)
-        self.root.bind("<KeyPress-z>", self._on_key)
-        self.root.bind("<KeyPress-x>", self._on_key)
+        self.root.bind("<Key>", self._on_key)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self.draw_board()
         self.update_mode_label()
@@ -984,7 +985,29 @@ class GameGUI:
             self.draw_hints(dead)
         elif self.show_candidates_var.get():
             self._draw_candidate_squares()
+        self._draw_foul_lines()
         self._draw_top_band()
+
+    def _draw_foul_lines(self):
+        """Highlight the line(s) that make the last move forbidden."""
+        if not self.foul_lines:
+            return
+        off = self._torus_pad()
+        for line in self.foul_lines:
+            if len(line) < 2:
+                continue
+            points = []
+            for cell in line:
+                disp = self._central_display(*cell) if off else cell
+                points.extend(self._display_center(*disp))
+            self.canvas.create_line(*points, fill="red", width=3)
+        for line in self.foul_lines:
+            for cell in line:
+                disp = self._central_display(*cell) if off else cell
+                cx, cy = self._display_center(*disp)
+                r = 3
+                self.canvas.create_oval(cx - r, cy - r, cx + r, cy + r,
+                                        outline="red", width=2)
 
     def draw_stone(self, x, y, color, move_num=None, dead_black=False):
         r = 10 if self.replay_mode and (x, y) in self.replay_new_stones \
@@ -1313,10 +1336,21 @@ class GameGUI:
         if was_human:
             self._record_human_move_time(BLACK)
         self._finish_turn_time(BLACK, not was_human)
-        ok, _ftype = rules.is_black_legal_move(self.board, x, y)
+        ok, ftype = rules.is_black_legal_move(self.board, x, y)
         if not ok:
-            messagebox.showinfo("禁手", "黑棋不能落在此处")
+            names = {"overline": "长连禁手", "four_four": "四四禁手",
+                     "three_three": "三三禁手",
+                     "self_capture": "自吃（无气）",
+                     "occupied": "位置已占"}
+            try:
+                self.foul_lines = rules.foul_lines(self.board, x, y, ftype)
+            except Exception:
+                self.foul_lines = []
+            self.draw_board()
+            messagebox.showinfo(
+                "禁手", f"{names.get(ftype, ftype)}：黑棋不能落在此处")
             return
+        self.foul_lines = []
         ok, _ = self.board.play_black(x, y)
         if not ok:
             messagebox.showinfo("落子失败", "黑棋不能落在此处")
@@ -1359,6 +1393,7 @@ class GameGUI:
         # move: recompute them explicitly before redrawing.
         self.board._invalidate_caches()
         self.board.get_blue_cross_positions()
+        self.foul_lines = []
         if self.check_white_win():
             return
         self.current = BLACK

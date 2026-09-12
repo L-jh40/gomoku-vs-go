@@ -320,6 +320,16 @@ def test_gui_torus():
           b_rt.grid.tobytes() == g.board.grid.tobytes()
           and b_rt.size == g.size, str(b_rt.size))
     os.remove("board_dump_test.txt")
+    # 'g' exports the current board as well
+    g.thinking_label.config(text="")
+    g._on_key(types.SimpleNamespace(keysym="g", widget=None))
+    check("G key exports the board",
+          "导出" in g.thinking_label.cget("text")
+          or os.path.exists("board_dump.txt"),
+          g.thinking_label.cget("text"))
+    if os.path.exists("board_dump.txt"):
+        os.remove("board_dump.txt")
+
     # torus off: back to n grid and n canvas
     g.torus_mode_var.set(0)
     g.new_game()
@@ -513,6 +523,30 @@ def test_forbidden():
         check(text + ": no spurious 33/44 fouls", not spurious,
               str(spurious[:4]))
 
+
+    # foul lines are reported for the GUI highlight
+    b11, c11 = load_line("0110A0110")
+    line_sets = rules.foul_lines(b11, c11[0], c11[1], "three_three")
+    check("three-three reports its lines", len(line_sets) >= 2
+          and all(len(ls) >= 3 for ls in line_sets), str(line_sets))
+    check("foul_lines restores the board", b11.grid[c11[0], c11[1]] == 0)
+
+    # incremental blue-cross cache matches a full recompute
+    b12 = HybridBoard(15)
+    b12.grid[7, 7] = BLACK
+    for cell in ((6, 7), (8, 7), (7, 5), (6, 6), (8, 6)):
+        b12.grid[cell] = WHITE
+    b12._invalidate_caches()
+    b12.get_blue_cross_positions()
+    b12.play_white(7, 8)
+    incremental = b12.get_blue_cross_positions()
+    fresh = b12.copy()
+    fresh._blue_cross_cache = None
+    full = fresh.get_blue_cross_positions()
+    check("incremental blue cache matches full recompute",
+          incremental == full, f"{sorted(incremental)} vs {sorted(full)}")
+    check("white move creates the self-capture blue cross",
+          (7, 6) in incremental, str(sorted(incremental)))
     assert all(cond for _name, cond in results)
 
 if __name__ == "__main__":

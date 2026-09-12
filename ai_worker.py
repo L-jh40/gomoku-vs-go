@@ -74,7 +74,12 @@ def _progress_sender(result_queue, epoch: int):
 def worker_main(job_queue, result_queue, epoch_ctl):
     """Run one search job at a time forever.  A None job stops the worker."""
     while True:
-        job = job_queue.get()
+        try:
+            job = job_queue.get()
+        except (KeyboardInterrupt, EOFError):
+            # Ctrl+C in the console / queue closed: exit quietly instead of
+            # dumping a traceback from the child process.
+            return
         if job is None:
             return
         try:

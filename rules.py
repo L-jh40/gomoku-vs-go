@@ -275,7 +275,8 @@ def _four_sets(board, x: int, y: int, dx: int, dy: int) -> set:
     return out
 
 
-def _three_sets(board, x: int, y: int, dx: int, dy: int, stack: set) -> set:
+def _three_sets(board, x: int, y: int, dx: int, dy: int, stack: set,
+                shallow: bool = False) -> set:
     """Distinct genuine open threes created by the Black stone at (x, y).
 
     A three is the 3-stone set of a window that can be extended by a usable
@@ -340,7 +341,8 @@ def _three_sets(board, x: int, y: int, dx: int, dy: int, stack: set) -> set:
                 board.grid[empty_cell] = EMPTY
             if not live:
                 continue
-            if not _simple_forbidden(board, empty_cell[0], empty_cell[1]):
+            if shallow or not _simple_forbidden(board, empty_cell[0],
+                                                empty_cell[1]):
                 out.add(black_set)
                 break
     return out
@@ -369,9 +371,19 @@ def _simple_forbidden(board, x: int, y: int) -> bool:
             return False
         fours = 0
         for dx, dy in DIRECTIONS:
-            if classify_direction_after_move(board, x, y, dx, dy) in                     ("open_four", "rush_four"):
+            if classify_direction_after_move(board, x, y, dx, dy) in \
+                    ("open_four", "rush_four"):
                 fours += 1
                 if fours >= 2:
+                    return True
+        if getattr(board, "_forbid_33", True):
+            # One bounded extra level: a point that is itself a three-three
+            # foul cannot serve as a live-three extension.
+            threes = 0
+            for dx, dy in DIRECTIONS:
+                threes += len(_three_sets(board, x, y, dx, dy, set(),
+                                          shallow=True))
+                if threes >= 2:
                     return True
         return False
     finally:
@@ -465,6 +477,92 @@ def is_black_legal_move(board, x: int, y: int, _stack: set | None = None):
         return finish((False, "three_three"))
     finally:
         board.grid[x, y] = EMPTY
+
+
+def _ordered_along(board, cells, dx, dy):
+    """Sort cells along direction (dx, dy) (used for drawing foul lines)."""
+    def project(cell):
+        return (cell[0] * dx + cell[1] * dy)
+    return sorted(cells, key=project)
+
+
+def _foul_lines_placed(board, x: int, y: int, foul_type: str):
+    """Foul cells for a Black stone already placed at (x, y)."""
+    lines = []
+    if foul_type == "overline":
+        for dx, dy in DIRECTIONS:
+            cells = [(x, y)]
+            for sign in (-1, 1):
+                step = 1
+                while True:
+                    cell = board.step_from(x, y, sign * dx, sign * dy, step)
+                    if cell is None or board.grid[cell] != BLACK:
+                        break
+                    cells.append(cell)
+                    step += 1
+            if len(cells) >= 6:
+                lines.append(_ordered_along(board, cells, dx, dy))
+    elif foul_type == "four_four":
+        for dx, dy in DIRECTIONS:
+            for four in _four_sets(board, x, y, dx, dy):
+                ordered = _ordered_along(board, list(four), dx, dy)
+                completion = None
+                for cell in board.positions_on_lines(x, y, 4):
+                    if board.grid[cell] != EMPTY:
+                        continue
+                    board.grid[cell] = BLACK
+                    try:
+                        if board.black_run_length(*cell) == 5:
+                            completion = cell
+                            break
+                    finally:
+                        board.grid[cell] = EMPTY
+                if completion is not None:
+                    ordered = _ordered_along(
+                        board, list(four) + [completion], dx, dy)
+                lines.append(ordered)
+    elif foul_type == "three_three":
+        for dx, dy in DIRECTIONS:
+            for three in _three_sets(board, x, y, dx, dy, set()):
+                ordered = _ordered_along(board, list(three), dx, dy)
+                for cell in board.positions_on_lines(x, y, 4):
+                    if board.grid[cell] != EMPTY:
+                        continue
+                    board.grid[cell] = BLACK
+                    try:
+                        grown = frozenset(
+                            c for c in board.positions_on_lines(x, y, 4)
+                            if board.grid[c] == BLACK)
+                        if three <= grown and                                 classify_direction_after_move(
+                                    board, cell[0], cell[1],
+                                    dx, dy) in ("open_four", "rush_four",
+                                                "five") and                                 not _simple_forbidden(board, *cell):
+                            ordered = _ordered_along(
+                                board, list(three) + [cell], dx, dy)
+                            break
+                    finally:
+                        board.grid[cell] = EMPTY
+                lines.append(ordered)
+    elif foul_type == "self_capture":
+        stones, liberties = board.get_group(x, y)
+        lines.append(sorted(stones) + sorted(liberties))
+    return lines
+
+
+def foul_lines(board, x: int, y: int, foul_type: str):
+    """Cells making up the foul at (x, y), for the GUI to draw.
+
+    The stone is placed temporarily so the shape helpers see the position
+    after the move (the board is restored before returning).
+    """
+    placed = board.is_empty(x, y)
+    if placed:
+        board.grid[x, y] = BLACK
+    try:
+        return _foul_lines_placed(board, x, y, foul_type)
+    finally:
+        if placed:
+            board.grid[x, y] = EMPTY
 
 
 def all_legal_black_moves(board) -> list[tuple[int, int]]:
