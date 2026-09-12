@@ -299,9 +299,10 @@ def _three_sets(board, x: int, y: int, dx: int, dy: int, stack: set) -> set:
             live = False
             try:
                 _stones, liberties = board.get_group(*empty_cell)
-                if len(liberties) > 1 and                         classify_direction_after_move(
+                if len(liberties) > 1 and \
+                        classify_direction_after_move(
                             board, empty_cell[0], empty_cell[1],
-                            dx, dy) == "open_four":
+                            dx, dy) in ("open_four", "rush_four", "five"):
                     grown = frozenset(c for c in cells
                                       if board.grid[c] == BLACK)
                     live = black_set <= grown
