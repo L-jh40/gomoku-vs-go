@@ -68,7 +68,8 @@
 | `match_line_threat` | 匹配活四/冲四/活三/眠三等 |
 | `classify_direction_after_move` | 单方向威胁判定 |
 | `classify_position_after_move` | 落子后的综合威胁类型 |
-| `is_black_legal_move` | 黑棋合法/禁手判断 |
+| `is_black_legal_move` | 黑棋合法/禁手判断；三三用实战检验（活三必须能合法延伸成活四，被自身禁手挡住的不算），带防递归栈与结果缓存 |
+| `_open_three_is_real` | 单个活三的实战检验（延伸点非法/本身是禁手则不算活三） |
 | `find_all_threats` | 兼容接口 |
 
 修改红色位置类型时：

@@ -334,7 +334,73 @@ def test_gui_torus():
     print("TOTAL:", len(ok), "FAILED:", len(fails))
     assert not fails
 
+
+
+def test_forbidden():
+    """Combat-based three-three / four-four judgement."""
+    from board import HybridBoard, BLACK
+    import rules
+    results = []
+
+    def check(name, cond, detail=""):
+        results.append((name, bool(cond)))
+        print(("PASS" if cond else "FAIL"), "-", name, detail)
+
+    # A forms two open threes (horizontal + vertical): three-three foul.
+    b = HybridBoard(15)
+    for cell in ((7, 5), (7, 6), (5, 7), (6, 7)):
+        b.grid[cell] = BLACK
+    b._invalidate_caches()
+    ok, ftype = rules.is_black_legal_move(b, 7, 7)
+    check("two open threes is a three-three foul",
+          (not ok) and ftype == "three_three", f"{ok} {ftype}")
+
+    # A forms two fours: four-four foul.
+    b2 = HybridBoard(15)
+    for cell in ((7, 4), (7, 5), (7, 6), (4, 7), (5, 7), (6, 7)):
+        b2.grid[cell] = BLACK
+    b2._invalidate_caches()
+    ok2, ftype2 = rules.is_black_legal_move(b2, 7, 7)
+    check("two fours is a four-four foul",
+          (not ok2) and ftype2 == "four_four", f"{ok2} {ftype2}")
+
+    # One of the two open threes cannot be extended legally (both of its
+    # extending points are four-four fouls), so it is not a real open
+    # three and the move is legal.
+    b3 = HybridBoard(15)
+    for cell in ((7, 5), (7, 6), (5, 7), (6, 7),
+                 (4, 4), (4, 5), (4, 6),
+                 (8, 4), (8, 5), (8, 6)):
+        b3.grid[cell] = BLACK
+    b3._invalidate_caches()
+    # With A already played, both vertical extensions become four-four
+    # fouls (they complete A's vertical four and a horizontal four).
+    b3a = b3.copy()
+    b3a.grid[7, 7] = BLACK
+    b3a._invalidate_caches()
+    e1, f1 = rules.is_black_legal_move(b3a, 4, 7)
+    e2, f2 = rules.is_black_legal_move(b3a, 8, 7)
+    check("blocked extensions are illegal (four-four)",
+          (not e1) and (not e2) and f1 == "four_four" and f2 == "four_four",
+          f"{e1}/{f1} {e2}/{f2}")
+    e3, f3 = rules.is_black_legal_move(b3a, 7, 4)
+    check("the other open three can still be extended legally", e3,
+          f"{e3} {f3}")
+    ok3, ftype3 = rules.is_black_legal_move(b3, 7, 7)
+    check("blocked open three does not cause a three-three foul",
+          ok3 and ftype3 is None, f"{ok3} {ftype3}")
+
+    # Recursive judgement must terminate (no infinite loop).
+    b4 = HybridBoard(15)
+    for cell in ((7, 5), (7, 6), (5, 7), (6, 7), (7, 8), (8, 7)):
+        b4.grid[cell] = BLACK
+    b4._invalidate_caches()
+    rules.is_black_legal_move(b4, 7, 7)
+    check("recursive foul judgement terminates", True)
+    assert all(cond for _name, cond in results)
+
 if __name__ == "__main__":
     test_rules_torus()
     test_gui_torus()
+    test_forbidden()
     print("All torus checks passed.")

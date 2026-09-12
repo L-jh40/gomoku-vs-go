@@ -495,21 +495,14 @@ class GameGUI:
         return max(8, min(pts, max_pts))
 
     def _available_area(self):
-        """Usable canvas area (pixels) for the board, from the window/screen."""
-        try:
-            win_w = self.root.winfo_width()
-            win_h = self.root.winfo_height()
-        except Exception:
-            win_w = win_h = 0
-        if win_w <= 1 or win_h <= 1:
-            avail_w = self.root.winfo_screenwidth() - self.info_width - 90
-            avail_h = self.root.winfo_screenheight() - 130
-        else:
-            avail_w = win_w - self.info_width - 40
-            avail_h = win_h - 90
-        avail_w = min(avail_w, self.root.winfo_screenwidth()
-                      - self.info_width - 90)
-        avail_h = min(avail_h, self.root.winfo_screenheight() - 130)
+        """Largest canvas area the screen can offer.
+
+        The board is never shrunk just because the current window is small:
+        the window is first grown to fit the content, and only when even the
+        whole screen is too small does the cell size shrink (down to 50%).
+        """
+        avail_w = self.root.winfo_screenwidth() - self.info_width - 90
+        avail_h = self.root.winfo_screenheight() - 130
         return max(120, avail_w), max(120, avail_h)
 
     def _fit_cell(self):
@@ -782,10 +775,8 @@ class GameGUI:
         return (self.origin_x + y * self.cell, self.origin_y + x * self.cell)
 
     def _on_canvas_resize(self, _event=None):
-        # Re-fit the board to the (possibly resized) window, then redraw.
-        if not getattr(self, "_fitting", False):
-            self._fit_cell()
-            self._apply_canvas_size()
+        # Only redraw: the cell size follows the screen, not the window, so a
+        # user resize never triggers a rescale or an oscillation.
         self.draw_board()
 
     def _draw_extension_background(self, dn):
