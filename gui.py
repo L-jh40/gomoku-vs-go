@@ -121,6 +121,9 @@ class GameGUI:
         self.board_style = "point"
         self.hover_point = None
         self.hover_display = None
+        # Display-only shift of the wrapped board (row, col), moved by
+        # W/A/S/D or the arrow keys; the Board itself never changes.
+        self.display_shift = [0, 0]
         # Layout state: cell size is dynamic (fitted to the window) and the
         # torus hint ring can be 2 or 4 cells wide (or off).
         self.cell = CELL
@@ -672,22 +675,31 @@ class GameGUI:
         if off == 0:
             return [(x, y)]
         n = self.size
+        shift_r, shift_c = self.display_shift
         out = []
         for i in range(self._display_size()):
-            if (i - off) % n != x % n:
+            if (i - off + shift_r) % n != x % n:
                 continue
             for j in range(self._display_size()):
-                if (j - off) % n == y % n:
+                if (j - off + shift_c) % n == y % n:
                     out.append((i, j))
         return out
 
     def _display_to_actual(self, i, j):
         """Actual board cell shown at display index (i, j)."""
-        if not self.board.torus:
+        off = self._torus_pad()
+        if off == 0:
             return i, j
         n = self.size
-        off = self._display_offset()
-        return (i - off) % n, (j - off) % n
+        shift_r, shift_c = self.display_shift
+        return ((i - off + shift_r) % n, (j - off + shift_c) % n)
+
+    def _central_display(self, x, y):
+        """Display index of the real-board copy of actual cell (x, y)."""
+        off = self._torus_pad()
+        n = self.size
+        shift_r, shift_c = self.display_shift
+        return ((x - shift_r) % n + off, (y - shift_c) % n + off)
 
     @staticmethod
     def _to_hex(color):
@@ -1131,11 +1143,10 @@ class GameGUI:
         if self.game_over or self.ai_thinking:
             return
         x, y = self.hover_point
-        off = self._torus_pad()
-        if off:
+        if self._torus_pad():
             # The ghost is shown on the real board cell, even when the mouse
             # is over a mirrored copy in the ring.
-            di, dj = x + off, y + off
+            di, dj = self._central_display(x, y)
         else:
             di, dj = x, y
         cx, cy = self._display_center(di, dj)
@@ -1176,9 +1187,23 @@ class GameGUI:
     def _on_key(self, event):
         if isinstance(event.widget, tk.Entry):
             return
-        if event.keysym.lower() == "z":
+        key = event.keysym.lower()
+        if self._torus_pad() and key in ("w", "a", "s", "d",
+                                         "up", "down", "left", "right"):
+            # Move the displayed (wrapped) board without changing the Board.
+            if key in ("w", "up"):
+                self.display_shift[0] += 1
+            elif key in ("s", "down"):
+                self.display_shift[0] -= 1
+            elif key in ("a", "left"):
+                self.display_shift[1] += 1
+            elif key in ("d", "right"):
+                self.display_shift[1] -= 1
+            self.draw_board()
+            return
+        if key == "z":
             self.undo_move()
-        elif event.keysym.lower() == "x":
+        elif key == "x":
             self.human_pass()
 
     def on_right_click(self, _event=None):
@@ -1288,6 +1313,10 @@ class GameGUI:
         self.pass_log = []
         self._register_move()
         self.thinking_label.config(text="")
+        # Blue crosses (self-capture / forbidden) can be created by White's
+        # move: recompute them explicitly before redrawing.
+        self.board._invalidate_caches()
+        self.board.get_blue_cross_positions()
         if self.check_white_win():
             return
         self.current = BLACK
@@ -2213,6 +2242,7 @@ class GameGUI:
         self.time_white_ai = 0.0
         self.time_white_human = 0.0
         self.last_human_move_sec = None
+        self.display_shift = [0, 0]
         self.replay_mode = False
         self.replay_new_stones = set()
         self.replay_map = {}
