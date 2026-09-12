@@ -645,8 +645,7 @@ class GameGUI:
             f" four_four={int(self.board._forbid_44)}"
             f" three_three={int(self.board._forbid_33)}",
         ]
-        return "
-".join(header + rows)
+        return chr(10).join(header + rows)
 
     def export_board(self):
         """Copy the current board to the clipboard and board_dump.txt."""
