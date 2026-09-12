@@ -396,7 +396,40 @@ def test_forbidden():
         b4.grid[cell] = BLACK
     b4._invalidate_caches()
     rules.is_black_legal_move(b4, 7, 7)
-    check("recursive foul judgement terminates", True)
+    check("repeated foul judgement terminates", True)
+
+    # Rule-book examples (the 9 characters are a 3x3 block, A at centre).
+    def load3x3(rows):
+        b = HybridBoard(15)
+        r0 = (15 - 3) // 2
+        c0 = (15 - 3) // 2
+        for i, row in enumerate(rows):
+            for j, ch in enumerate(row):
+                if ch == "1":
+                    b.grid[r0 + i, c0 + j] = BLACK
+        b._invalidate_caches()
+        return b, (r0 + 1, c0 + 1)
+
+    b5, c5 = load3x3(["011", "0A0", "110"])
+    ok5, f5 = rules.is_black_legal_move(b5, *c5)
+    check("0110A0110: two open threes -> three-three foul",
+          (not ok5) and f5 == "three_three", f"{ok5} {f5}")
+    b6, c6 = load3x3(["111", "0A0", "111"])
+    ok6, f6 = rules.is_black_legal_move(b6, *c6)
+    check("1110A0111: foul", (not ok6)
+          and f6 in ("three_three", "four_four"), f"{ok6} {f6}")
+
+    # Speed: the rewritten check must stay cheap on a mid-game position.
+    import time as _time
+    b7 = HybridBoard(15)
+    for cell in ((7, 5), (7, 6), (5, 7), (6, 7), (8, 8), (8, 9), (9, 8)):
+        b7.grid[cell] = BLACK
+    b7._invalidate_caches()
+    t0 = _time.time()
+    b7.compute_threats()
+    dt = _time.time() - t0
+    check("forbidden rewrite keeps compute_threats fast (<1.5s)",
+          dt < 1.5, f"{dt:.3f}s")
     assert all(cond for _name, cond in results)
 
 if __name__ == "__main__":
