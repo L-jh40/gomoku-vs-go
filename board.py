@@ -345,8 +345,9 @@ class HybridBoard:
         self._black_group_info_cache = infos
         return [dict(info) for info in infos]
 
-    def _invalidate_caches(self) -> None:
-        self._blue_cross_cache = None
+    def _invalidate_caches(self, keep_blue: bool = False) -> None:
+        if not keep_blue:
+            self._blue_cross_cache = None
         self._dead_cache = None
         self._group_cache = None
         self._threats_cache = None
@@ -390,6 +391,33 @@ class HybridBoard:
     # ------------------------------------------------------------------
     # Move execution
     # ------------------------------------------------------------------
+    def _refresh_blue_cross(self, changed_cells) -> None:
+        """Incrementally refresh the blue-cross cache around a move.
+
+        Only cells on the four lines through the changed stones (plus the
+        stones themselves) can change their forbidden / self-capture state,
+        so the rest of the cached set is reused.  This is the incremental
+        refresh the task asks for; the cache also keeps "possibly forbidden"
+        cells, since a blocked point can become forbidden later.
+        """
+        if self._blue_cross_cache is None:
+            return
+        import rules
+        dirty = self.affected_positions_around(changed_cells, radius=4)
+        dirty.update(changed_cells)
+        cache = self._blue_cross_cache
+        for pos in dirty:
+            x, y = pos
+            if not self.is_empty(x, y):
+                cache.discard(pos)
+                continue
+            ok, ftype = rules.is_black_legal_move(self, x, y)
+            if (not ok) and (self._update_forbidden_blue
+                             or ftype == "self_capture"):
+                cache.add(pos)
+            else:
+                cache.discard(pos)
+
     def _capture_zero_liberty_black_groups(self) -> list[tuple[int, int]]:
         captured: list[tuple[int, int]] = []
         checked: set[tuple[int, int]] = set()
@@ -417,7 +445,7 @@ class HybridBoard:
             if not ok:
                 return False, []
 
-        self._invalidate_caches()
+        self._invalidate_caches(keep_blue=True)
         self.grid[x, y] = BLACK
         stones, liberties = self.get_group(x, y)
         if not liberties:
@@ -435,17 +463,19 @@ class HybridBoard:
             self.captured_count[BLACK] += len(captured)
         self.history.append((BLACK, x, y, captured))
         self.turn = WHITE
+        self._refresh_blue_cross([(x, y)] + list(captured))
         return True, captured
 
     def play_white(self, x: int, y: int):
         if not self.in_bounds(x, y) or self.grid[x, y] != EMPTY:
             return False, []
-        self._invalidate_caches()
+        self._invalidate_caches(keep_blue=True)
         self.grid[x, y] = WHITE
         captured = self._capture_zero_liberty_black_groups()
         self.captured_count[WHITE] += len(captured)
         self.history.append((WHITE, x, y, captured))
         self.turn = BLACK
+        self._refresh_blue_cross([(x, y)] + list(captured))
         return True, captured
 
     def undo(self) -> bool:

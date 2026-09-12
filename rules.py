@@ -340,16 +340,42 @@ def _three_sets(board, x: int, y: int, dx: int, dy: int, stack: set) -> set:
                 board.grid[empty_cell] = EMPTY
             if not live:
                 continue
-            if empty_cell in stack:
-                out.add(black_set)
-                break
-            legal, _ = is_black_legal_move(board, empty_cell[0],
-                                           empty_cell[1],
-                                           _stack=stack | {empty_cell})
-            if legal:
+            if not _simple_forbidden(board, empty_cell[0], empty_cell[1]):
                 out.add(black_set)
                 break
     return out
+
+
+def _simple_forbidden(board, x: int, y: int) -> bool:
+    """One-level forbidden test used for open-three extension points.
+
+    Self-capture, overline and two fours make the point unusable; an exact
+    five is always usable.  Deliberately does NOT recurse into three-three,
+    which is what used to make the search explode.
+    """
+    if not board.in_bounds(x, y) or not board.is_empty(x, y):
+        return False
+    board.grid[x, y] = BLACK
+    try:
+        _stones, liberties = board.get_group(x, y)
+        if len(liberties) == 0:
+            return True
+        run = board.black_run_length(x, y)
+        if run == 5:
+            return False
+        if getattr(board, "_forbid_overline", True) and run >= 6:
+            return True
+        if not getattr(board, "_forbid_44", True):
+            return False
+        fours = 0
+        for dx, dy in DIRECTIONS:
+            if classify_direction_after_move(board, x, y, dx, dy) in                     ("open_four", "rush_four"):
+                fours += 1
+                if fours >= 2:
+                    return True
+        return False
+    finally:
+        board.grid[x, y] = EMPTY
 
 
 def _count_foul_shapes(board, x: int, y: int, stack: set):
@@ -359,8 +385,11 @@ def _count_foul_shapes(board, x: int, y: int, stack: set):
     check_three = bool(getattr(board, "_forbid_33", True))
     for dx, dy in DIRECTIONS:
         fours += len(_four_sets(board, x, y, dx, dy))
-        if check_three:
-            threes += len(_three_sets(board, x, y, dx, dy, stack))
+        if fours >= 2 or not check_three:
+            continue
+        threes += len(_three_sets(board, x, y, dx, dy, stack))
+        if threes >= 2:
+            break
     return fours, threes
 
 
