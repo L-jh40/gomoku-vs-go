@@ -279,6 +279,33 @@ def test_gui_torus():
           str(len(ghosts)))
     check("board model stays n x n (AI never sees the ring)",
           g.board.grid.shape == (g.size, g.size), str(g.board.grid.shape))
+    # --- display-only shift with WASD / arrows ---
+    g.board.grid.fill(0)
+    g.board.grid[0, 0] = BLACK
+    g.board._invalidate_caches()
+    g.display_shift = [0, 0]
+    g.draw_board()
+    before = set(g._display_copies(0, 0))
+    g._on_key(types.SimpleNamespace(keysym="w", widget=None))
+    after = set(g._display_copies(0, 0))
+    check("W moves the displayed board up one row",
+          before != after and (1, 2) in after,
+          f"{sorted(before)[:2]} -> {sorted(after)[:2]}")
+    check("display shift does not change the board",
+          g.board.grid[0, 0] == BLACK, str(g.board.grid[0, 0]))
+    check("display_to_actual inverts the shift",
+          g._display_to_actual(2, 2) == (1, 0),
+          str(g._display_to_actual(2, 2)))
+    g._on_key(types.SimpleNamespace(keysym="s", widget=None))
+    check("S restores the original display",
+          set(g._display_copies(0, 0)) == before,
+          str(sorted(g._display_copies(0, 0))[:2]))
+    g._on_key(types.SimpleNamespace(keysym="Right", widget=None))
+    check("Right arrow shifts the columns",
+          (2, 3) in set(g._display_copies(0, 0)),
+          str(sorted(g._display_copies(0, 0))[:2]))
+    g._on_key(types.SimpleNamespace(keysym="Left", widget=None))
+    g.display_shift = [0, 0]
     # torus off: back to n grid and n canvas
     g.torus_mode_var.set(0)
     g.new_game()
