@@ -398,26 +398,29 @@ def test_forbidden():
     rules.is_black_legal_move(b4, 7, 7)
     check("repeated foul judgement terminates", True)
 
-    # Rule-book examples (the 9 characters are a 3x3 block, A at centre).
-    def load3x3(rows):
+    # Rule-book examples: one line, A in the middle, both sides of A form a
+    # separate three / four (0 empty, 1 black).
+    def load_line(text):
         b = HybridBoard(15)
-        r0 = (15 - 3) // 2
-        c0 = (15 - 3) // 2
-        for i, row in enumerate(rows):
-            for j, ch in enumerate(row):
-                if ch == "1":
-                    b.grid[r0 + i, c0 + j] = BLACK
+        row = 7
+        c0 = (15 - len(text)) // 2
+        center = None
+        for j, ch in enumerate(text):
+            if ch == "1":
+                b.grid[row, c0 + j] = BLACK
+            elif ch.upper() == "A":
+                center = (row, c0 + j)
         b._invalidate_caches()
-        return b, (r0 + 1, c0 + 1)
+        return b, center
 
-    b5, c5 = load3x3(["011", "0A0", "110"])
+    b5, c5 = load_line("0110A0110")
     ok5, f5 = rules.is_black_legal_move(b5, *c5)
-    check("0110A0110: two open threes -> three-three foul",
+    check("0110A0110: two open threes on one line -> three-three",
           (not ok5) and f5 == "three_three", f"{ok5} {f5}")
-    b6, c6 = load3x3(["111", "0A0", "111"])
+    b6, c6 = load_line("1110A0111")
     ok6, f6 = rules.is_black_legal_move(b6, *c6)
-    check("1110A0111: foul", (not ok6)
-          and f6 in ("three_three", "four_four"), f"{ok6} {f6}")
+    check("1110A0111: two rush fours on one line -> four-four",
+          (not ok6) and f6 == "four_four", f"{ok6} {f6}")
 
     # Speed: the rewritten check must stay cheap on a mid-game position.
     import time as _time
