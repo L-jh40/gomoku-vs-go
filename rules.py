@@ -284,14 +284,29 @@ def _three_sets(board, x: int, y: int, dx: int, dy: int, stack: set) -> set:
     the new stone - count twice, which is the rule-book three-three case.
     """
     out = set()
-    for cells in _windows_containing(board, x, y, dx, dy):
-        values = [int(board.grid[c]) for c in cells]
-        if values.count(BLACK) != 3:
+    patterns = ("011100", "011010")
+    # Six-cell windows: only the real open-three shapes (straight 011100 or
+    # broken 011010) count; a sleep three such as 10101 never matches.
+    for offset in range(-4, 1):
+        cells = []
+        valid = True
+        for i in range(6):
+            cell = board.step_from(x, y, dx, dy, offset + i)
+            if cell is None or cell in cells:
+                valid = False
+                break
+            cells.append(cell)
+        if not valid:
             continue
-        black_set = frozenset(c for c, v in zip(cells, values) if v == BLACK)
+        code = "".join("1" if board.grid[c] == BLACK else
+                       ("0" if board.grid[c] == EMPTY else "2")
+                       for c in cells)
+        if not any(code == p or code == p[::-1] for p in patterns):
+            continue
+        black_set = frozenset(c for c in cells if board.grid[c] == BLACK)
         if (x, y) not in black_set or black_set in out:
             continue
-        empties = [c for c, v in zip(cells, values) if v == EMPTY]
+        empties = [c for c in cells if board.grid[c] == EMPTY]
         if len(empties) < 2:
             continue
         # Only a point directly next to the three's own stones can extend it
@@ -344,13 +359,8 @@ def _count_foul_shapes(board, x: int, y: int, stack: set):
     check_three = bool(getattr(board, "_forbid_33", True))
     for dx, dy in DIRECTIONS:
         fours += len(_four_sets(board, x, y, dx, dy))
-        if not check_three:
-            continue
-        # Only a direction the classifier calls an open three (活三) can
-        # contribute: sleep-three shapes such as 10101 are NOT live threes.
-        if classify_direction_after_move(board, x, y, dx, dy) != "open_three":
-            continue
-        threes += len(_three_sets(board, x, y, dx, dy, stack))
+        if check_three:
+            threes += len(_three_sets(board, x, y, dx, dy, stack))
     return fours, threes
 
 

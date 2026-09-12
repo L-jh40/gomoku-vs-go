@@ -8,6 +8,7 @@ five line (or by capturing all black stones).
 
 from __future__ import annotations
 
+import io
 import tkinter as tk
 from tkinter import font as tkfont
 from tkinter import messagebox
@@ -179,6 +180,8 @@ class GameGUI:
             fill=tk.X, pady=1)
         tk.Button(self.info, text="AI 立即落子",
                   command=self.force_ai_current).pack(fill=tk.X, pady=1)
+        tk.Button(self.info, text="导出棋盘(复制)",
+                  command=self.export_board).pack(fill=tk.X, pady=1)
 
         self.black_ai_var = tk.IntVar(value=1 if black_is_ai else 0)
         self.white_ai_var = tk.IntVar(value=1 if white_is_ai else 0)
@@ -623,6 +626,44 @@ class GameGUI:
             x_right, line_y(2), anchor="e",
             text=f"人类 | {self._display_clock(WHITE, False)}",
             font=reg, fill="#202020", tags=tag)
+
+    def export_board_text(self):
+        """Board as text rows: 1 black, 2 white, 0 empty, X obstacle.
+
+        The first lines are a small header with the settings needed to
+        reproduce the position.
+        """
+        chars = {0: "0", 1: "1", 2: "2", 3: "X"}
+        rows = ["".join(chars[int(self.board.grid[x, y])]
+                        for y in range(self.size))
+                for x in range(self.size)]
+        header = [
+            "# Gomoku-vs-Go board dump",
+            f"# size={self.size} torus={int(self.board.torus)}"
+            f" style={self.board_style} turn={'black' if self.current == BLACK else 'white'}",
+            f"# forbid: overline={int(self.board._forbid_overline)}"
+            f" four_four={int(self.board._forbid_44)}"
+            f" three_three={int(self.board._forbid_33)}",
+        ]
+        return "
+".join(header + rows)
+
+    def export_board(self):
+        """Copy the current board to the clipboard and board_dump.txt."""
+        text = self.export_board_text()
+        try:
+            with io.open("board_dump.txt", "w", encoding="utf-8") as f:
+                f.write(text)
+        except Exception:
+            pass
+        try:
+            self.root.clipboard_clear()
+            self.root.clipboard_append(text)
+            self.root.update_idletasks()
+        except Exception:
+            pass
+        self.thinking_label.config(
+            text="棋盘已复制到剪贴板，并写入 board_dump.txt")
 
     def update_info(self):
         self._draw_top_band()
@@ -1205,6 +1246,8 @@ class GameGUI:
             self.undo_move()
         elif key == "x":
             self.human_pass()
+        elif key == "g":
+            self.export_board()
 
     def on_right_click(self, _event=None):
         if self.game_over or self.ai_thinking or self.replay_mode:
