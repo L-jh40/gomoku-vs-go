@@ -68,9 +68,11 @@
 | `match_line_threat` | 匹配活四/冲四/活三/眠三等 |
 | `classify_direction_after_move` | 单方向威胁判定 |
 | `classify_position_after_move` | 落子后的综合威胁类型 |
-| `is_black_legal_move` | 黑棋合法/禁手判断（快速版）：五连优先→长连→两四（四四）→两活三（三三）；结果按棋盘状态缓存 |
-| `_simple_foul` | 单层实战检验：自吃/长连/四四/只剩一气（会被白吃）视为不可用，五连例外 |
-| `_live_three` | 活三判定：必须能由“可用”的延伸着法变成活四；被挡成眠三的不算 |
+| `is_black_legal_move` | 黑棋合法/禁手判断（移植 Rapfi checkForbiddenPoint）：五连优先→长连→两四（四四，不再递归）→两真活三（三三）→白棋吃子可消除的棋形不算禁手；结果按棋盘状态缓存 |
+| `_extension_is_viable` | Rapfi 式延伸点检验：该点落子须成活四/五、不立即被白吃、且不是真禁手（假禁手仍算） |
+| `_live_three` | 活三判定：两侧跳过己方连子看第一个空点，能成活四才算真活三（被挡成眠三不算） |
+| `_count_foul_shapes` | 统计四数与真活三数 |
+| `_black_one_liberty_liberties` | 白棋一步可提的黑棋块（用于吃子阻挡判定） |
 | `find_all_threats` | 兼容接口 |
 
 修改红色位置类型时：

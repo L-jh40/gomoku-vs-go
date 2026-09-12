@@ -243,8 +243,7 @@ def _extension_is_viable(board, ex: int, ey: int, dx: int, dy: int,
     direction becomes a flexible four (or a five), the new group is not
     immediately capturable by White (>= 2 liberties), and the point is not a
     real forbidden point (a pseudo-forbidden point that is not actually
-    forbidden still counts, as in Rapfi).  Positions already on the search
-    stack are treated as legal so the recursion cannot loop.
+    forbidden still counts, exactly as Rapfi does).
     """
     board.grid[ex, ey] = BLACK
     try:
@@ -267,37 +266,72 @@ def _extension_is_viable(board, ex: int, ey: int, dx: int, dy: int,
 
 def _live_three(board, x: int, y: int, dx: int, dy: int,
                 stack: set) -> bool:
-    """Is the open three formed at (x, y) in direction (dx, dy) genuine?
+    """Is the open three at (x, y) in direction (dx, dy) genuine?
 
-    Exactly Rapfi's idea: look along the line for an empty point where Black
-    would make a flexible four; the search stops at the first opponent stone
-    or board edge on each side.  Blocked threes (opponent stones, edges,
-    forbidden extensions, capturable extensions) do not count.
+    Exactly Rapfi's scan: on each side, step over Black stones and inspect the
+    first empty point; if placing there makes a flexible four, the three is a
+    real open three.  Opponent stones, obstacles and the board edge stop the
+    scan.  Forbidden or immediately capturable extension points do not make
+    the three genuine.
     """
-    for step in range(-4, 5):
-        cx, cy = x + step * dx, y + step * dy
-        if not board.in_bounds(cx, cy) or board.grid[cx, cy] != EMPTY:
-            continue
-        if _extension_is_viable(board, cx, cy, dx, dy, stack):
-            return True
+    for sign in (-1, 1):
+        for step in range(1, 5):
+            cx = x + sign * step * dx
+            cy = y + sign * step * dy
+            if not board.in_bounds(cx, cy):
+                break
+            value = int(board.grid[cx, cy])
+            if value == BLACK:
+                continue
+            if value != EMPTY:
+                break
+            if _extension_is_viable(board, cx, cy, dx, dy, stack):
+                return True
+            break
     return False
+
+
+def _count_foul_shapes(board, x: int, y: int, stack: set):
+    """(fours, genuine open threes) for the Black stone already at (x, y)."""
+    threats = [classify_direction_after_move(board, x, y, dx, dy)
+               for dx, dy in DIRECTIONS]
+    fours = sum(1 for t in threats if t in ("open_four", "rush_four"))
+    threes = 0
+    if getattr(board, "_forbid_33", True):
+        for (dx, dy), threat in zip(DIRECTIONS, threats):
+            if threat == "open_three" and _live_three(board, x, y, dx, dy,
+                                                      stack):
+                threes += 1
+    return fours, threes
+
+
+def _black_one_liberty_liberties(board):
+    """All liberties of Black groups that have exactly one liberty."""
+    out = []
+    seen = set()
+    for x in range(board.size):
+        for y in range(board.size):
+            if board.grid[x, y] != BLACK or (x, y) in seen:
+                continue
+            stones, liberties = board.get_group(x, y)
+            seen |= stones
+            if len(liberties) == 1:
+                out.append(next(iter(liberties)))
+    return out
 
 
 def is_black_legal_move(board, x: int, y: int, _stack: set | None = None):
     """Return (ok, foul_type).  The board is never mutated.
 
-    Ported from Rapfi's checkForbiddenPoint, then extended with this game's
-    capture rule:
-      * exact five wins immediately (checked first);
-      * overline (6+) is a foul when enabled;
-      * two fours (open or rush) are a four-four foul - no recursive foul
-        check is needed, since five has priority and only White's capture
-        can block a four;
-      * two genuine open threes are a three-three foul; a three counts only
-        when an extension point exists that makes a flexible four and is
-        itself playable (not a real foul, not immediately capturable);
-      * if the played group has a single liberty, White captures it at once,
-        so a shape that only exists through it is not a lasting foul.
+    The forbidden judgement follows Rapfi's checkForbiddenPoint and then adds
+    this game's capture rule:
+      * exact five wins at once (checked first); overline is a foul;
+      * a four-four needs no recursive foul check (five has priority and only
+        White's capture can block a four);
+      * a three-three needs two genuine open threes; each must be extendable
+        into a flexible four at a point that is itself playable;
+      * any shape that White can erase by capturing a one-liberty Black group
+        right now is not a lasting foul.
     """
     if not board.in_bounds(x, y) or not board.is_empty(x, y):
         return False, "occupied"
@@ -318,6 +352,9 @@ def is_black_legal_move(board, x: int, y: int, _stack: set | None = None):
             _LEGAL_CACHE[cache_key] = result
         return result
 
+    forbid44 = bool(getattr(board, "_forbid_44", True))
+    forbid33 = bool(getattr(board, "_forbid_33", True))
+
     board.grid[x, y] = BLACK
     try:
         _stones, liberties = board.get_group(x, y)
@@ -330,36 +367,33 @@ def is_black_legal_move(board, x: int, y: int, _stack: set | None = None):
         if getattr(board, "_forbid_overline", True) and run >= 6:
             return finish((False, "overline"))
 
-        # Capture-rule blocking: a single-liberty group is taken by White on
-        # the next move, so the shapes it forms cannot make a lasting foul.
-        if len(liberties) == 1:
+        # The played group itself can be captured next move: nothing lasts.
+        if not (forbid44 or forbid33):
             return finish((True, None))
 
-        threats = [classify_direction_after_move(board, x, y, dx, dy)
-                   for dx, dy in DIRECTIONS]
-        four_count = sum(1 for t in threats
-                         if t in ("open_four", "rush_four"))
-        if getattr(board, "_forbid_44", True) and four_count >= 2:
+        fours, threes = _count_foul_shapes(board, x, y, stack)
+        four_foul = forbid44 and fours >= 2
+        three_foul = forbid33 and threes >= 2
+        if not (four_foul or three_foul):
+            return finish((True, None))
+
+        # Capture defence: if White can take a one-liberty Black group now and
+        # the foul disappears with it, the move is not a lasting foul.
+        for liberty in _black_one_liberty_liberties(board):
+            if board.grid[liberty] != EMPTY:
+                continue
+            work = board.copy()
+            work.grid[liberty] = WHITE
+            work._capture_zero_liberty_black_groups()
+            if work.grid[x, y] != BLACK:
+                return finish((True, None))
+            f2, t2 = _count_foul_shapes(work, x, y, stack)
+            if not ((forbid44 and f2 >= 2) or (forbid33 and t2 >= 2)):
+                return finish((True, None))
+
+        if four_foul:
             return finish((False, "four_four"))
-
-        if not getattr(board, "_forbid_33", True):
-            return finish((True, None))
-        open_three_dirs = [(dx, dy) for (dx, dy), t in zip(DIRECTIONS, threats)
-                           if t == "open_three"]
-        # Fast reject (Rapfi's pattern4 != FORBID shortcut): a single open
-        # three can never be a three-three foul.
-        if len(open_three_dirs) < 2:
-            return finish((True, None))
-
-        three_count = 0
-        for dx, dy in open_three_dirs:
-            if _live_three(board, x, y, dx, dy, stack):
-                three_count += 1
-                if three_count >= 2:
-                    break
-        if three_count >= 2:
-            return finish((False, "three_three"))
-        return finish((True, None))
+        return finish((False, "three_three"))
     finally:
         board.grid[x, y] = EMPTY
 

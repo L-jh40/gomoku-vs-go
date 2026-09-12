@@ -430,6 +430,30 @@ def test_forbidden():
     dt = _time.time() - t0
     check("forbidden rewrite keeps compute_threats fast (<1.5s)",
           dt < 1.5, f"{dt:.3f}s")
+
+    # Capture rule blocking: one of the two fours depends on a one-liberty
+    # Black group, so White captures it and the four-four disappears.
+    def capture_board(extra_liberty):
+        b = HybridBoard(15)
+        for cell in ((7, 4), (7, 5), (7, 8),
+                     (4, 7), (5, 7), (6, 7)):
+            b.grid[cell] = BLACK
+        for cell in ((7, 3), (6, 4), (8, 4), (6, 5), (8, 5)):
+            b.grid[cell] = WHITE
+        if extra_liberty:
+            b.grid[(8, 4)] = 0
+        b._invalidate_caches()
+        return b
+
+    b8 = capture_board(extra_liberty=False)
+    ok8, f8 = rules.is_black_legal_move(b8, 7, 7)
+    check("capturable four is not a lasting four-four foul",
+          ok8 and f8 is None, f"{ok8} {f8}")
+    b9 = capture_board(extra_liberty=True)
+    ok9, f9 = rules.is_black_legal_move(b9, 7, 7)
+    check("without the capture the same move is four-four",
+          (not ok9) and f9 == "four_four", f"{ok9} {f9}")
+
     assert all(cond for _name, cond in results)
 
 if __name__ == "__main__":
