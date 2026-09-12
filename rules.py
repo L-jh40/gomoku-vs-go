@@ -221,23 +221,90 @@ def classify_position_after_move(board, x: int, y: int,
     return None
 
 
-def is_black_legal_move(board, x: int, y: int):
+# Legality cache for top-level (non-recursive) queries.  The recursive
+# genuine-open-three test makes many nested calls; caching keeps the cost of
+# the AI threat pre-filter acceptable.
+_LEGAL_CACHE: dict = {}
+_LEGAL_CACHE_LIMIT = 200000
+
+
+def _legal_cache_key(board, x: int, y: int):
+    return (board.size, bool(getattr(board, "torus", False)),
+            bool(getattr(board, "_forbid_overline", True)),
+            bool(getattr(board, "_forbid_44", True)),
+            bool(getattr(board, "_forbid_33", True)),
+            x, y, board.grid.tobytes())
+
+
+def _open_three_is_real(board, x: int, y: int, dx: int, dy: int,
+                        stack: set) -> bool:
+    """Combat test for an open three formed by the stone at (x, y).
+
+    The three only counts when Black can legally extend it into an open
+    four.  If every extending point is itself a forbidden move (three-three,
+    four-four, overline or self-capture), the shape is not a real open three
+    and cannot contribute to a three-three foul.
+
+    The stack holds positions currently being judged; a position already on
+    the stack is treated as legal so the recursion cannot loop forever.
+    """
+    for step in range(-4, 5):
+        cx, cy = x + step * dx, y + step * dy
+        if not board.in_bounds(cx, cy) or board.grid[cx, cy] != EMPTY:
+            continue
+        if (cx, cy) not in stack:
+            ok, _ = is_black_legal_move(board, cx, cy, _stack=stack | {(x, y)})
+            if not ok:
+                continue
+        board.grid[cx, cy] = BLACK
+        try:
+            threat = classify_direction_after_move(board, cx, cy, dx, dy)
+        finally:
+            board.grid[cx, cy] = EMPTY
+        if threat == "open_four":
+            return True
+    return False
+
+
+def is_black_legal_move(board, x: int, y: int, _stack: set | None = None):
     """Return (ok, foul_type).  This function temporarily places a black
-    stone and never mutates the board."""
+    stone and never mutates the board.
+
+    Fouls are judged by combat: a move that forms two fours or two real open
+    threes loses, but an open three whose extension is blocked by one of
+    Black own forbidden moves does not count (and so neither does the foul).
+    A move making an exact five always wins.
+    """
     if not board.in_bounds(x, y) or not board.is_empty(x, y):
         return False, "occupied"
+
+    top_level = _stack is None
+    stack = _stack or set()
+    cache_key = None
+    if top_level:
+        cache_key = _legal_cache_key(board, x, y)
+        cached = _LEGAL_CACHE.get(cache_key)
+        if cached is not None:
+            return cached
+
+    def finish(result):
+        if cache_key is not None:
+            if len(_LEGAL_CACHE) > _LEGAL_CACHE_LIMIT:
+                _LEGAL_CACHE.clear()
+            _LEGAL_CACHE[cache_key] = result
+        return result
 
     board.grid[x, y] = BLACK
     try:
         _stones, liberties = board.get_group(x, y)
         if len(liberties) == 0:
-            return False, "self_capture"
+            return finish((False, "self_capture"))
 
         run = board.black_run_length(x, y)
         if run == 5:
-            return True, None
+            return finish((True, None))
         if getattr(board, "_forbid_overline", True) and run >= 6:
-            return False, "overline"
+            return finish((False, "overline"))
 
         four_count = 0
         three_count = 0
@@ -246,13 +313,14 @@ def is_black_legal_move(board, x: int, y: int):
             if threat in ("open_four", "rush_four"):
                 four_count += 1
             elif threat == "open_three":
-                three_count += 1
+                if _open_three_is_real(board, x, y, dx, dy, stack):
+                    three_count += 1
 
         if getattr(board, "_forbid_44", True) and four_count >= 2:
-            return False, "four_four"
+            return finish((False, "four_four"))
         if getattr(board, "_forbid_33", True) and three_count >= 2:
-            return False, "three_three"
-        return True, None
+            return finish((False, "three_three"))
+        return finish((True, None))
     finally:
         board.grid[x, y] = EMPTY
 
