@@ -475,14 +475,29 @@ def test_forbidden():
         b._invalidate_caches()
         return b
 
+    # The capture rule only blocks self-capture points (Black may not play
+    # there); it never erases a four-four.
     b8 = capture_board(extra_liberty=False)
     ok8, f8 = rules.is_black_legal_move(b8, 7, 7)
-    check("capturable four is not a lasting four-four foul",
-          ok8 and f8 is None, f"{ok8} {f8}")
+    check("four-four stays a foul even with a capturable group",
+          (not ok8) and f8 == "four_four", f"{ok8} {f8}")
     b9 = capture_board(extra_liberty=True)
     ok9, f9 = rules.is_black_legal_move(b9, 7, 7)
-    check("without the capture the same move is four-four",
-          (not ok9) and f9 == "four_four", f"{ok9} {f9}")
+    check("four-four without the extra liberty", (not ok9)
+          and f9 == "four_four", f"{ok9} {f9}")
+
+    # Sleep-three patterns must not be counted as live threes.
+    for text in ("0110010", "01100010"):
+        b10, _ = load_line(text)
+        spurious = []
+        for i in range(15):
+            for j in range(15):
+                if b10.is_empty(i, j):
+                    okc, ft = rules.is_black_legal_move(b10, i, j)
+                    if ft in ("three_three", "four_four"):
+                        spurious.append(((i, j), ft))
+        check(text + ": no spurious 33/44 fouls", not spurious,
+              str(spurious[:4]))
 
     assert all(cond for _name, cond in results)
 
