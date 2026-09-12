@@ -312,7 +312,9 @@ def _three_sets(board, x: int, y: int, dx: int, dy: int, stack: set) -> set:
             live = False
             try:
                 _stones, liberties = board.get_group(*empty_cell)
-                if len(liberties) > 1 and \
+                # Only self-capture blocks a point (Black may not play
+                # there); a one-liberty point is still playable.
+                if len(liberties) > 0 and \
                         classify_direction_after_move(
                             board, empty_cell[0], empty_cell[1],
                             dx, dy) in ("open_four", "rush_four", "five"):
@@ -342,8 +344,13 @@ def _count_foul_shapes(board, x: int, y: int, stack: set):
     check_three = bool(getattr(board, "_forbid_33", True))
     for dx, dy in DIRECTIONS:
         fours += len(_four_sets(board, x, y, dx, dy))
-        if check_three:
-            threes += len(_three_sets(board, x, y, dx, dy, stack))
+        if not check_three:
+            continue
+        # Only a direction the classifier calls an open three (活三) can
+        # contribute: sleep-three shapes such as 10101 are NOT live threes.
+        if classify_direction_after_move(board, x, y, dx, dy) != "open_three":
+            continue
+        threes += len(_three_sets(board, x, y, dx, dy, stack))
     return fours, threes
 
 
@@ -413,20 +420,6 @@ def is_black_legal_move(board, x: int, y: int, _stack: set | None = None):
         three_foul = forbid33 and threes >= 2
         if not (four_foul or three_foul):
             return finish((True, None))
-
-        # Capture defence: a one-liberty Black group taken by White may erase
-        # the whole shape, in which case the move is not a lasting foul.
-        for liberty in _black_one_liberty_liberties(board):
-            if board.grid[liberty] != EMPTY:
-                continue
-            work = board.copy()
-            work.grid[liberty] = WHITE
-            work._capture_zero_liberty_black_groups()
-            if work.grid[x, y] != BLACK:
-                return finish((True, None))
-            f2, t2 = _count_foul_shapes(work, x, y, stack)
-            if not ((forbid44 and f2 >= 2) or (forbid33 and t2 >= 2)):
-                return finish((True, None))
 
         if four_foul:
             return finish((False, "four_four"))
