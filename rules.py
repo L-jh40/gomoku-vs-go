@@ -221,9 +221,8 @@ def classify_position_after_move(board, x: int, y: int,
     return None
 
 
-# Legality cache for top-level (non-recursive) queries.  The recursive
-# genuine-open-three test makes many nested calls; caching keeps the cost of
-# the AI threat pre-filter acceptable.
+# Legality cache for top-level queries.  The AI threat pre-filter calls this
+# function for many empty cells, so results are memoised by board state.
 _LEGAL_CACHE: dict = {}
 _LEGAL_CACHE_LIMIT = 200000
 
@@ -236,26 +235,56 @@ def _legal_cache_key(board, x: int, y: int):
             x, y, board.grid.tobytes())
 
 
-def _open_three_is_real(board, x: int, y: int, dx: int, dy: int,
-                        stack: set) -> bool:
-    """Combat test for an open three formed by the stone at (x, y).
+def _simple_foul(board, cx: int, cy: int) -> bool:
+    """Cheap combat test for a simulated Black stone at (cx, cy).
 
-    The three only counts when Black can legally extend it into an open
-    four.  If every extending point is itself a forbidden move (three-three,
-    four-four, overline or self-capture), the shape is not a real open three
-    and cannot contribute to a three-three foul.
+    Returns True when the placement is clearly not usable as a live-three
+    extension: self-capture, overline (when forbidden), a four-four foul, or
+    a group left with a single liberty (White captures it next, so the shape
+    disappears).  An exact five always wins, so it returns False.
 
-    The stack holds positions currently being judged; a position already on
-    the stack is treated as legal so the recursion cannot loop forever.
+    This stays strictly one level deep: no three-three recursion, which is
+    what makes the old implementation slow.  The board is restored.
+    """
+    board.grid[cx, cy] = BLACK
+    try:
+        _stones, liberties = board.get_group(cx, cy)
+        if not liberties:
+            return True
+        run = board.black_run_length(cx, cy)
+        if run == 5:
+            return False
+        if getattr(board, "_forbid_overline", True) and run >= 6:
+            return True
+        if len(liberties) == 1:
+            # White can capture this group at once: the shape is not durable.
+            return True
+        fours = 0
+        for dx, dy in DIRECTIONS:
+            threat = classify_direction_after_move(board, cx, cy, dx, dy)
+            if threat in ("open_four", "rush_four"):
+                fours += 1
+        if getattr(board, "_forbid_44", True) and fours >= 2:
+            return True
+        return False
+    finally:
+        board.grid[cx, cy] = EMPTY
+
+
+def _live_three(board, x: int, y: int, dx: int, dy: int) -> bool:
+    """Is the three formed at (x, y) in direction (dx, dy) a real open three?
+
+    It must be extendable into an open four by a move that is itself usable
+    (see _simple_foul).  Blocked threes (opponent stones, edges, forbidden
+    extensions, capturable extensions) therefore do not count towards a
+    three-three foul.  Exactly one level of combat checking is performed.
     """
     for step in range(-4, 5):
         cx, cy = x + step * dx, y + step * dy
         if not board.in_bounds(cx, cy) or board.grid[cx, cy] != EMPTY:
             continue
-        if (cx, cy) not in stack:
-            ok, _ = is_black_legal_move(board, cx, cy, _stack=stack | {(x, y)})
-            if not ok:
-                continue
+        if _simple_foul(board, cx, cy):
+            continue
         board.grid[cx, cy] = BLACK
         try:
             threat = classify_direction_after_move(board, cx, cy, dx, dy)
@@ -266,32 +295,31 @@ def _open_three_is_real(board, x: int, y: int, dx: int, dy: int,
     return False
 
 
-def is_black_legal_move(board, x: int, y: int, _stack: set | None = None):
-    """Return (ok, foul_type).  This function temporarily places a black
-    stone and never mutates the board.
+def is_black_legal_move(board, x: int, y: int):
+    """Return (ok, foul_type).  The board is never mutated.
 
-    Fouls are judged by combat: a move that forms two fours or two real open
-    threes loses, but an open three whose extension is blocked by one of
-    Black own forbidden moves does not count (and so neither does the foul).
-    A move making an exact five always wins.
+    Renju fouls are judged by counting the shapes the move creates:
+      * an exact five always wins (checked first);
+      * overline (6+) is a foul when enabled;
+      * two fours (open or rush) are a four-four foul.  No further foul
+        recursion is needed: five has priority and a four cannot be blocked
+        by another foul, only by White's capture rule;
+      * two REAL open threes are a three-three foul.  A three counts only
+        when it can be extended into an open four by a usable move; a three
+        blocked into a sleep three does not count.
     """
     if not board.in_bounds(x, y) or not board.is_empty(x, y):
         return False, "occupied"
 
-    top_level = _stack is None
-    stack = _stack or set()
-    cache_key = None
-    if top_level:
-        cache_key = _legal_cache_key(board, x, y)
-        cached = _LEGAL_CACHE.get(cache_key)
-        if cached is not None:
-            return cached
+    cache_key = _legal_cache_key(board, x, y)
+    cached = _LEGAL_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
 
     def finish(result):
-        if cache_key is not None:
-            if len(_LEGAL_CACHE) > _LEGAL_CACHE_LIMIT:
-                _LEGAL_CACHE.clear()
-            _LEGAL_CACHE[cache_key] = result
+        if len(_LEGAL_CACHE) > _LEGAL_CACHE_LIMIT:
+            _LEGAL_CACHE.clear()
+        _LEGAL_CACHE[cache_key] = result
         return result
 
     board.grid[x, y] = BLACK
@@ -313,7 +341,7 @@ def is_black_legal_move(board, x: int, y: int, _stack: set | None = None):
             if threat in ("open_four", "rush_four"):
                 four_count += 1
             elif threat == "open_three":
-                if _open_three_is_real(board, x, y, dx, dy, stack):
+                if _live_three(board, x, y, dx, dy):
                     three_count += 1
 
         if getattr(board, "_forbid_44", True) and four_count >= 2:
