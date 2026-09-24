@@ -163,59 +163,44 @@ def build_positions(rng: random.Random) -> list:
     return snaps
 
 
-def board_from_rows(rows, size=15) -> HybridBoard:
-    """rows: 字符串列表，'.' 空 'X' 黑 'O' 白 '#' 障碍。行号即 x，列号即 y。"""
+def board_from_cells(cells, size=15) -> HybridBoard:
+    """cells: (x, y, ch) 列表，ch ∈ {'X' 黑, 'O' 白, '#' 障碍}。x=行, y=列。"""
     b = HybridBoard(size)
-    for x, row in enumerate(rows):
-        for y, ch in enumerate(row):
-            if ch == "X":
-                b.grid[x, y] = BLACK
-            elif ch == "O":
-                b.grid[x, y] = WHITE
-            elif ch == "#":
-                b.grid[x, y] = OBSTACLE
+    for (x, y, ch) in cells:
+        if ch == "X":
+            b.grid[x, y] = BLACK
+        elif ch == "O":
+            b.grid[x, y] = WHITE
+        elif ch == "#":
+            b.grid[x, y] = OBSTACLE
     return b
-
-
-def _row(spec, size=15):
-    r = ["."] * size
-    for y, ch in spec:
-        r[y] = ch
-    return "".join(r)
 
 
 def constructed_positions() -> list:
     out = []
-    # 1) 恰成五：四连，两端都能补成五（合法）。
-    out.append(board_from_rows([
-        _row([(5, "X"), (6, "X"), (7, "X"), (8, "X")]),
+    # 1) 恰成五：四连(7,5..8)，(7,4)/(7,9) 补成五，合法。
+    out.append(board_from_cells([
+        (7, 5, "X"), (7, 6, "X"), (7, 7, "X"), (7, 8, "X"),
     ]))
-    # 2) 长连：五连，两端补子变六连（禁手）。
-    out.append(board_from_rows([
-        _row([(5, "X"), (6, "X"), (7, "X"), (8, "X"), (9, "X")]),
+    # 2) 长连：五连(7,5..9)，(7,4)/(7,10) 补子成六连，禁手。
+    out.append(board_from_cells([
+        (7, 5, "X"), (7, 6, "X"), (7, 7, "X"), (7, 8, "X"), (7, 9, "X"),
     ]))
-    # 3) 双四：一子同时形成横/竖两个活四。
-    out.append(board_from_rows([
-        _row([(4, "X"), (5, "X"), (6, "X")]),
-        _row([(7, "X")]),
-        _row([(7, "X")]),
-        _row([(7, "X")]),
+    # 3) 双四：(7,7) 同时形成横向与竖向两个活四，禁手。
+    out.append(board_from_cells([
+        (7, 4, "X"), (7, 5, "X"), (7, 6, "X"),
+        (4, 7, "X"), (5, 7, "X"), (6, 7, "X"),
     ]))
-    # 4) 可延伸活三双三：一子同时形成横/竖两个活三（禁手）。
-    out.append(board_from_rows([
-        _row([(5, "X"), (6, "X")]),
-        _row([(7, "X")]),
-        _row([(7, "X")]),
+    # 4) 可延伸活三双三：(7,7) 同时形成横向与竖向两个活三，禁手。
+    out.append(board_from_cells([
+        (7, 5, "X"), (7, 6, "X"),
+        (5, 7, "X"), (6, 7, "X"),
     ]))
-    # 5) 不可延伸的假活三双三：三的一侧被白子封死到无法成四，
-    #    另一个方向的三其唯一延伸点本身又是双四禁手。
-    out.append(board_from_rows([
-        _row([(4, "O"), (5, "X"), (6, "X")]),          # 横向假三
-        _row([(7, "X")]),
-        _row([(7, "X")]),
-        _row([(3, "X"), (4, "X"), (5, "X")]),          # 让竖向延伸点 (6,7) 成双四
-        _row([(7, "X")]),
-        _row([(7, "X")]),
+    # 5) 不可延伸的假活三双三：两个方向形似活三，但横向一端是障碍、
+    #    竖向延伸点被白棋占住，因此都不构成真活三（不应按三三禁手处理）。
+    out.append(board_from_cells([
+        (7, 4, "#"), (7, 5, "X"), (7, 6, "X"),
+        (5, 7, "X"), (6, 7, "X"), (8, 7, "O"),
     ]))
     return out
 
@@ -436,6 +421,7 @@ def make_undo_test(eng: Engine, rng: random.Random) -> bool:
 def main() -> int:
     rng = random.Random(20240917)
     positions = build_positions(rng)
+    print("[phase] generated %d positions" % len(positions), flush=True)
     stats = {"points": 0, "agree": 0, "agree_forbidden": 0}
     details: list = []
 
@@ -445,6 +431,7 @@ def main() -> int:
             compare(eng, b, stats, details)
     finally:
         eng.close()
+    print("[phase] compare done", flush=True)
 
     print("=" * 70)
     print("局面数: %d   比较空点数: %d   一致: %d (其中禁手/非法 %d)"
@@ -483,12 +470,14 @@ def main() -> int:
     print("无法归因不一致 = %d" % unattributed)
     print("=" * 70)
 
+    print("[phase] attribution done, starting make/undo", flush=True)
     make_undo_ok = False
     eng2 = Engine()
     try:
         make_undo_ok = make_undo_test(eng2, random.Random(7))
     finally:
         eng2.close()
+    print("[phase] make/undo done", flush=True)
 
     if unattributed != 0:
         print("FAIL: 存在无法归因的禁手判定差异")
