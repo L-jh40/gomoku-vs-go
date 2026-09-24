@@ -7,22 +7,30 @@ diff_forbidden.py - 黑棋禁手判定的差分测试。
     py cpp/tests/diff_forbidden.py
 
 流程：
-  1. 子进程启动 cpp/build/engine.exe，逐行写命令、读 stdout。
+  1. 子进程启动 cpp/build/engine.exe（stdout 用后台线程持续抽干，避免管道死锁），
+     逐行写命令、逐行读结果。
   2. 用 Python 的 board.HybridBoard + rules.is_black_legal_move 生成随机局面
-     （随机自对弈 + 随机泼洒），并手工加入 5 个构造局面。
+     （随机自对弈 + 少量随机泼洒以覆盖无气点/密集棋形），另加 5 个构造局面，
+     累计 >= 60 个局面。
   3. 把每个局面的所有子写入引擎，调 checkforbidden，与 Python 逐点比较。
-  4. 断言：occupied/自杀/成五/长连类不一致 == 0；三三/四四类不一致必须能
-     归因到 Rapfi 相对朴素匹配更严格的两条：三无法延伸成活四/五，或延伸点本身
-     是禁手。无法归因则退出码 1。
-  5. make/undo 一致性：200 步对局，每 20 步记录引擎 Zobrist；全部 undo 后与
-     初始一致；中途 10 个时刻与 Python 网格比对。
+  4. 断言：occupied/自杀/成五/长连类不一致 == 0。三三/四四类不一致逐个复核并
+     归因，只允许两类 Rapfi 语义差异：
+       (i)  Rapfi 判定某方向不是活三 / 无法延伸成活四或成五（Python 却把它算成
+            了一个三），即“三不能延伸”；
+       (ii) 三的延伸点（或四的补五点）本身是禁手/自杀点。
+     归因逻辑在 Python 里独立重实现了 Rapfi 的线型 DP（见 RapfiPattern），
+     不依赖引擎的自述。无法归因则退出码 1。
+  5. make/undo 一致性：200 步对局每 20 步记录引擎 Zobrist，全部 undo 后与初始
+     一致；中途 10 个时刻与 Python 网格比对。
 """
 from __future__ import annotations
 
 import os
+import queue
 import random
 import subprocess
 import sys
+import threading
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 CPP_DIR = os.path.dirname(SCRIPT_DIR)
@@ -36,10 +44,11 @@ import rules  # noqa: E402
 ENGINE = os.path.join(CPP_DIR, "build", "engine.exe")
 
 VERBOSE = "--verbose" in sys.argv or "-v" in sys.argv
+READ_TIMEOUT = 30.0
 
 
 # ----------------------------------------------------------------------------
-# 引擎交互
+# 引擎交互（后台线程读 stdout，避免管道/缓冲死锁）
 # ----------------------------------------------------------------------------
 class Engine:
     def __init__(self):
@@ -56,16 +65,30 @@ class Engine:
             text=True,
             bufsize=1,
         )
+        self.q: queue.Queue = queue.Queue()
+        self.reader = threading.Thread(target=self._pump, daemon=True)
+        self.reader.start()
+
+    def _pump(self):
+        try:
+            for line in self.p.stdout:
+                self.q.put(line.rstrip("\r\n"))
+        except Exception:
+            pass
+        self.q.put(None)
 
     def send(self, cmd: str) -> None:
         self.p.stdin.write(cmd + "\n")
         self.p.stdin.flush()
 
     def readline(self) -> str:
-        line = self.p.stdout.readline()
-        if line == "":
+        try:
+            line = self.q.get(timeout=READ_TIMEOUT)
+        except queue.Empty:
+            raise RuntimeError("engine did not respond within %.0fs" % READ_TIMEOUT)
+        if line is None:
             raise RuntimeError("engine closed its stdout unexpectedly")
-        return line.rstrip("\r\n")
+        return line
 
     def load(self, board: HybridBoard) -> None:
         self.send("size %d" % board.size)
@@ -97,7 +120,10 @@ class Engine:
             self.send("quit")
             self.p.wait(timeout=10)
         except Exception:
-            self.p.kill()
+            try:
+                self.p.kill()
+            except Exception:
+                pass
 
 
 # ----------------------------------------------------------------------------
@@ -110,9 +136,7 @@ def random_selfplay(rng: random.Random, snapshots: list) -> None:
     steps = rng.randint(8, 70)
     for _ in range(steps):
         empties = [
-            (x, y)
-            for x in range(size)
-            for y in range(size)
+            (x, y) for x in range(size) for y in range(size)
             if b.grid[x, y] == EMPTY
         ]
         if not empties:
@@ -134,10 +158,10 @@ def random_selfplay(rng: random.Random, snapshots: list) -> None:
 
 
 def random_scatter(rng: random.Random, snapshots: list) -> None:
-    """随机泼洒棋子/障碍，快速制造无气点、密集棋形。"""
+    """随机泼洒棋子/障碍，快速制造无气点、密集棋形、接近五连。"""
     size = rng.choice([9, 11, 13, 15, 15, 19])
     b = HybridBoard(size)
-    density = rng.uniform(0.10, 0.32)
+    density = rng.uniform(0.08, 0.24)
     for x in range(size):
         for y in range(size):
             r = rng.random()
@@ -145,20 +169,19 @@ def random_scatter(rng: random.Random, snapshots: list) -> None:
                 b.grid[x, y] = BLACK
             elif r < density:
                 b.grid[x, y] = WHITE
+            elif r < density + 0.02:
+                b.grid[x, y] = OBSTACLE
     snapshots.append(b)
 
 
 def build_positions(rng: random.Random) -> list:
     snaps: list = []
-    # 随机自对弈：尽量凑够多数局面。
     guard = 0
     while len(snaps) < 45 and guard < 4000:
         guard += 1
         random_selfplay(rng, snaps)
-    # 随机泼洒：补充无气点 / 双三雏形 / 接近五连。
-    for _ in range(18):
+    for _ in range(12):
         random_scatter(rng, snaps)
-    # 手工构造 5 个局面。
     snaps.extend(constructed_positions())
     return snaps
 
@@ -197,7 +220,7 @@ def constructed_positions() -> list:
         (5, 7, "X"), (6, 7, "X"),
     ]))
     # 5) 不可延伸的假活三双三：两个方向形似活三，但横向一端是障碍、
-    #    竖向延伸点被白棋占住，因此都不构成真活三（不应按三三禁手处理）。
+    #    竖向延伸点被白棋占住，都不构成真活三（不应按三三禁手处理）。
     out.append(board_from_cells([
         (7, 4, "#"), (7, 5, "X"), (7, 6, "X"),
         (5, 7, "X"), (6, 7, "X"), (8, 7, "O"),
@@ -206,20 +229,178 @@ def constructed_positions() -> list:
 
 
 # ----------------------------------------------------------------------------
-# 归因：Rapfi 相对朴素匹配的两条额外严格条件
+# Rapfi 线型 DP 的 Python 独立重实现（仅用于归因，不依赖引擎）
 # ----------------------------------------------------------------------------
-def extension_points(b, x, y, dx, dy, maxdist=4):
-    """镜像 Rapfi：从落子点沿两个方向穿过连续黑子，遇到第一个非黑子。
-    空点则为延伸候选；白/障碍/墙则停止。"""
+DEAD, OL, B1, F1, B2, F2, F2A, F2B, B3, B3S, F3, F3S, B4, B4S, F4, F5 = range(16)
+P4_NONE, FORBID, L_FLEX2, K_BLOCK3, J_FLEX2_2X, I_BLOCK3_PLUS, H_FLEX3, \
+    G_FLEX3_PLUS, F_FLEX3_2X, E_BLOCK4, D_BLOCK4_PLUS, C_BLOCK4_FLEX3, \
+    B_FLEX4, A_FIVE = range(14)
+
+PAT_NAME = {
+    DEAD: "DEAD", OL: "OL", B1: "B1", F1: "F1", B2: "B2", F2: "F2",
+    F2A: "F2A", F2B: "F2B", B3: "B3", B3S: "B3S", F3: "F3", F3S: "F3S",
+    B4: "B4", B4S: "B4S", F4: "F4", F5: "F5",
+}
+P4_NAME = {
+    P4_NONE: "NONE", FORBID: "FORBID", L_FLEX2: "L_FLEX2", K_BLOCK3: "K_BLOCK3",
+    J_FLEX2_2X: "J_FLEX2_2X", I_BLOCK3_PLUS: "I_BLOCK3_PLUS", H_FLEX3: "H_FLEX3",
+    G_FLEX3_PLUS: "G_FLEX3_PLUS", F_FLEX3_2X: "F_FLEX3_2X", E_BLOCK4: "E_BLOCK4",
+    D_BLOCK4_PLUS: "D_BLOCK4_PLUS", C_BLOCK4_FLEX3: "C_BLOCK4_FLEX3",
+    B_FLEX4: "B_FLEX4", A_FIVE: "A_FIVE",
+}
+
+_SELF, _OPPO, _EMPT = 0, 1, 2
+_H, _LEN, _MID = 5, 11, 5
+_MEMO: dict = {}
+
+
+def _count_line(line):
+    real_len, full_len, inc = 1, 1, 1
+    start = end = _MID
+    for i in range(_MID - 1, -1, -1):
+        if line[i] == _SELF:
+            real_len += inc
+        elif line[i] == _OPPO:
+            break
+        else:
+            inc = 0
+        full_len += 1
+        start = i
+    inc = 1
+    for i in range(_MID + 1, _LEN):
+        if line[i] == _SELF:
+            real_len += inc
+        elif line[i] == _OPPO:
+            break
+        else:
+            inc = 0
+        full_len += 1
+        end = i
+    return real_len, full_len, start, end
+
+
+def _shift(line, i):
+    return [line[j + i - _MID] if 0 <= j + i - _MID < _LEN else _OPPO
+            for j in range(_LEN)]
+
+
+def pattern_of(line):
+    key = tuple(line)
+    got = _MEMO.get(key)
+    if got is not None:
+        return got
+    real_len, full_len, start, end = _count_line(line)
+    if real_len >= 6:
+        p = OL
+    elif real_len >= 5:
+        p = F5
+    elif full_len < 5:
+        p = DEAD
+    else:
+        cnt = [0] * 16
+        f5_idx = [0, 0]
+        for i in range(start, end + 1):
+            if line[i] != _EMPT:
+                continue
+            sl = _shift(line, i)
+            sl[_MID] = _SELF
+            sp = pattern_of(sl)
+            if sp == F5 and cnt[F5] < 2:
+                f5_idx[cnt[F5]] = i
+            cnt[sp] += 1
+        if cnt[F5] >= 2:
+            p = F4
+            if f5_idx[1] - f5_idx[0] < 5:
+                p = OL
+        elif cnt[F5] == 1:
+            blocked = list(line)
+            blocked[f5_idx[0]] = _OPPO
+            p = B4S if pattern_of(blocked) >= B3 else B4
+        elif cnt[F4] >= 2:
+            p = F3S
+        elif cnt[F4]:
+            p = F3
+        elif cnt[B4S]:
+            p = B3S
+        elif cnt[B4]:
+            p = B3
+        elif cnt[F3S] + cnt[F3] >= 4:
+            p = F2B
+        elif cnt[F3S] + cnt[F3] >= 3:
+            p = F2A
+        elif cnt[F3S] + cnt[F3]:
+            p = F2
+        elif cnt[B3] + cnt[B3S]:
+            p = B2
+        elif cnt[F2] + cnt[F2A] + cnt[F2B]:
+            p = F1
+        elif cnt[B2]:
+            p = B1
+        else:
+            p = DEAD
+    _MEMO[key] = p
+    return p
+
+
+def combine4_forbid(p1, p2, p3, p4):
+    n = [0] * 16
+    for p in (p1, p2, p3, p4):
+        n[p] += 1
+    n[B4] += n[B4S]
+    n[B3] += n[B3S]
+    if n[F5] >= 1:
+        return A_FIVE
+    if n[OL] >= 1:
+        return FORBID
+    if n[F4] + n[B4] >= 2:
+        return FORBID
+    if n[F3] + n[F3S] >= 2:
+        return FORBID
+    if n[B4] >= 2:
+        return B_FLEX4
+    if n[F4] >= 1:
+        return B_FLEX4
+    return P4_NONE
+
+
+def cell_flag(board, x, y):
+    """黑棋视角：白/障碍/棋盘外/无气点 -> 阻挡(OPPO)，空点 -> EMPT，黑子 -> SELF。"""
+    if not board.in_bounds(x, y):
+        return _OPPO
+    v = int(board.grid[x, y])
+    if v == BLACK:
+        return _SELF
+    if v in (WHITE, OBSTACLE):
+        return _OPPO
+    return _OPPO if board.would_self_capture(x, y) else _EMPT
+
+
+def dir_pattern_py(board, x, y, dx, dy):
+    line = [_EMPT] * _LEN
+    for i in range(-_H, _H + 1):
+        if i == 0:
+            line[_MID] = _SELF
+        else:
+            line[i + _MID] = cell_flag(board, x + i * dx, y + i * dy)
+    return pattern_of(line)
+
+
+def pattern4_py(board, x, y):
+    return combine4_forbid(*[dir_pattern_py(board, x, y, dx, dy)
+                             for dx, dy in DIRECTIONS])
+
+
+def ext_points(board, x, y, dx, dy, maxdist=4):
+    """Rapfi 式：从落子点穿过连续黑子，两个方向遇到的第一个空点。"""
     out = []
     for sgn in (-1, 1):
         cx, cy = x, y
         for _ in range(maxdist):
             cx += sgn * dx
             cy += sgn * dy
-            if not b.in_bounds(cx, cy):
+            if not board.in_bounds(cx, cy):
                 break
-            v = int(b.grid[cx, cy])
+            v = int(board.grid[cx, cy])
             if v == EMPTY:
                 out.append((cx, cy))
                 break
@@ -228,68 +409,114 @@ def extension_points(b, x, y, dx, dy, maxdist=4):
     return out
 
 
-def direction_threes(b, x, y, dx, dy):
-    """Python 版在 (x,y) 落黑后、方向 (dx,dy) 上识别的三的集合。"""
-    return rules._three_sets(b, x, y, dx, dy, set())
-
-
-def rapfi_direction_verdict(b, x, y, dx, dy):
-    """在已把黑子放在 (x,y) 的棋盘上评估该方向。返回：
-    ('true', e)        找到一个真延伸点 e；
-    ('noext', None)    没有任何能延伸成活四/五的点；
-    ('forbidden', e)   能延伸，但延伸点 e 本身是禁手/自杀。"""
-    exts = extension_points(b, x, y, dx, dy)
+def rapfi_ext_verdict(board, x, y, dx, dy):
+    """返回 'noext' | ('forbidden', e) | ('true', e)。"""
+    exts = ext_points(board, x, y, dx, dy)
     if not exts:
-        return ("noext", None)
-    saw_extend = False
+        return "noext"
     for (ex, ey) in exts:
-        if b.would_self_capture(ex, ey):
+        if board.would_self_capture(ex, ey):
             continue
-        b.grid[ex, ey] = BLACK
+        board.grid[ex, ey] = BLACK
         try:
-            t = rules.classify_direction_after_move(b, ex, ey, dx, dy)
+            p4 = pattern4_py(board, ex, ey)
+            pc = dir_pattern_py(board, ex, ey, dx, dy)
         finally:
-            b.grid[ex, ey] = EMPTY
-        if t in ("open_four", "rush_four", "five"):
-            saw_extend = True
-            ok, _ = rules.is_black_legal_move(b, ex, ey)
-            if not ok:
+            board.grid[ex, ey] = EMPTY
+        if p4 == B_FLEX4 or pc == F5:
+            if not rules.is_black_legal_move(board, ex, ey)[0]:
                 return ("forbidden", (ex, ey))
             return ("true", (ex, ey))
-    if saw_extend:
-        return ("forbidden", None)
-    return ("noext", None)
+    return "noext"
 
 
-def attribute_py_forbidden_cpp_legal(b, x, y, py_type):
-    """Python 判禁手、C++ 判合法。只有当某个 Python 计为三的方向满足
-    (i) 无法延伸成活四/五 或 (ii) 延伸点本身是禁手 时才可归因。"""
-    if py_type not in ("three_three", "four_four"):
-        return None
-    b.grid[x, y] = BLACK
+def four_completion_status(board, x, y, dx, dy):
+    """Rapfi 认为该方向是四时，检查其补五点：
+    返回 ('ok',) 表示存在合法恰好成五的补点；('forbidden', e) 表示补点本身是禁手/
+    长连/自杀；('none',) 表示找不到补点。"""
+    saw_any = None
+    for i in list(range(-4, 0)) + list(range(1, 5)):
+        ex, ey = x + i * dx, y + i * dy
+        if not board.in_bounds(ex, ey) or int(board.grid[ex, ey]) != EMPTY:
+            continue
+        board.grid[ex, ey] = BLACK
+        try:
+            run = board.black_run_length(ex, ey)
+        finally:
+            board.grid[ex, ey] = EMPTY
+        if run == 5:
+            return ("ok",)
+        if run >= 5 and saw_any is None:
+            saw_any = (ex, ey)
+    if saw_any is not None:
+        return ("forbidden", saw_any)
+    return ("none",)
+
+
+# ----------------------------------------------------------------------------
+# 归因
+# ----------------------------------------------------------------------------
+def attribute(board, x, y, cat):
+    """对 (x,y) 的不一致给出 Rapfi 语义理由列表；空列表表示无法归因。"""
+    board.grid[x, y] = BLACK
     try:
+        pats = [dir_pattern_py(board, x, y, dx, dy) for dx, dy in DIRECTIONS]
         reasons = []
+
+        if cat in ("four_four", "cpp_stricter"):
+            for d, (dx, dy) in enumerate(DIRECTIONS):
+                if pats[d] not in (B4, B4S, F4):
+                    continue
+                if rules._four_sets(board, x, y, dx, dy):
+                    continue  # Python 也认可这个四
+                status = four_completion_status(board, x, y, dx, dy)
+                if status[0] == "forbidden":
+                    reasons.append(("four_completion_forbidden", d, status[1]))
+                elif status[0] == "none":
+                    reasons.append(("four_completion_missing", d))
+                else:
+                    reasons.append(("four_not_counted", d))
+
         for d, (dx, dy) in enumerate(DIRECTIONS):
-            if not direction_threes(b, x, y, dx, dy):
+            if not rules._three_sets(board, x, y, dx, dy, set()):
                 continue
-            verdict, where = rapfi_direction_verdict(b, x, y, dx, dy)
-            if verdict == "noext":
-                reasons.append(("no_extend", d))
-            elif verdict == "forbidden":
-                reasons.append(("ext_forbidden", d, where))
-            elif verdict == "true":
-                return None  # 存在一个真三 -> 无法用两条严格条件解释
-        if reasons:
-            return reasons
-        # fouler 是四四，且没有三方向；无法用三三的两条条件解释。
-        return None
+            if pats[d] not in (F3, F3S):
+                reasons.append(("rapfi_dir_not_open_three", d, PAT_NAME[pats[d]]))
+                continue
+            v = rapfi_ext_verdict(board, x, y, dx, dy)
+            if v == "noext":
+                reasons.append(("no_live_extension", d))
+            elif isinstance(v, tuple) and v[0] == "forbidden":
+                reasons.append(("ext_point_forbidden", d, v[1]))
+        return reasons
     finally:
-        b.grid[x, y] = EMPTY
+        board.grid[x, y] = EMPTY
 
 
 # ----------------------------------------------------------------------------
-# 比较一个局面
+# 比较
 # ----------------------------------------------------------------------------
+HARD = {"three_three", "four_four", "cpp_stricter", "py_unknown"}
+TRIVIAL = {"self_capture", "overline", "five"}
+
+
+def categorize(board, x, y, py_ok, ftype):
+    if not py_ok:
+        return ftype or "py_unknown"
+    if board.would_self_capture(x, y):
+        return "self_capture"
+    board.grid[x, y] = BLACK
+    try:
+        run = board.black_run_length(x, y)
+    finally:
+        board.grid[x, y] = EMPTY
+    if run >= 6:
+        return "overline"
+    if run == 5:
+        return "five"
+    return "cpp_stricter"
+
+
 def compare(eng: Engine, b: HybridBoard, stats: dict, details: list) -> None:
     cpp = eng.forbidden(b)
     for x in range(b.size):
@@ -305,32 +532,17 @@ def compare(eng: Engine, b: HybridBoard, stats: dict, details: list) -> None:
                 if py_bad:
                     stats["agree_forbidden"] += 1
                 continue
-
-            if not py_bad:
-                # C++ 更严：确认是不是自杀 / 长连；否则难以归因。
-                if b.would_self_capture(x, y):
-                    cat = "self_capture"
-                else:
-                    b.grid[x, y] = BLACK
-                    run = b.black_run_length(x, y)
-                    b.grid[x, y] = EMPTY
-                    cat = "overline" if run >= 6 else ("five" if run == 5 else "cpp_stricter")
-            else:
-                cat = ftype or "py_unknown"
-
+            cat = categorize(b, x, y, ok, ftype)
             stats["mismatch_" + cat] = stats.get("mismatch_" + cat, 0) + 1
-            if len(details) < 40:
-                details.append((x, y, py_bad, ftype, cpp_bad, cat, b.copy()))
-
-
-def mismatch_is_hard(cat: str) -> bool:
-    """需要归因的类别（其余必须为 0）。"""
-    return cat in ("three_three", "four_four", "cpp_stricter")
+            details.append((b.copy(), x, y, py_bad, ftype, cat))
 
 
 # ----------------------------------------------------------------------------
 # make/undo 一致性
 # ----------------------------------------------------------------------------
+DUMP_STEPS = (7, 33, 61, 95, 120, 150, 170, 185, 195, 199)
+
+
 def make_undo_test(eng: Engine, rng: random.Random) -> bool:
     ok_all = True
     size = 15
@@ -340,16 +552,11 @@ def make_undo_test(eng: Engine, rng: random.Random) -> bool:
     eng.send("hash")
     initial = eng.readline()
 
-    hashes_at = {}
     applied = 0
     dumps_checked = 0
-    for step in range(200):
-        if step % 20 == 0:
-            print("[make/undo] step %d applied=%d turn=%s" % (step, applied, b.turn), flush=True)
+    for _ in range(200):
         empties = [
-            (x, y)
-            for x in range(size)
-            for y in range(size)
+            (x, y) for x in range(size) for y in range(size)
             if b.grid[x, y] == EMPTY
         ]
         if not empties:
@@ -361,41 +568,36 @@ def make_undo_test(eng: Engine, rng: random.Random) -> bool:
                 b.pass_turn()
                 continue
             mv = rng.choice(legal)
-        else:
-            mv = rng.choice(empties)
-
-        res = None
-        if color == BLACK:
             res = b.play_black(*mv)
         else:
+            mv = rng.choice(empties)
             res = b.play_white(*mv)
         if not res[0]:
             continue
-        color_ch = "b" if color == BLACK else "w"
-        eng.send("move %d %d %s" % (mv[0], mv[1], color_ch))
-        reply = eng.readline()
-        if reply != "ok":
-            print("[make/undo] engine rejected move %s %s -> %s" % (mv, color_ch, reply))
+        eng.send("move %d %d %s" % (mv[0], mv[1], "b" if color == BLACK else "w"))
+        if eng.readline() != "ok":
+            print("[make/undo] engine rejected move %s" % (mv,))
             ok_all = False
             break
         applied += 1
 
         if applied % 20 == 0:
             eng.send("hash")
-            hashes_at[applied] = eng.readline()
+            eng.readline()
 
-        if applied in (7, 33, 61, 95, 120, 150, 170, 185, 195, 199):
+        if applied in DUMP_STEPS:
             eng.send("dump")
-            grid = [[int(eng.readline()[y]) for y in range(size)] for _ in range(size)]
+            grid = [[int(eng.readline()[y]) for y in range(size)]
+                    for _ in range(size)]
             dumps_checked += 1
             for x in range(size):
                 for y in range(size):
                     if grid[x][y] != int(b.grid[x, y]):
-                        print("[make/undo] dump mismatch at step %d cell (%d,%d): "
-                              "engine=%d python=%d" % (applied, x, y, grid[x][y], int(b.grid[x, y])))
+                        print("[make/undo] dump mismatch step %d cell (%d,%d): "
+                              "engine=%d python=%d"
+                              % (applied, x, y, grid[x][y], int(b.grid[x, y])))
                         ok_all = False
 
-    # 全部 undo，检查哈希回到初始。
     for _ in range(applied):
         eng.send("undo")
         if eng.readline() != "ok":
@@ -409,79 +611,94 @@ def make_undo_test(eng: Engine, rng: random.Random) -> bool:
         ok_all = False
     eng.send("dump")
     for x in range(size):
-        row = eng.readline()
-        if row != "0" * size:
-            print("[make/undo] board not empty after undo, row %d = %s" % (x, row))
+        if eng.readline() != "0" * size:
+            print("[make/undo] board row %d not empty after undo" % x)
             ok_all = False
 
-    print("[make/undo] applied=%d dumps_checked=%d hashes=%s final_hash=%s initial=%s"
-          % (applied, dumps_checked, len(hashes_at), final, initial))
+    print("[make/undo] applied=%d dumps_checked=%d initial=%s final=%s"
+          % (applied, dumps_checked, initial, final))
     return ok_all
 
 
 # ----------------------------------------------------------------------------
+def print_board(b):
+    chars = {EMPTY: ".", BLACK: "X", WHITE: "O", OBSTACLE: "#"}
+    for x in range(b.size):
+        print("    " + "".join(chars[int(b.grid[x, y])] for y in range(b.size)))
+
+
 def main() -> int:
     rng = random.Random(20240917)
     positions = build_positions(rng)
-    print("[phase] generated %d positions" % len(positions), flush=True)
     stats = {"points": 0, "agree": 0, "agree_forbidden": 0}
     details: list = []
 
     eng = Engine()
     try:
-        for i, b in enumerate(positions):
+        for b in positions:
             compare(eng, b, stats, details)
     finally:
         eng.close()
-    print("[phase] compare done", flush=True)
 
-    print("=" * 70)
-    print("局面数: %d   比较空点数: %d   一致: %d (其中禁手/非法 %d)"
-          % (len(positions), stats["points"], stats["agree"], stats["agree_forbidden"]))
+    # 统计有多少局面含无气点，验证覆盖度。
+    dead_positions = 0
+    for b in positions:
+        if any(b.is_empty(x, y) and b.would_self_capture(x, y)
+               for x in range(b.size) for y in range(b.size)):
+            dead_positions += 1
 
-    # 硬性不一致类别
-    hard_cats = [k for k in stats if k.startswith("mismatch_") and mismatch_is_hard(k[len("mismatch_"):])]
-    trivial_cats = [k for k in stats if k.startswith("mismatch_") and not mismatch_is_hard(k[len("mismatch_"):])]
+    print("=" * 72)
+    print("局面数: %d (含无气点局面: %d)  比较空点数: %d  一致: %d (禁手/非法 %d)"
+          % (len(positions), dead_positions, stats["points"], stats["agree"],
+             stats["agree_forbidden"]))
 
-    for k in sorted(trivial_cats):
-        print("  %-24s %d" % (k[len("mismatch_"):], stats[k]))
-    for k in sorted(hard_cats):
-        print("  %-24s %d" % (k[len("mismatch_"):], stats[k]))
+    trivial_cats = sorted(k for k in stats
+                          if k.startswith("mismatch_") and k[9:] in TRIVIAL)
+    hard_cats = sorted(k for k in stats
+                       if k.startswith("mismatch_") and k[9:] in HARD)
+    for k in trivial_cats:
+        print("  [硬性不一致] %-16s %d" % (k[9:], stats[k]))
+    for k in hard_cats:
+        print("  [需归因]     %-16s %d" % (k[9:], stats[k]))
 
-    unattributed = 0
-    attributed = 0
-    for (x, y, py_bad, ftype, cpp_bad, cat, b) in details:
-        if not mismatch_is_hard(cat):
+    # 逐条归因。
+    reason_counts: dict = {}
+    unattributed = []
+    for (b, x, y, py_bad, ftype, cat) in details:
+        if cat not in HARD:
             continue
-        reason = attribute_py_forbidden_cpp_legal(b, x, y, ftype)
-        if reason:
-            attributed += 1
+        reasons = attribute(b, x, y, cat)
+        if reasons:
+            r = reasons[0][0]
+            reason_counts[r] = reason_counts.get(r, 0) + 1
             if VERBOSE:
-                print("  [归因] (%d,%d) %s py=%s cpp=%s -> %s"
-                      % (x, y, cat, ftype, cpp_bad, reason))
+                print("  [归因] (%d,%d) %s -> %s" % (x, y, cat, reasons))
         else:
-            unattributed += 1
-            print("  [无法归因] (%d,%d) cat=%s py_type=%s py_bad=%s cpp_bad=%s"
-                  % (x, y, cat, ftype, py_bad, cpp_bad))
+            unattributed.append((b, x, y, cat, ftype))
+            print("  [无法归因] (%d,%d) cat=%s py_type=%s" % (x, y, cat, ftype))
             if VERBOSE:
                 print_board(b)
 
-    print("-" * 70)
-    print("硬性不一致合计: %d" % sum(stats.get(k, 0) for k in hard_cats))
-    print("已归因: %d" % attributed)
-    print("无法归因不一致 = %d" % unattributed)
-    print("=" * 70)
+    print("-" * 72)
+    print("硬性不一致(自杀/长连/成五/占用) = %d"
+          % sum(stats.get(k, 0) for k in trivial_cats))
+    for r in sorted(reason_counts):
+        print("  归因[%s] = %d" % (r, reason_counts[r]))
+    print("已归因 = %d" % sum(reason_counts.values()))
+    print("无法归因不一致 = %d" % len(unattributed))
+    print("=" * 72)
 
-    print("[phase] attribution done, starting make/undo", flush=True)
     make_undo_ok = False
     eng2 = Engine()
     try:
         make_undo_ok = make_undo_test(eng2, random.Random(7))
     finally:
         eng2.close()
-    print("[phase] make/undo done", flush=True)
 
-    if unattributed != 0:
+    if sum(stats.get(k, 0) for k in trivial_cats) != 0:
+        print("FAIL: 存在自杀/长连/成五/占用类不一致")
+        return 1
+    if unattributed:
         print("FAIL: 存在无法归因的禁手判定差异")
         return 1
     if not make_undo_ok:
@@ -489,12 +706,6 @@ def main() -> int:
         return 1
     print("PASS")
     return 0
-
-
-def print_board(b):
-    chars = {EMPTY: ".", BLACK: "X", WHITE: "O", OBSTACLE: "#"}
-    for x in range(b.size):
-        print("    " + "".join(chars[int(b.grid[x, y])] for y in range(b.size)))
 
 
 if __name__ == "__main__":
