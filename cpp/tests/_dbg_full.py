@@ -18,7 +18,8 @@ _orig_readline = d.Engine.readline
 def readline(self):
     line = self.p.stdout.readline()
     if line == "":
-        print("!!! EOF on stdout of pid=%s" % self.p.pid, flush=True)
+        print("!!! EOF on stdout of pid=%s self=%r" % (self.p.pid, id(self)), flush=True)
+        print("    args=%r returncode=%r" % (self.p.args, self.p.returncode), flush=True)
         print("    stdout=%r stderr=%r stdin=%r"
               % (self.p.stdout, self.p.stderr, self.p.stdin), flush=True)
         print("    poll=%r" % (self.p.poll(),), flush=True)
