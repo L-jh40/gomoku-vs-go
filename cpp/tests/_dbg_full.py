@@ -1,9 +1,10 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""Runner: run diff_forbidden.main() with Engine.readline instrumented."""
+"""Runner v2: instrument Engine to trace stdio handles."""
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -11,18 +12,22 @@ sys.path.insert(0, SCRIPT_DIR)
 
 import diff_forbidden as d  # noqa: E402
 
+_orig_readline = d.Engine.readline
+
 
 def readline(self):
     line = self.p.stdout.readline()
     if line == "":
-        rc = self.p.poll()
+        print("!!! EOF on stdout of pid=%s" % self.p.pid, flush=True)
+        print("    stdout=%r stderr=%r stdin=%r"
+              % (self.p.stdout, self.p.stderr, self.p.stdin), flush=True)
+        print("    poll=%r" % (self.p.poll(),), flush=True)
         try:
-            err = self.p.stderr.read()
+            out = subprocess.run(["tasklist", "/FI", "PID eq %d" % self.p.pid],
+                                 capture_output=True, text=True, timeout=10)
+            print("    tasklist: %s" % out.stdout.strip(), flush=True)
         except Exception as e:
-            err = repr(e)
-        print("!!! ENGINE CLOSED stdout: pid=%s rc=%s (hex=%s) stderr=%r"
-              % (self.p.pid, rc, hex(rc & 0xFFFFFFFF) if rc is not None else None, err),
-              flush=True)
+            print("    tasklist failed: %r" % (e,), flush=True)
         raise RuntimeError("engine closed its stdout unexpectedly")
     return line.rstrip("\r\n")
 
