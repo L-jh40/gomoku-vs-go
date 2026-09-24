@@ -174,6 +174,28 @@ def random_scatter(rng: random.Random, snapshots: list) -> None:
     snapshots.append(b)
 
 
+def random_dead_position(rng: random.Random, snapshots: list) -> None:
+    """构造一个必定含无气点的局面：中心空点四邻皆黑，黑十字的其余气被白子封死。"""
+    for _ in range(50):
+        size = rng.choice([11, 13, 15, 19])
+        b = HybridBoard(size)
+        x = rng.randrange(2, size - 2)
+        y = rng.randrange(2, size - 2)
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            b.grid[x + dx, y + dy] = BLACK
+        for dx, dy in ((2, 0), (-2, 0), (0, 2), (0, -2),
+                       (1, 1), (1, -1), (-1, 1), (-1, -1)):
+            b.grid[x + dx, y + dy] = WHITE
+        # 再随机泼一点棋子（不含障碍，避免破坏死点判定）。
+        for _ in range(rng.randint(0, 8)):
+            cx, cy = rng.randrange(size), rng.randrange(size)
+            if b.grid[cx, cy] == EMPTY:
+                b.grid[cx, cy] = rng.choice([BLACK, WHITE])
+        if b.is_empty(x, y) and b.would_self_capture(x, y):
+            snapshots.append(b)
+            return
+
+
 def build_positions(rng: random.Random) -> list:
     snaps: list = []
     guard = 0
@@ -182,6 +204,8 @@ def build_positions(rng: random.Random) -> list:
         random_selfplay(rng, snaps)
     for _ in range(12):
         random_scatter(rng, snaps)
+    for _ in range(6):
+        random_dead_position(rng, snaps)
     snaps.extend(constructed_positions())
     return snaps
 
@@ -587,8 +611,10 @@ def make_undo_test(eng: Engine, rng: random.Random) -> bool:
 
         if applied in DUMP_STEPS:
             eng.send("dump")
-            grid = [[int(eng.readline()[y]) for y in range(size)]
-                    for _ in range(size)]
+            grid = []
+            for _ in range(size):
+                row = eng.readline()
+                grid.append([int(row[y]) for y in range(size)])
             dumps_checked += 1
             for x in range(size):
                 for y in range(size):
