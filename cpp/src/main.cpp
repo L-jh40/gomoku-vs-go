@@ -78,6 +78,14 @@ int main() {
                     std::cout << static_cast<int>(board.at(x, y));
                 std::cout << '\n';
             }
+        } else if (cmd == "pat") {
+            int x, y;
+            if (in >> x >> y) {
+                gvg::ForbiddenProbe r = gvg::probe_forbidden(board, x, y);
+                std::cout << r.dir[0] << ' ' << r.dir[1] << ' ' << r.dir[2] << ' '
+                          << r.dir[3] << ' ' << r.p4 << ' ' << r.fours << ' '
+                          << r.threes << ' ' << (r.forbidden ? 1 : 0) << '\n';
+            }
         } else if (cmd == "quit") {
             break;
         }

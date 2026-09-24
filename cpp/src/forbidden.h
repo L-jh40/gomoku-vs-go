@@ -11,4 +11,15 @@ namespace gvg {
 
 bool check_forbidden(Board& board, int x, int y);
 
+// 诊断用：暴露某空点的四方向线型 / 组合线型 / 四数 / 真三数。
+// dir[i] 为方向 i 的 Pat 枚举值（0=DEAD ... 15=F5），p4 为 Pattern4 枚举值。
+struct ForbiddenProbe {
+    int  dir[4];
+    int  p4;
+    int  fours;
+    int  threes;
+    bool forbidden;
+};
+ForbiddenProbe probe_forbidden(Board& board, int x, int y);
+
 }  // namespace gvg

@@ -344,6 +344,8 @@ def make_undo_test(eng: Engine, rng: random.Random) -> bool:
     applied = 0
     dumps_checked = 0
     for step in range(200):
+        if step % 20 == 0:
+            print("[make/undo] step %d applied=%d turn=%s" % (step, applied, b.turn), flush=True)
         empties = [
             (x, y)
             for x in range(size)

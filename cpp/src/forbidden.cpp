@@ -222,31 +222,10 @@ inline bool is_forbidden_component(uint8_t p) {
 constexpr int MAX_EXT_DEPTH = 1;  // 三三延伸点的递归只做一层
 constexpr int MaxFindDist   = 4;
 
-// 三步判定主体。depth 用于限制三三延伸点的递归层数。
-bool check_forbidden_impl(Board& b, int x, int y, int depth) {
-    if (!b.in_bounds(x, y) || !b.is_empty(x, y)) return false;
+bool check_forbidden_impl(Board& b, int x, int y, int depth);  // 前置声明（互相递归）
 
-    // ---- 第一步：便宜预筛。取落子点四方向线型，不含四/三/长连成分直接放行。 ----
-    uint8_t p[4];
-    for (int d = 0; d < 4; ++d) p[d] = dir_pattern(b, x, y, DX4[d], DY4[d]);
-    bool candidate = false;
-    for (int d = 0; d < 4; ++d)
-        if (is_forbidden_component(p[d])) { candidate = true; break; }
-    if (!candidate) return false;
-
-    // ---- 第二步：长连 / 四四。先查长连；成五直接合法。 ----
-    for (int d = 0; d < 4; ++d)
-        if (p[d] == OL) return true;
-    for (int d = 0; d < 4; ++d)
-        if (p[d] == F5) return false;          // 恰好成五，合法且获胜
-    int fours = 0;
-    for (int d = 0; d < 4; ++d) {
-        const uint8_t q = p[d];
-        if (q == B4 || q == B4S || q == F4) ++fours;
-    }
-    if (fours >= 2) return true;
-
-    // ---- 第三步：三三。临时落子，对每个 F3/F3S 方向寻找有效延伸。 ----
+// 第三步主体：假定 p[] 为落子点四方向线型，临时落子后统计“真三”方向数。
+int count_true_threes(Board& b, int x, int y, const uint8_t p[4], int depth) {
     b.set_cell_raw(x, y, BLACK);               // scoped：结束前还原
     int threes = 0;
     for (int d = 0; d < 4 && threes < 2; ++d) {
@@ -281,13 +260,78 @@ bool check_forbidden_impl(Board& b, int x, int y, int depth) {
         if (found) ++threes;
     }
     b.set_cell_raw(x, y, EMPTY);
-    return threes >= 2;
+    return threes;
+}
+
+// 三步判定主体。depth 用于限制三三延伸点的递归层数。
+bool check_forbidden_impl(Board& b, int x, int y, int depth) {
+    if (!b.in_bounds(x, y) || !b.is_empty(x, y)) return false;
+
+    // ---- 第一步：便宜预筛。取落子点四方向线型，不含四/三/长连成分直接放行。 ----
+    uint8_t p[4];
+    for (int d = 0; d < 4; ++d) p[d] = dir_pattern(b, x, y, DX4[d], DY4[d]);
+    bool candidate = false;
+    for (int d = 0; d < 4; ++d)
+        if (is_forbidden_component(p[d])) { candidate = true; break; }
+    if (!candidate) return false;
+
+    // ---- 第二步：长连 / 四四。先查长连；成五直接合法。 ----
+    for (int d = 0; d < 4; ++d)
+        if (p[d] == OL) return true;
+    for (int d = 0; d < 4; ++d)
+        if (p[d] == F5) return false;          // 恰好成五，合法且获胜
+    int fours = 0;
+    for (int d = 0; d < 4; ++d) {
+        const uint8_t q = p[d];
+        if (q == B4 || q == B4S || q == F4) ++fours;
+    }
+    if (fours >= 2) return true;
+
+    // ---- 第三步：三三。 ----
+    return count_true_threes(b, x, y, p, depth) >= 2;
 }
 
 }  // namespace
 
 bool check_forbidden(Board& board, int x, int y) {
     return check_forbidden_impl(board, x, y, 0);
+}
+
+ForbiddenProbe probe_forbidden(Board& board, int x, int y) {
+    ForbiddenProbe r{};
+    for (int d = 0; d < 4; ++d) r.dir[d] = DEAD;
+    r.p4 = P4_NONE;
+    r.fours = 0;
+    r.threes = 0;
+    r.forbidden = false;
+    if (!board.in_bounds(x, y) || !board.is_empty(x, y)) return r;
+
+    uint8_t p[4];
+    for (int d = 0; d < 4; ++d) {
+        p[d] = dir_pattern(board, x, y, DX4[d], DY4[d]);
+        r.dir[d] = p[d];
+    }
+    r.p4 = combine_pattern4(p[0], p[1], p[2], p[3]);
+    for (int d = 0; d < 4; ++d) {
+        const uint8_t q = p[d];
+        if (q == B4 || q == B4S || q == F4) ++r.fours;
+    }
+    bool candidate = false;
+    for (int d = 0; d < 4; ++d)
+        if (is_forbidden_component(p[d])) { candidate = true; break; }
+    if (candidate) {
+        bool ol = false, five = false;
+        for (int d = 0; d < 4; ++d) { ol |= (p[d] == OL); five |= (p[d] == F5); }
+        if (ol) r.forbidden = true;
+        else if (!five) {
+            if (r.fours >= 2) r.forbidden = true;
+            else {
+                r.threes = count_true_threes(board, x, y, p, 0);
+                r.forbidden = r.threes >= 2;
+            }
+        }
+    }
+    return r;
 }
 
 }  // namespace gvg
