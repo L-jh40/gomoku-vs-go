@@ -129,11 +129,11 @@ def explain_three(b, x, y, dx, dy, pat):
         try:
             p4 = d.pattern4_py(b, ex, ey)
             pc = d.dir_pattern_py(b, ex, ey, dx, dy)
-            legal = rules.is_black_legal_move(b, ex, ey)
         finally:
             b.grid[ex, ey] = EMPTY
         if p4 == d.B_FLEX4 or pc == d.F5:
             saw = True
+            legal = rules.is_black_legal_move(b, ex, ey)
             if not legal[0]:
                 return "ext_point_forbidden(%s,%s,type=%s)" % (ex, ey, legal[1])
             return None  # a genuine true three
