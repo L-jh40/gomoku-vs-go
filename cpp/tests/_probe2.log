@@ -1,1 +1,41 @@
 09:22:34 spawning e2
+09:22:34 spawned pid=25772
+09:22:34 send 'size 15'
+09:22:34 send 'clear'
+09:22:34 send 'hash'
+09:22:34   rl dt=0.03 line='0000000000000000'
+09:22:34 send 'move 5 7 b'
+09:22:34   rl dt=0.00 line='ok\n'
+09:22:34 send 'move 2 8 w'
+09:22:34   rl dt=0.00 line='ok\n'
+09:22:34 send 'move 6 13 b'
+09:22:34   rl dt=0.00 line='ok\n'
+09:22:34 send 'move 11 4 w'
+09:22:34   rl dt=0.00 line='ok\n'
+09:22:34 send 'move 0 12 b'
+09:22:34   rl dt=0.00 line='ok\n'
+09:22:34 send 'move 1 4 w'
+09:22:34   rl dt=0.00 line='ok\n'
+09:22:34 send 'move 14 6 b'
+09:22:34   rl dt=0.00 line='ok\n'
+09:22:34 send 'dump'
+09:22:34   rl dt=0.00 line='000000000000100\n'
+09:22:34   rl dt=0.00 line='000020000000000\n'
+09:22:34   rl dt=0.00 line='000000002000000\n'
+09:22:34   rl dt=0.00 line='000000000000000\n'
+09:22:34   rl dt=0.00 line='000000000000000\n'
+09:22:34   rl dt=0.00 line='000000010000000\n'
+09:22:34   rl dt=0.00 line='000000000000010\n'
+09:22:34   rl dt=0.00 line='000000000000000\n'
+09:22:34   rl dt=0.00 line='000000000000000\n'
+09:22:34   rl dt=0.00 line='000000000000000\n'
+09:22:34   rl dt=0.00 line='000000000000000\n'
+09:22:34   rl dt=0.00 line='000020000000000\n'
+09:22:34   rl dt=0.00 line='000000000000000\n'
+09:22:34   rl dt=0.00 line='000000000000000\n'
+09:22:34   rl dt=0.00 line='000000100000000\n'
+Timeout (0:00:40)!
+Thread 0x0000381c (most recent call first):
+  File "C:\Users\lin\Desktop\gomoku-vs-go\gomoku-vs-go2\cpp\tests\_probe_old.py", line 40 in rl
+  File "C:\Users\lin\Desktop\gomoku-vs-go\gomoku-vs-go2\cpp/tests/_old_diff.py", line 389 in make_undo_test
+  File "C:\Users\lin\Desktop\gomoku-vs-go\gomoku-vs-go2\cpp\tests\_probe_old.py", line 52 in <module>
