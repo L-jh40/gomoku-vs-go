@@ -1,9 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""Probe the OLD harness's make/undo hang: log every readline with timing."""
+"""Probe v2: faulthandler stack dump on the old harness hang."""
 from __future__ import annotations
 
+import faulthandler
 import importlib.util
+import os
 import random
 import sys
 import time
@@ -13,40 +15,34 @@ spec = importlib.util.spec_from_file_location("old_diff", "cpp/tests/_old_diff.p
 m = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
 
-LOG = open("cpp/tests/_probe.log", "w", encoding="utf-8")
+LOG = open("cpp/tests/_probe2.log", "w", encoding="utf-8")
 
 
 def log(msg):
-    LOG.write(msg + "\n")
+    LOG.write("%s %s\n" % (time.strftime("%H:%M:%S"), msg))
     LOG.flush()
 
 
-orig = m.Engine.readline
+# Dump stacks of all threads after 40s and hard-exit.
+faulthandler.dump_traceback_later(40, exit=True, file=LOG)
+
+orig_send = m.Engine.send
+orig_rl = m.Engine.readline
+
+
+def send(self, cmd):
+    log("send %r" % cmd)
+    return orig_send(self, cmd)
 
 
 def rl(self):
     t0 = time.time()
     line = self.p.stdout.readline()
-    dt = time.time() - t0
-    log("  [rl dt=%.2f line=%r poll=%r]" % (dt, line[:20], self.p.poll()))
-    if line == "":
-        log("  EOF pid=%r rc=%r stdin_closed=%s stderr_closed=%s"
-            % (self.p.pid, self.p.poll(), self.p.stdin.closed, self.p.stderr.closed))
-        # is the process alive?
-        try:
-            rc = self.p.wait(timeout=5)
-            log("  wait rc=%r hex=%s" % (rc, hex(rc & 0xFFFFFFFF)))
-        except Exception as e:
-            log("  wait failed %r" % (e,))
-            try:
-                err = self.p.stderr.read()
-                log("  stderr=%r" % (err,))
-            except Exception as e2:
-                log("  stderr read failed %r" % (e2,))
-        raise RuntimeError("eof")
+    log("  rl dt=%.2f line=%r" % (time.time() - t0, line[:16]))
     return line.rstrip("\r\n")
 
 
+m.Engine.send = send
 m.Engine.readline = rl
 
 log("spawning e2")
@@ -58,4 +54,3 @@ try:
 except Exception as ex:
     log("EXC %r" % (ex,))
 log("DONE")
-LOG.close()
