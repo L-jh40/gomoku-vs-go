@@ -1,65 +1,65 @@
 ﻿mismatches=27
-OK ( 8, 7) size=9 py=None cpp_bad=True
-     dir2 pat=B4 code=01011122222 legal5completions=0
-OK ( 8, 7) size=9 py=None cpp_bad=True
-     dir2 pat=B4 code=01011122222 legal5completions=0
-OK ( 8, 7) size=9 py=None cpp_bad=True
-     dir2 pat=B4 code=01011122222 legal5completions=0
-OK ( 8, 7) size=9 py=None cpp_bad=True
-     dir2 pat=B4 code=01011122222 legal5completions=0
-OK ( 0, 5) size=13 py=three_three cpp_bad=False
-     dir1 pat=B3 code=00010110100 three=[(0, 3), (0, 5), (0, 6)] open4_ext=[]
-OK ( 0, 5) size=13 py=three_three cpp_bad=False
-     dir1 pat=B3 code=00010110100 three=[(0, 3), (0, 5), (0, 6)] open4_ext=[]
-OK ( 0, 5) size=13 py=three_three cpp_bad=False
-     dir1 pat=B3 code=00010110100 three=[(0, 3), (0, 5), (0, 6)] open4_ext=[]
-OK ( 0, 5) size=13 py=three_three cpp_bad=False
-     dir1 pat=B3 code=00010110100 three=[(0, 3), (0, 5), (0, 6)] open4_ext=[]
-OK ( 0, 5) size=13 py=three_three cpp_bad=False
-     dir1 pat=B3 code=00010110100 three=[(0, 3), (0, 5), (0, 6)] open4_ext=[]
-OK ( 0, 5) size=13 py=three_three cpp_bad=False
-     dir1 pat=B3 code=00010110100 three=[(0, 3), (0, 5), (0, 6)] open4_ext=[]
-OK ( 0, 5) size=13 py=three_three cpp_bad=False
-     dir1 pat=B3 code=00010110100 three=[(0, 3), (0, 5), (0, 6)] open4_ext=[]
-OK ( 0, 5) size=13 py=three_three cpp_bad=False
-     dir1 pat=B3 code=00010110100 three=[(0, 3), (0, 5), (0, 6)] open4_ext=[]
-OK ( 3, 4) size=15 py=three_three cpp_bad=False
-     dir1 pat=F3 code=20001110200 three=[(3, 3), (3, 4), (3, 5)] open4_ext=[(3, 2)]
-     dir3 pat=B3 code=22011100102 three=[(1, 6), (2, 5), (3, 4)] open4_ext=[]
-OK ( 3, 4) size=15 py=three_three cpp_bad=False
-     dir1 pat=F3 code=20001110201 three=[(3, 3), (3, 4), (3, 5)] open4_ext=[(3, 2)]
-     dir3 pat=B3 code=22011100102 three=[(1, 6), (2, 5), (3, 4)] open4_ext=[]
-OK ( 3, 4) size=15 py=three_three cpp_bad=False
-     dir1 pat=F3 code=20001110201 three=[(3, 3), (3, 4), (3, 5)] open4_ext=[(3, 2)]
-     dir3 pat=B3 code=22011100102 three=[(1, 6), (2, 5), (3, 4)] open4_ext=[]
-OK ( 3, 4) size=15 py=three_three cpp_bad=False
-     dir1 pat=F3 code=20001110201 three=[(3, 3), (3, 4), (3, 5)] open4_ext=[(3, 2)]
-     dir3 pat=B3 code=22011100102 three=[(1, 6), (2, 5), (3, 4)] open4_ext=[]
-OK ( 3, 4) size=15 py=three_three cpp_bad=False
-     dir1 pat=F3 code=20001110201 three=[(3, 3), (3, 4), (3, 5)] open4_ext=[(3, 2)]
-     dir3 pat=B3 code=22011100102 three=[(1, 6), (2, 5), (3, 4)] open4_ext=[]
-OK ( 6, 0) size=15 py=three_three cpp_bad=False
-     dir0 pat=B3 code=00101101000 three=[(3, 0), (5, 0), (6, 0)] open4_ext=[]
-OK ( 7, 3) size=19 py=three_three cpp_bad=False
-     dir0 pat=B3 code=00101101000 three=[(4, 3), (6, 3), (7, 3)] open4_ext=[]
-OK ( 8,18) size=19 py=three_three cpp_bad=False
-     dir0 pat=B3 code=00101101001 three=[(5, 18), (7, 18), (8, 18)] open4_ext=[]
-OK ( 9,12) size=19 py=three_three cpp_bad=False
-     dir2 pat=B3 code=00010110100 three=[(7, 10), (9, 12), (10, 13)] open4_ext=[]
-OK ( 5, 5) size=19 py=three_three cpp_bad=False
-     dir0 pat=F3S code=00000111000 three=[(5, 5), (6, 5), (7, 5)] open4_ext=[(4, 5), (8, 5)]
-     dir2 pat=B3 code=00010101100 three=[(5, 5), (7, 7), (8, 8)] open4_ext=[]
-OK ( 6, 6) size=19 py=three_three cpp_bad=False
-     dir1 pat=B3S code=20001101012 three=[(6, 5), (6, 6), (6, 8)] open4_ext=[]
-     dir2 pat=F3 code=00100111000 three=[(6, 6), (7, 7), (8, 8)] open4_ext=[(9, 9)]
-OK ( 4, 7) size=13 py=three_three cpp_bad=False
-     dir3 pat=B3 code=20010110100 three=[(2, 9), (4, 7), (5, 6)] open4_ext=[]
-OK ( 5, 9) size=13 py=three_three cpp_bad=False
-     dir0 pat=B3 code=00101101020 three=[(2, 9), (4, 9), (5, 9)] open4_ext=[]
-OK ( 8, 2) size=15 py=three_three cpp_bad=False
-     dir0 pat=B4S code=20101110000 three=[(7, 2), (8, 2), (9, 2)] open4_ext=[]
-     dir2 pat=F3S code=22200111000 three=[(8, 2), (9, 3), (10, 4)] open4_ext=[(7, 1), (11, 5)]
-OK (13,12) size=15 py=three_three cpp_bad=False
-     dir0 pat=F3 code=00101102222 three=[(10, 12), (12, 12), (13, 12)] open4_ext=[(11, 12)]
-     dir1 pat=F3S code=00011100222 three=[(13, 10), (13, 11), (13, 12)] open4_ext=[(13, 9), (13, 13)]
+OK  ( 8, 7) size=9 py=None cpp_bad=True
+      dir2 B4 code=01011122222 legal5completions=0
+OK  ( 8, 7) size=9 py=None cpp_bad=True
+      dir2 B4 code=01011122222 legal5completions=0
+OK  ( 8, 7) size=9 py=None cpp_bad=True
+      dir2 B4 code=01011122222 legal5completions=0
+OK  ( 8, 7) size=9 py=None cpp_bad=True
+      dir2 B4 code=01011122222 legal5completions=0
+OK  ( 0, 5) size=13 py=three_three cpp_bad=False
+      dir1 B3 code=00010110100 -> rapfi_dir_not_open_three(B3)
+OK  ( 0, 5) size=13 py=three_three cpp_bad=False
+      dir1 B3 code=00010110100 -> rapfi_dir_not_open_three(B3)
+OK  ( 0, 5) size=13 py=three_three cpp_bad=False
+      dir1 B3 code=00010110100 -> rapfi_dir_not_open_three(B3)
+OK  ( 0, 5) size=13 py=three_three cpp_bad=False
+      dir1 B3 code=00010110100 -> rapfi_dir_not_open_three(B3)
+OK  ( 0, 5) size=13 py=three_three cpp_bad=False
+      dir1 B3 code=00010110100 -> rapfi_dir_not_open_three(B3)
+OK  ( 0, 5) size=13 py=three_three cpp_bad=False
+      dir1 B3 code=00010110100 -> rapfi_dir_not_open_three(B3)
+OK  ( 0, 5) size=13 py=three_three cpp_bad=False
+      dir1 B3 code=00010110100 -> rapfi_dir_not_open_three(B3)
+OK  ( 0, 5) size=13 py=three_three cpp_bad=False
+      dir1 B3 code=00010110100 -> rapfi_dir_not_open_three(B3)
+OK  ( 3, 4) size=15 py=three_three cpp_bad=False
+      dir1 F3 code=20001110200 -> ext_point_forbidden(3,2,type=occupied)
+      dir3 B3 code=22011100102 -> rapfi_dir_not_open_three(B3)
+OK  ( 3, 4) size=15 py=three_three cpp_bad=False
+      dir1 F3 code=20001110201 -> ext_point_forbidden(3,2,type=occupied)
+      dir3 B3 code=22011100102 -> rapfi_dir_not_open_three(B3)
+OK  ( 3, 4) size=15 py=three_three cpp_bad=False
+      dir1 F3 code=20001110201 -> ext_point_forbidden(3,2,type=occupied)
+      dir3 B3 code=22011100102 -> rapfi_dir_not_open_three(B3)
+OK  ( 3, 4) size=15 py=three_three cpp_bad=False
+      dir1 F3 code=20001110201 -> ext_point_forbidden(3,2,type=occupied)
+      dir3 B3 code=22011100102 -> rapfi_dir_not_open_three(B3)
+OK  ( 3, 4) size=15 py=three_three cpp_bad=False
+      dir1 F3 code=20001110201 -> ext_point_forbidden(3,2,type=occupied)
+      dir3 B3 code=22011100102 -> rapfi_dir_not_open_three(B3)
+OK  ( 6, 0) size=15 py=three_three cpp_bad=False
+      dir0 B3 code=00101101000 -> rapfi_dir_not_open_three(B3)
+OK  ( 7, 3) size=19 py=three_three cpp_bad=False
+      dir0 B3 code=00101101000 -> rapfi_dir_not_open_three(B3)
+OK  ( 8,18) size=19 py=three_three cpp_bad=False
+      dir0 B3 code=00101101001 -> rapfi_dir_not_open_three(B3)
+OK  ( 9,12) size=19 py=three_three cpp_bad=False
+      dir2 B3 code=00010110100 -> rapfi_dir_not_open_three(B3)
+OK  ( 5, 5) size=19 py=three_three cpp_bad=False
+      dir0 F3S code=00000111000 -> ext_point_forbidden(4,5,type=occupied)
+      dir2 B3 code=00010101100 -> rapfi_dir_not_open_three(B3)
+OK  ( 6, 6) size=19 py=three_three cpp_bad=False
+      dir1 B3S code=20001101012 -> rapfi_dir_not_open_three(B3S)
+      dir2 F3 code=00100111000 -> ext_point_forbidden(9,9,type=occupied)
+OK  ( 4, 7) size=13 py=three_three cpp_bad=False
+      dir3 B3 code=20010110100 -> rapfi_dir_not_open_three(B3)
+OK  ( 5, 9) size=13 py=three_three cpp_bad=False
+      dir0 B3 code=00101101020 -> rapfi_dir_not_open_three(B3)
+OK  ( 8, 2) size=15 py=three_three cpp_bad=False
+      dir0 B4S code=20101110000 -> rapfi_dir_not_open_three(B4S)
+      dir2 F3S code=22200111000 -> ext_point_forbidden(7,1,type=occupied)
+OK  (13,12) size=15 py=three_three cpp_bad=False
+      dir0 F3 code=00101102222 -> no_live_extension
+      dir1 F3S code=00011100222 -> ext_point_forbidden(13,9,type=occupied)
 unexplained=0
