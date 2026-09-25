@@ -60,6 +60,6 @@ OK  ( 8, 2) size=15 py=three_three cpp_bad=False
       dir0 B4S code=20101110000 -> rapfi_dir_not_open_three(B4S)
       dir2 F3S code=22200111000 -> GENUINE open three
 OK  (13,12) size=15 py=three_three cpp_bad=False
-      dir0 F3 code=00101102222 -> no_live_extension
+      dir0 F3 code=00101102222 -> no_live_extension (11,12 p4=FORBID dir=F4 legal=(False, 'four_four')) (14,12 p4=NONE dir=B4 legal=(True, None))
       dir1 F3S code=00011100222 -> GENUINE open three
 unexplained=0

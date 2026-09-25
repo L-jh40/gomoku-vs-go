@@ -121,9 +121,10 @@ def explain_three(b, x, y, dx, dy, pat):
     exts = d.ext_points(b, x, y, dx, dy)
     if not exts:
         return "no_live_extension"
-    saw = False
+    details = []
     for (ex, ey) in exts:
         if b.would_self_capture(ex, ey):
+            details.append("(%d,%d)=self_capture" % (ex, ey))
             continue
         b.grid[ex, ey] = BLACK
         try:
@@ -132,12 +133,14 @@ def explain_three(b, x, y, dx, dy, pat):
         finally:
             b.grid[ex, ey] = EMPTY
         if p4 == d.B_FLEX4 or pc == d.F5:
-            saw = True
             legal = rules.is_black_legal_move(b, ex, ey)
             if not legal[0]:
-                return "ext_point_forbidden(%s,%s,type=%s)" % (ex, ey, legal[1])
+                return "ext_point_forbidden(%d,%d,type=%s)" % (ex, ey, legal[1])
             return None  # a genuine true three
-    return "no_live_extension" if not saw else "ext_point_forbidden"
+        legal = rules.is_black_legal_move(b, ex, ey)
+        details.append("(%d,%d p4=%s dir=%s legal=%s)"
+                       % (ex, ey, d.P4_NAME[p4], PAT_NAME[pc], legal))
+    return "no_live_extension " + " ".join(details)
 
 
 def verify(b, x, y, ftype, cpp_bad):
