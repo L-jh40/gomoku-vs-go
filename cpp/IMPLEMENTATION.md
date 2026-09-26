@@ -24,7 +24,7 @@ cpp\build\engine.exe          :: 启动引擎，从 stdin 逐行读命令、stdo
 | `set` | `<x> <y> <b\|w\|o>` | 直接摆子（`o`=障碍），不提子、不换回合 | 无输出 |
 | `clear` | 无 | 清空棋盘 | 无输出 |
 | `checkforbidden` | 无 | 列出所有黑棋非法点（Rapfi 禁手 ∪ 无气自杀） | 每行 `x y`，末尾 `end` |
-| `play` | `<b\|w> <x> <y>` | 正式落子（白提黑、黑自杀拒绝），不自动换回合语义由 `make_move` 决定 | `ok` / `illegal` |
+| `play` | `<b\|w> <x> <y>` | 正式落子（白提黑、黑自杀拒绝，`make_move` 负责换回合） | `ok` / `illegal` |
 | `move` | `<x> <y> <b\|w>` | 同 `play`（旧接口，参数顺序不同） | `ok` / `err` |
 | `undo` | 无 | 悔一步 | `ok` / `err`（空历史 `err`） |
 | `hash` | 无 | 当前局面 Zobrist 哈希 | 16 位小写十六进制 |
