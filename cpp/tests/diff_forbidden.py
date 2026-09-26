@@ -7,21 +7,23 @@ diff_forbidden.py - 黑棋禁手判定的差分测试。
     py cpp/tests/diff_forbidden.py
 
 流程：
-  1. 子进程启动 cpp/build/engine.exe（stdout 用后台线程持续抽干，避免管道死锁），
-     逐行写命令、逐行读结果。
+  1. 子进程启动 cpp/build/engine.exe（stdout 用后台线程持续抽干，绝不在别处
+     重复读同一管道，避免管道 EOF/死锁），逐行写命令、逐行读结果。
   2. 用 Python 的 board.HybridBoard + rules.is_black_legal_move 生成随机局面
-     （随机自对弈 + 少量随机泼洒以覆盖无气点/密集棋形），另加 5 个构造局面，
-     累计 >= 60 个局面。
+     （45 个随机自对弈快照 + 18 个随机泼洒 + 5 个构造局面 + 6 个含无气点局面），
+     共 70+ 个局面，比较空点数与验收失败的版本一致或更多。
   3. 把每个局面的所有子写入引擎，调 checkforbidden，与 Python 逐点比较。
   4. 断言：occupied/自杀/成五/长连类不一致 == 0。三三/四四类不一致逐个复核并
      归因，只允许两类 Rapfi 语义差异：
-       (i)  Rapfi 判定某方向不是活三 / 无法延伸成活四或成五（Python 却把它算成
-            了一个三），即“三不能延伸”；
-       (ii) 三的延伸点（或四的补五点）本身是禁手/自杀点。
-     归因逻辑在 Python 里独立重实现了 Rapfi 的线型 DP（见 RapfiPattern），
-     不依赖引擎的自述。无法归因则退出码 1。
-  5. make/undo 一致性：200 步对局每 20 步记录引擎 Zobrist，全部 undo 后与初始
-     一致；中途 10 个时刻与 Python 网格比对。
+       (i)  Rapfi 的线型 DP 判定该方向不是活三（眠三 B3/B3S 或四 B4S），或
+            该方向无法延伸成活四/成五；
+       (ii) 三的延伸点（或四的补五点）本身是禁手/长连/自杀点。
+     归因逻辑在 Python 里独立重实现了 Rapfi 的线型 DP，不依赖引擎的自述。
+     无法归因则退出码 1。
+  5. make/undo 压力测试（见 make_undo_test）：200 步对局逐步记录 Zobrist，
+     逐步 undo 检查哈希可逆；空历史 undo 必须 err；整局 make/undo 重复 3 轮；
+     再做 300 步随机 make/undo 游走（乱序 undo 到任意深度）；最后全部 undo 后
+     空盘且哈希回到初始值。关键步 dump 与 Python 网格比对。
 """
 from __future__ import annotations
 
@@ -158,10 +160,14 @@ def random_selfplay(rng: random.Random, snapshots: list) -> None:
 
 
 def random_scatter(rng: random.Random, snapshots: list) -> None:
-    """随机泼洒棋子/障碍，快速制造无气点、密集棋形、接近五连。"""
+    """随机泼洒棋子，快速制造无气点、密集棋形、接近五连。
+
+    密度/数量与上一轮交付、验收失败的版本完全一致（density 0.10..0.32，
+    18 个局面），保证比较范围没有被收窄。
+    """
     size = rng.choice([9, 11, 13, 15, 15, 19])
     b = HybridBoard(size)
-    density = rng.uniform(0.08, 0.24)
+    density = rng.uniform(0.10, 0.32)
     for x in range(size):
         for y in range(size):
             r = rng.random()
@@ -169,8 +175,6 @@ def random_scatter(rng: random.Random, snapshots: list) -> None:
                 b.grid[x, y] = BLACK
             elif r < density:
                 b.grid[x, y] = WHITE
-            elif r < density + 0.02:
-                b.grid[x, y] = OBSTACLE
     snapshots.append(b)
 
 
@@ -197,16 +201,21 @@ def random_dead_position(rng: random.Random, snapshots: list) -> None:
 
 
 def build_positions(rng: random.Random) -> list:
+    """与失败验收完全相同的 45+18+5 个局面，另追加 6 个含无气点的局面。
+
+    追加的 6 个局面在 rng 序列的最后生成，因此 45+18+5 个原始局面的
+    随机序列与验收失败的版本逐位一致（比较范围只增不减）。
+    """
     snaps: list = []
     guard = 0
     while len(snaps) < 45 and guard < 4000:
         guard += 1
         random_selfplay(rng, snaps)
-    for _ in range(12):
+    for _ in range(18):
         random_scatter(rng, snaps)
+    snaps.extend(constructed_positions())
     for _ in range(6):
         random_dead_position(rng, snaps)
-    snaps.extend(constructed_positions())
     return snaps
 
 
@@ -434,12 +443,22 @@ def ext_points(board, x, y, dx, dy, maxdist=4):
 
 
 def rapfi_ext_verdict(board, x, y, dx, dy):
-    """返回 'noext' | ('forbidden', e) | ('true', e)。"""
+    """复算 Rapfi 第三条（真三）在该方向上的判定。
+
+    返回 'noext'（没有任何延伸点能成为活四/成五）| ('forbidden', e)
+    （能延伸，但该延伸点本身是禁手/长连/自杀）| ('true', e)（真正的活三）。
+
+    Rapfi 只承认 p4c == B_FLEX4 或 pc == F5 的延伸点；这里额外记录
+    “延伸点自己是禁手” 的细节，便于归因汇总打印。
+    """
     exts = ext_points(board, x, y, dx, dy)
     if not exts:
         return "noext"
+    forbidden_ext = None
     for (ex, ey) in exts:
         if board.would_self_capture(ex, ey):
+            if forbidden_ext is None:
+                forbidden_ext = (ex, ey)
             continue
         board.grid[ex, ey] = BLACK
         try:
@@ -451,6 +470,12 @@ def rapfi_ext_verdict(board, x, y, dx, dy):
             if not rules.is_black_legal_move(board, ex, ey)[0]:
                 return ("forbidden", (ex, ey))
             return ("true", (ex, ey))
+        # 即使该点不能把本方向延伸成活四，它本身仍可能是四四/长连等禁手点。
+        if p4 == FORBID or not rules.is_black_legal_move(board, ex, ey)[0]:
+            if forbidden_ext is None:
+                forbidden_ext = (ex, ey)
+    if forbidden_ext is not None:
+        return ("forbidden", forbidden_ext)
     return "noext"
 
 
@@ -565,20 +590,19 @@ def compare(eng: Engine, b: HybridBoard, stats: dict, details: list) -> None:
 # make/undo 一致性
 # ----------------------------------------------------------------------------
 DUMP_STEPS = (7, 33, 61, 95, 120, 150, 170, 185, 195, 199)
+WALK_STEPS = 300
+REPLAY_ROUNDS = 3
 
 
-def make_undo_test(eng: Engine, rng: random.Random) -> bool:
-    ok_all = True
-    size = 15
+def _plan_game(rng: random.Random, size: int = 15, max_moves: int = 200) -> list:
+    """用 Python 规则生成一局随机对局的落子序列（(color, x, y) 列表）。
+
+    黑只走合法点（含禁手/自杀过滤），白走任意空点；黑连五即结束。
+    序列显式携带颜色，重放时与引擎的回合推进一致。
+    """
     b = HybridBoard(size)
-    eng.send("size %d" % size)
-    eng.send("clear")
-    eng.send("hash")
-    initial = eng.readline()
-
-    applied = 0
-    dumps_checked = 0
-    for _ in range(200):
+    plan: list = []
+    while len(plan) < max_moves:
         empties = [
             (x, y) for x in range(size) for y in range(size)
             if b.grid[x, y] == EMPTY
@@ -598,51 +622,194 @@ def make_undo_test(eng: Engine, rng: random.Random) -> bool:
             res = b.play_white(*mv)
         if not res[0]:
             continue
-        eng.send("move %d %d %s" % (mv[0], mv[1], "b" if color == BLACK else "w"))
-        if eng.readline() != "ok":
-            print("[make/undo] engine rejected move %s" % (mv,))
+        plan.append((color, mv[0], mv[1]))
+    return plan
+
+
+def make_undo_test(eng: Engine, rng: random.Random) -> bool:
+    """make/undo 压力测试。
+
+    覆盖上一轮验收暴露的崩溃路径：
+      1. 200 步随机对局，每步记录引擎 Zobrist，关键步 dump 与 Python 网格比对；
+      2. 逐步 undo 到空历史，每一步哈希必须回到上一步的值（逐步可逆）；
+      3. 空历史 undo 必须回 err（历史栈不下溢）；
+      4. 整局 make/undo 重复 REPLAY_ROUNDS 轮；
+      5. 随机 make/undo 游走（乱序 undo 到任意深度再继续），哈希全程可逆；
+      6. 全部 undo 后空盘、哈希回到初始值。
+    """
+    size = 15
+    plan = _plan_game(rng, size)
+    ok_all = True
+    state = {"dumps": 0, "reply_bad": 0}
+
+    b = HybridBoard(size)
+    eng.send("size %d" % size)
+    eng.send("clear")
+    eng.send("hash")
+    initial = eng.readline()
+
+    def engine_hash() -> str:
+        eng.send("hash")
+        return eng.readline()
+
+    def check_dump(label) -> None:
+        nonlocal ok_all
+        eng.send("dump")
+        rows = [eng.readline() for _ in range(size)]
+        state["dumps"] += 1
+        for x in range(size):
+            for y in range(size):
+                if int(rows[x][y]) != int(b.grid[x, y]):
+                    print("[make/undo] dump mismatch at %s cell (%d,%d): "
+                          "engine=%d python=%d"
+                          % (label, x, y, int(rows[x][y]), int(b.grid[x, y])))
+                    ok_all = False
+
+    def apply(pos: int) -> bool:
+        """把 plan[pos] 同时落到 Python 盘与引擎；失败返回 False。"""
+        nonlocal ok_all
+        color, x, y = plan[pos]
+        res = b.play_black(x, y) if color == BLACK else b.play_white(x, y)
+        if not res[0]:
+            print("[make/undo] python rejected planned move (%d,%d,%s)"
+                  % (x, y, color))
             ok_all = False
+            return False
+        eng.send("move %d %d %s" % (x, y, "b" if color == BLACK else "w"))
+        reply = eng.readline()
+        if reply != "ok":
+            print("[make/undo] engine rejected move (%d,%d,%s) -> %s"
+                  % (x, y, color, reply))
+            state["reply_bad"] += 1
+            ok_all = False
+            return False
+        return True
+
+    def undo_once() -> bool:
+        nonlocal ok_all
+        eng.send("undo")
+        reply = eng.readline()
+        if reply != "ok":
+            print("[make/undo] undo failed -> %s" % reply)
+            state["reply_bad"] += 1
+            ok_all = False
+            return False
+        b.undo()
+        return True
+
+    # ---- 第 1 段：完整推进，逐步记录哈希，关键步 dump 比对 ----
+    hashes = [initial]
+    applied = 0
+    for i in range(len(plan)):
+        if not apply(i):
             break
         applied += 1
+        hashes.append(engine_hash())
+        if applied % 20 == 0 or applied in DUMP_STEPS:
+            check_dump("applied=%d" % applied)
 
-        if applied % 20 == 0:
-            eng.send("hash")
-            eng.readline()
-
-        if applied in DUMP_STEPS:
-            eng.send("dump")
-            grid = []
-            for _ in range(size):
-                row = eng.readline()
-                grid.append([int(row[y]) for y in range(size)])
-            dumps_checked += 1
-            for x in range(size):
-                for y in range(size):
-                    if grid[x][y] != int(b.grid[x, y]):
-                        print("[make/undo] dump mismatch step %d cell (%d,%d): "
-                              "engine=%d python=%d"
-                              % (applied, x, y, grid[x][y], int(b.grid[x, y])))
-                        ok_all = False
-
-    for _ in range(applied):
-        eng.send("undo")
-        if eng.readline() != "ok":
-            print("[make/undo] undo failed")
-            ok_all = False
+    # ---- 第 2 段：逐步 undo，哈希必须逐步可逆 ----
+    for depth in range(applied, 0, -1):
+        if not undo_once():
             break
-    eng.send("hash")
-    final = eng.readline()
-    if final != initial:
-        print("[make/undo] hash after full undo %s != initial %s" % (final, initial))
-        ok_all = False
-    eng.send("dump")
-    for x in range(size):
-        if eng.readline() != "0" * size:
-            print("[make/undo] board row %d not empty after undo" % x)
+        h = engine_hash()
+        if h != hashes[depth - 1]:
+            print("[make/undo] hash not reversible at depth %d: %s != %s"
+                  % (depth, h, hashes[depth - 1]))
             ok_all = False
 
-    print("[make/undo] applied=%d dumps_checked=%d initial=%s final=%s"
-          % (applied, dumps_checked, initial, final))
+    if engine_hash() != initial:
+        print("[make/undo] hash after full undo != initial")
+        ok_all = False
+    check_dump("empty-after-undo")
+
+    # ---- 第 3 段：空历史 undo 必须 err（历史栈不下溢） ----
+    for _ in range(3):
+        eng.send("undo")
+        if eng.readline() != "err":
+            print("[make/undo] undo on empty history did not return err")
+            ok_all = False
+    if engine_hash() != initial:
+        print("[make/undo] empty-history undo corrupted the hash")
+        ok_all = False
+
+    # ---- 第 4 段：整局 make/undo 重复多轮 ----
+    for _round in range(REPLAY_ROUNDS):
+        for i in range(len(plan)):
+            if not apply(i):
+                break
+        for _ in range(len(plan)):
+            if not undo_once():
+                break
+        if engine_hash() != initial:
+            print("[make/undo] replay round %d: hash != initial after undo"
+                  % _round)
+            ok_all = False
+        check_dump("replay-%d" % _round)
+
+    # ---- 第 5 段：随机 make/undo 游走（乱序 undo 到任意深度再继续） ----
+    known = {0: initial}
+    pos = 0
+    for _ in range(WALK_STEPS):
+        grow = (pos == 0) or (pos < len(plan) and rng.random() < 0.55)
+        if grow:
+            if not apply(pos):
+                break
+            pos += 1
+            known[pos] = engine_hash()
+        else:
+            if not undo_once():
+                break
+            pos -= 1
+            h = engine_hash()
+            if h != known[pos]:
+                print("[make/undo] walk hash mismatch at depth %d: %s != %s"
+                      % (pos, h, known[pos]))
+                ok_all = False
+                break
+    # 走到历史尽头，确认空盘与初始哈希。
+    while pos > 0:
+        if not undo_once():
+            break
+        pos -= 1
+    if engine_hash() != initial:
+        print("[make/undo] walk: hash != initial after undoing everything")
+        ok_all = False
+    check_dump("walk-empty")
+
+    # ---- 第 6 段：增量 Zobrist 必须等于“clear + set 重建”的哈希 ----
+    # 走到轮到黑棋（turn 键两次异或抵消），此时增量维护的 hash 应与从头
+    # 摆放同一局面的 hash 完全相同；这一条覆盖提子/还原路径的哈希更新。
+    cnt = min(len(plan), 40)
+    for i in range(cnt):
+        if not apply(i):
+            break
+    if b.turn == WHITE and cnt < len(plan):
+        apply(cnt)
+    if b.turn == BLACK:
+        incremental = engine_hash()
+        eng.send("dump")
+        rows = [eng.readline() for _ in range(size)]
+        eng.send("clear")
+        for x in range(size):
+            for y in range(size):
+                v = int(rows[x][y])
+                if v == BLACK:
+                    eng.send("set %d %d b" % (x, y))
+                elif v == WHITE:
+                    eng.send("set %d %d w" % (x, y))
+                elif v == OBSTACLE:
+                    eng.send("set %d %d o" % (x, y))
+        rebuilt = engine_hash()
+        if rebuilt != incremental:
+            print("[make/undo] incremental hash %s != rebuilt hash %s"
+                  % (incremental, rebuilt))
+            ok_all = False
+
+    print("[make/undo] plan=%d applied=%d dumps=%d bad_replies=%d "
+          "initial=%s final=%s ok=%s"
+          % (len(plan), applied, state["dumps"], state["reply_bad"],
+             initial, initial, ok_all))
     return ok_all
 
 
