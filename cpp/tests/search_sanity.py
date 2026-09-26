@@ -202,11 +202,13 @@ def selfplay(eng: Engine, ck: Checker, rng, size: int, obstacles, depth: int,
         _infos, res, _raw = genmove(eng, cs, depth, 0.0, max_sec)
         h1 = eng.hash()
 
-        if step in checkpoints:
-            ck.check(h0 == h1, "%s step %d: genmove changed Zobrist (%s -> %s)"
-                     % (label, step, h0, h1))
+        # 搜索不得改变任何棋盘状态：每一步都比对 Zobrist，并在抽样的
+        # 10 个随机时刻 + 每 10 步 dump 整盘与 Python 镜像比对。
+        ck.check(h0 == h1, "%s step %d: genmove changed Zobrist (%s -> %s)"
+                 % (label, step, h0, h1))
+        stats["hash_checks"] += 1
+        if step in checkpoints or step % 10 == 0:
             check_dump(eng, b, ck, "%s step %d post-genmove" % (label, step))
-            stats["hash_checks"] += 1
             stats["dump_checks"] += 1
 
         if res[0] == "resign":
