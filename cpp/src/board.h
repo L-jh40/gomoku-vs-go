@@ -103,7 +103,6 @@ private:
         uint16_t cap_count;  // 被提子数
         int32_t  old_black[NUM_EVAL_CLASSES];  // 本步前的黑线型全局计数
         int32_t  old_white[NUM_EVAL_CLASSES];  // 本步前的白线型全局计数
-        int16_t  old_line[4][2][NUM_EVAL_CLASSES];  // 本步前四方向线的缓存计数
         int32_t  old_territory;
         int32_t  old_risk;
     };
@@ -117,6 +116,8 @@ private:
     // ---- 增量维护辅助 ----
     void compute_wins_total();
     void rebuild_cell_caches();
+    // 重算所有线的缓存计数；update_globals 为真时同时重建全局计数。
+    void rebuild_eval_lines(bool update_globals);
     void count_line_both(int d, int sx, int sy, int len, int* outB, int* outW) const;
     void eval_update_after_move(int pos, int color, HistoryEntry& h,
                                 const uint16_t* captured, int ncap,
@@ -167,6 +168,9 @@ private:
     mutable uint32_t lib_gen_ = 0;
     uint32_t touch_stamp_[MAX_CELLS];
     uint32_t touch_gen_ = 0;
+    // 线去重标记（一次落子可能影响落子点 + 所有被提子所在的多条线）。
+    uint32_t line_stamp_[4][MAX_LINES];
+    uint32_t line_gen_ = 0;
 };
 
 }  // namespace gvg

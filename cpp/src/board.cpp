@@ -170,13 +170,12 @@ int Board::risk_full() const {
     return risk_of_cells(all, n);
 }
 
-void Board::recompute_all_counters() {
-    compute_wins_total();
-
-    std::memset(black_cnt_, 0, sizeof(black_cnt_));
-    std::memset(white_cnt_, 0, sizeof(white_cnt_));
+void Board::rebuild_eval_lines(bool update_globals) {
     std::memset(line_cnt_, 0, sizeof(line_cnt_));
-
+    if (update_globals) {
+        std::memset(black_cnt_, 0, sizeof(black_cnt_));
+        std::memset(white_cnt_, 0, sizeof(white_cnt_));
+    }
     int outB[NUM_EVAL_CLASSES], outW[NUM_EVAL_CLASSES];
     for (int d = 0; d < 4; ++d) {
         const int dx = EDX[d], dy = EDY[d];
@@ -190,13 +189,19 @@ void Board::recompute_all_counters() {
                 for (int c = 0; c < NUM_EVAL_CLASSES; ++c) {
                     line_cnt_[d][id][0][c] = static_cast<int16_t>(outB[c]);
                     line_cnt_[d][id][1][c] = static_cast<int16_t>(outW[c]);
-                    black_cnt_[c] += outB[c];
-                    white_cnt_[c] += outW[c];
+                    if (update_globals) {
+                        black_cnt_[c] += outB[c];
+                        white_cnt_[c] += outW[c];
+                    }
                 }
             }
         }
     }
+}
 
+void Board::recompute_all_counters() {
+    compute_wins_total();
+    rebuild_eval_lines(true);
     rebuild_cell_caches();
 
     territory_ = 0;
