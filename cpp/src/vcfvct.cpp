@@ -200,8 +200,10 @@ std::vector<Pt> white_defense_for_fours(const Board& b) {
 // 黑刚在 (px,py) 下出活三级威胁：白方防御超集 =
 //   四的精确防御集 ∪ 经过 (px,py) 且“无白无障碍、黑子数 >= 2”的窗的全部空点
 //   ∪ 提子点。
-std::vector<Pt> white_defense_for_threes(const Board& b, int px, int py) {
-    std::vector<Pt> out = white_defense_for_fours(b);
+// fours 为调用方传入的“四的精确防御集”（同一局面对所有候选只需算一次）。
+std::vector<Pt> white_defense_for_threes_cached(const Board& b, int px, int py,
+                                                const std::vector<Pt>& fours) {
+    std::vector<Pt> out = fours;
 
     for (int d = 0; d < 4; ++d) {
         const int dx = DX4[d], dy = DY4[d];
@@ -229,6 +231,23 @@ std::vector<Pt> white_defense_for_threes(const Board& b, int px, int py) {
     out.erase(std::unique(out.begin(), out.end()), out.end());
     return out;
 }
+
+std::vector<Pt> white_defense_for_threes(const Board& b, int px, int py) {
+    return white_defense_for_threes_cached(b, px, py, white_defense_for_fours(b));
+}
+
+// 节点级缓存：同一局面下“四的精确防御集”对所有候选相同，只需扫描一次。
+struct FoursDefenseCache {
+    bool computed = false;
+    std::vector<Pt> pts;
+    const std::vector<Pt>& get(const Board& b) {
+        if (!computed) {
+            computed = true;
+            pts = white_defense_for_fours(b);
+        }
+        return pts;
+    }
+};
 
 // ===========================================================================
 // 2.6 路径收集器 / 搜索统计
@@ -277,42 +296,53 @@ struct AttackCand {
 //   allow_three=false (VCF)：FIVE / OPEN_FOUR / RUSH_FOUR
 //   allow_three=true  (VCT)：再加 OPEN_THREE
 // 必做剪枝：四（不含成五）且 steps_left < 2 剪掉；三且 steps_left < 3 剪掉。
+//
+// 廉价预筛（不改变结果集）：任何五/四/三都要求该点在某个 5 连窗内与 >= 2 个黑子
+// 同行同列同对角（成五要 4 个、四要 3 个、三要 2 个），故“切比雪夫距离 <= 4 的
+// 邻域内黑子数 < 2”的点必然 attack_class == NONE，直接跳过，省掉 4 次线型查表。
+// 邻域黑子数用二维前缀和 O(1) 查询。
 void gen_attack_candidates(Board& b, int steps_left, bool allow_three,
                            std::vector<AttackCand>* out) {
     const int n = b.size();
-    uint8_t seen[MAX_CELLS];
-    std::memset(seen, 0, sizeof(seen));
-
+    const int S = MAX_BOARD + 1;
+    int pre[(MAX_BOARD + 1) * (MAX_BOARD + 1)];
+    std::memset(pre, 0, sizeof(pre));
     for (int x = 0; x < n; ++x) {
+        int rowsum = 0;
         for (int y = 0; y < n; ++y) {
-            if (b.at(x, y) != BLACK) continue;
-            const int x0 = std::max(0, x - ATTACK_RADIUS);
-            const int x1 = std::min(n - 1, x + ATTACK_RADIUS);
-            const int y0 = std::max(0, y - ATTACK_RADIUS);
-            const int y1 = std::min(n - 1, y + ATTACK_RADIUS);
-            for (int nx = x0; nx <= x1; ++nx) {
-                for (int ny = y0; ny <= y1; ++ny) {
-                    const int idx = Board::index(nx, ny);
-                    if (seen[idx]) continue;
-                    seen[idx] = 1;
-                    if (!b.is_empty(nx, ny)) continue;
-                    const int rank = attack_rank_at(b, nx, ny);
-                    if (rank <= static_cast<int>(AtkType::NONE)) continue;
-                    if (rank == static_cast<int>(AtkType::OPEN_THREE)) {
-                        if (!allow_three) continue;
-                        if (steps_left < 3) continue;
-                    } else if (rank < static_cast<int>(AtkType::FIVE)) {
-                        // 四类（活四/冲四）：至少还要一手才能成五。
-                        if (steps_left < 2) continue;
-                    }
-                    AttackCand c;
-                    c.x = nx;
-                    c.y = ny;
-                    c.rank = rank;
-                    c.score = order_score(b, nx, ny, BLACK);
-                    out->push_back(c);
-                }
+            if (b.at(x, y) == BLACK) ++rowsum;
+            pre[(x + 1) * S + (y + 1)] = pre[x * S + (y + 1)] + rowsum;
+        }
+    }
+    // 邻域 [x0,x1] x [y0,y1] 内黑子数（含边界）。
+    auto box_count = [&](int x0, int y0, int x1, int y1) {
+        return pre[(x1 + 1) * S + (y1 + 1)] - pre[x0 * S + (y1 + 1)] -
+               pre[(x1 + 1) * S + y0] + pre[x0 * S + y0];
+    };
+
+    for (int nx = 0; nx < n; ++nx) {
+        for (int ny = 0; ny < n; ++ny) {
+            if (!b.is_empty(nx, ny)) continue;
+            const int x0 = std::max(0, nx - ATTACK_RADIUS);
+            const int x1 = std::min(n - 1, nx + ATTACK_RADIUS);
+            const int y0 = std::max(0, ny - ATTACK_RADIUS);
+            const int y1 = std::min(n - 1, ny + ATTACK_RADIUS);
+            if (box_count(x0, y0, x1, y1) < 2) continue;   // 不可能构成威胁
+            const int rank = attack_rank_at(b, nx, ny);
+            if (rank <= static_cast<int>(AtkType::NONE)) continue;
+            if (rank == static_cast<int>(AtkType::OPEN_THREE)) {
+                if (!allow_three) continue;
+                if (steps_left < 3) continue;
+            } else if (rank < static_cast<int>(AtkType::FIVE)) {
+                // 四类（活四/冲四）：至少还要一手才能成五。
+                if (steps_left < 2) continue;
             }
+            AttackCand c;
+            c.x = nx;
+            c.y = ny;
+            c.rank = rank;
+            c.score = order_score(b, nx, ny, BLACK);
+            out->push_back(c);
         }
     }
 
@@ -342,22 +372,20 @@ void order_white_defenses(const Board& b, std::vector<Pt>* pts) {
 // 2.7 / 2.8 / 2.9 黑方攻击枚举（VCF/VCT 共用内核）
 // ===========================================================================
 // 前置：b.turn()==BLACK，steps_left >= 1 为本节点剩余的黑攻击手数。
-// 返回 minimax 手数 m：0 = 该局面下黑方无必胜；m>0 = 黑方 m 手内必成五。
-// 语义（健全性）：m>0 要求存在一个攻击手 e，使得 e 之后**每一个**白应手都仍然
-// 必输（对白方取 max、对黑方候选取 min）。同时把枚举到的必胜路径收集进 pc。
-// limit：上界剪枝（0=不限）。limit>0 时只需判断“能否比 limit-1 更好”：
-//   返回值 >= limit 表示“不优于 limit-1”（调用方据此剪掉该候选）。
-// 限流（st->timeout）时按“未知 = 否”返回 0，保证不会产生虚假标注。
-int black_attacks(Board& b, int steps_left, WinPath* cur, PathCollector* pc,
-                  SearchStats* st, bool allow_three, int limit) {
-    if (budget_exceeded(st)) return 0;
-    if (steps_left <= 0) return 0;
+// 枚举式（非首胜即停，为收集全部路径）：把每条“黑攻击手 + 白方全部应手集合”
+// 记进 cur，走到成五（或白方无应手）收一条路径。
+// 返回值：true = 应立即逐层返回（路径收集已满 或 触发限流），调用方负责 undo。
+bool black_attacks(Board& b, int steps_left, WinPath* cur, PathCollector* pc,
+                   SearchStats* st, bool allow_three) {
+    if (budget_exceeded(st)) return true;
+    if (steps_left <= 0) return false;
+    if (pc->full) return true;
 
     std::vector<AttackCand> cands;
     cands.reserve(32);
     gen_attack_candidates(b, steps_left, allow_three, &cands);
 
-    int best = (limit > 0) ? limit : 0;   // 黑方对候选取最好（手数最小）
+    FoursDefenseCache fours_cache;   // 节点级：同一局面只扫一次四防御集
     for (size_t ci = 0; ci < cands.size(); ++ci) {
         const AttackCand& c = cands[ci];
         if (!b.make_move(c.x, c.y, BLACK)) continue;   // 无气自杀等非法点跳过
@@ -369,86 +397,72 @@ int black_attacks(Board& b, int steps_left, WinPath* cur, PathCollector* pc,
             cur->black_moves.pop_back();
             cur->defense_sets.pop_back();
             b.undo_move();
-            // 1 手成五已是最优，无需再枚举其余候选。
-            return st->timeout ? 0 : 1;
+            if (pc->full || st->timeout) return true;
+            continue;
         }
 
         // 防御集按黑方这一手的成分选择（2.8.2）：
         //   四成分（含成五）→ 四的精确防御集；纯活三 → 三的防御超集。
         std::vector<Pt> wdefs =
             (c.rank >= static_cast<int>(AtkType::RUSH_FOUR))
-                ? white_defense_for_fours(b)
-                : white_defense_for_threes(b, c.x, c.y);
+                ? fours_cache.get(b)
+                : white_defense_for_threes_cached(b, c.x, c.y, fours_cache.get(b));
         cur->black_moves.push_back(Pt(c.x, c.y));
         cur->defense_sets.push_back(wdefs);
 
-        int cand_m = 0;
+        bool stop = false;
         if (wdefs.empty()) {
-            // 白方应手集合为空 = 黑方这一手已无法防守。仅对真威胁成立
-            // （普通落子的“防御集为空”只是启发式集合为空，不构成必胜）。
-            if (c.rank >= static_cast<int>(AtkType::OPEN_THREE)) {
-                pc->collect(*cur);
-                cand_m = 1;
-            }
+            // 白方应手集合为空 = 该手无法防守。仅对真威胁成立（普通落子的
+            // “防御集为空”只是启发式集合为空，不构成必胜）。
+            if (c.rank >= static_cast<int>(AtkType::OPEN_THREE)) pc->collect(*cur);
         } else {
             order_white_defenses(b, &wdefs);
-            int worst = 0;               // 白方最佳防守下的黑方手数（取 max）
-            bool white_holds = false;    // 存在白应手让黑方失去必胜
-            bool no_gain = false;        // 该候选已不可能改进上界
             for (size_t wi = 0; wi < wdefs.size(); ++wi) {
-                if (!b.make_move(wdefs[wi].first, wdefs[wi].second, WHITE)) {
-                    white_holds = true;      // 理论不可达：白方无合法应手
-                    break;
-                }
-                // 子节点只需给出 < best-1 的改进：若它返回 >= best-1（含被截断的
-                // limit 值），则本候选手数 >= best，不可能改进，直接剪掉。
-                const int child_limit = (best > 0 && best - 1 > 0) ? best - 1 : 0;
-                const int cm = black_attacks(b, steps_left - 1, cur, pc, st,
-                                             allow_three, child_limit);
+                if (!b.make_move(wdefs[wi].first, wdefs[wi].second, WHITE))
+                    continue;      // 理论不可达：应手点必然为空
+                const bool r =
+                    black_attacks(b, steps_left - 1, cur, pc, st, allow_three);
                 b.undo_move();
-                if (st->timeout) { white_holds = true; break; }
-                if (cm == 0) { white_holds = true; break; }   // 白方守住了
-                if (cm > worst) worst = cm;
-                if (best > 0 && 1 + worst >= best) { no_gain = true; break; }
+                if (r) { stop = true; break; }
             }
-            if (!no_gain && !white_holds) cand_m = 1 + worst;
         }
 
         cur->black_moves.pop_back();
         cur->defense_sets.pop_back();
         b.undo_move();
 
-        if (st->timeout) return 0;
-        if (cand_m > 0 && (best == 0 || cand_m < best)) best = cand_m;
-        if (best == 1) return 1;     // 已是最优手数
+        if (stop || pc->full || st->timeout) return true;
     }
-    return best;
+    return pc->full;
 }
 
 // 2.7 纯 VCF：候选只含四与成五。
-int vcf_dfs(Board& b, int steps_left, WinPath* cur, PathCollector* pc,
-            SearchStats* st) {
-    return black_attacks(b, steps_left, cur, pc, st, /*allow_three=*/false, 0);
+bool vcf_dfs(Board& b, int steps_left, WinPath* cur, PathCollector* pc,
+             SearchStats* st) {
+    return black_attacks(b, steps_left, cur, pc, st, /*allow_three=*/false);
 }
 
 // 2.8 VCT：候选含四、三与成五。
-int vct_dfs(Board& b, int steps_left, WinPath* cur, PathCollector* pc,
-            SearchStats* st) {
-    return black_attacks(b, steps_left, cur, pc, st, /*allow_three=*/true, 0);
+bool vct_dfs(Board& b, int steps_left, WinPath* cur, PathCollector* pc,
+             SearchStats* st) {
+    return black_attacks(b, steps_left, cur, pc, st, /*allow_three=*/true);
 }
 
-// 2.9 统一枚举器。
+// ===========================================================================
+// 2.9 统一枚举器
+// ===========================================================================
 //   b.turn()==BLACK：等价 vct_dfs 逻辑（含剪枝与防御集选择）。
 //   b.turn()==WHITE：黑刚下威胁 c=cur->black_moves.back()，白先应 —— 按 c 是否
-//   含四成分选防御集，白应手不消耗 steps_left；返回 1 + max(各白应手子树手数)。
-int enum_black_wins(Board& b, WinPath* cur, int steps_left, PathCollector* pc,
-                    SearchStats* st) {
+//   含四成分选防御集，白应手不消耗 steps_left。
+bool enum_black_wins(Board& b, WinPath* cur, int steps_left, PathCollector* pc,
+                     SearchStats* st) {
     if (b.turn() == BLACK) {
-        return black_attacks(b, steps_left, cur, pc, st, /*allow_three=*/true, 0);
+        return black_attacks(b, steps_left, cur, pc, st, /*allow_three=*/true);
     }
 
-    if (budget_exceeded(st)) return 0;
-    if (cur->black_moves.empty()) return 0;   // 防御性：不应发生
+    if (budget_exceeded(st)) return true;
+    if (pc->full) return true;
+    if (cur->black_moves.empty()) return false;   // 防御性：不应发生
 
     const Pt c = cur->black_moves.back();
     const int rank = attack_rank_at(b, c.first, c.second);
@@ -462,28 +476,21 @@ int enum_black_wins(Board& b, WinPath* cur, int steps_left, PathCollector* pc,
     cur->defense_sets.back() = wdefs;
 
     if (wdefs.empty()) {
-        // 白方无应手 = 黑方威胁无法防守 → 黑方这一手直接定胜负。
-        if (rank >= static_cast<int>(AtkType::OPEN_THREE)) {
-            pc->collect(*cur);
-            return 1;
-        }
-        return 0;
+        // 白方无应手 = 该手无法防守 → 收一条路径。仅当上一手确实是威胁时才成立
+        // （普通落子的“防御集为空”只是启发式集合为空，不构成必胜）。
+        if (rank >= static_cast<int>(AtkType::OPEN_THREE)) pc->collect(*cur);
+        return false;
     }
 
     order_white_defenses(b, &wdefs);
-    int worst = 0;
     for (size_t wi = 0; wi < wdefs.size(); ++wi) {
-        if (!b.make_move(wdefs[wi].first, wdefs[wi].second, WHITE)) return 0;
-        const int cm = black_attacks(b, steps_left, cur, pc, st,
-                                     /*allow_three=*/true, 0);
+        if (!b.make_move(wdefs[wi].first, wdefs[wi].second, WHITE)) continue;
+        const bool r = enum_black_wins(b, cur, steps_left, pc, st);
         b.undo_move();
-        if (st->timeout) return 0;
-        if (cm == 0) return 0;        // 白方守住 → 黑方这一手不构成必胜
-        if (cm > worst) worst = cm;
+        if (r) return true;
     }
-    return 1 + worst;                 // +1 = 黑方这一手本身
+    return false;
 }
-
 // 候选 c 是否落在路径 P 的 U(P) = ∪_i (black_moves[i] ∪ defense_sets[i]) 内。
 bool in_path_union(const WinPath& p, int x, int y) {
     for (size_t i = 0; i < p.black_moves.size(); ++i) {
@@ -519,10 +526,6 @@ AnalysisResult analyse(Board& b, int color, int max_steps, int winmode,
 
     const std::vector<Move> cands = gen_moves(b, color);
     res.labels.reserve(cands.size());
-    // 黑候选：c 本身占 1 手，剩余攻击手数 = max_steps-1；
-    // 白候选：白这一手不消耗黑方手数，剩余 = max_steps。
-    const int root_steps = (color == BLACK) ? (max_steps - 1) : max_steps;
-
     for (size_t i = 0; i < cands.size(); ++i) {
         CandidateLabel lab;
         lab.x = cands[i].x;
@@ -542,37 +545,52 @@ AnalysisResult analyse(Board& b, int color, int max_steps, int winmode,
                 }
                 if (!decided) {
                     // 从 c 之后局面枚举黑必胜路径；黑候选时 c 计入 black_moves[0]。
-                    WinPath cur;
-                    if (color == BLACK) {
-                        cur.black_moves.push_back(Pt(lab.x, lab.y));
-                        cur.defense_sets.push_back(std::vector<Pt>());
-                    }
-                    PathCollector pc;
-                    pc.max_nodes = node_limit;
-                    const int m = enum_black_wins(b, &cur, root_steps, &pc, &st);
-                    res.paths_found += static_cast<int>(pc.paths.size());
-
-                    if (m > 0) {
+                    // 迭代加深：从最小预算起试，取第一个“枚举到路径”的预算，使
+                    // 步数标注 = 该预算下的最短路径手数（小预算树的规模小，不会
+                    // 被 200 条路径上限截断而系统性偏大）。
+                    int m_min = 0;
+                    for (int budget = 1; budget <= max_steps; ++budget) {
+                        WinPath cur;
                         if (color == BLACK) {
-                            lab.tag = 'W';                 // c = 黑第 1 手
-                            lab.steps = 2 * m - 1;         // 黑第 m 手成五在步 2m-1
-                        } else {
-                            // 白候选：c 已落在盘上，不可能出现在任何路径的
-                            // black_moves / defense_sets 内（那些点都是空点）。
-                            // 仍按规格做 U(P) 过滤，取存在“c∉U(P)”路径者标注。
-                            bool any_avoids = false;
-                            for (size_t k = 0; k < pc.paths.size(); ++k) {
-                                if (!in_path_union(pc.paths[k], lab.x, lab.y)) {
-                                    any_avoids = true;
-                                    break;
+                            cur.black_moves.push_back(Pt(lab.x, lab.y));
+                            cur.defense_sets.push_back(std::vector<Pt>());
+                        }
+                        PathCollector pc;
+                        pc.max_nodes = node_limit;
+                        enum_black_wins(b, &cur,
+                                        (color == BLACK) ? budget - 1 : budget,
+                                        &pc, &st);
+                        res.paths_found += static_cast<int>(pc.paths.size());
+                        if (!pc.paths.empty()) {
+                            m_min = std::numeric_limits<int>::max();
+                            for (size_t k = 0; k < pc.paths.size(); ++k)
+                                m_min = std::min(m_min, pc.paths[k].plies());
+                            if (color == WHITE) {
+                                // 白候选：c 已落在盘上，不可能出现在任何路径的
+                                // black_moves / defense_sets 内（那些都是空点）。
+                                // 仍按规格做 U(P) 过滤：存在 c∉U(P) 的路径才算 L。
+                                bool any_avoids = false;
+                                for (size_t k = 0; k < pc.paths.size(); ++k) {
+                                    if (!in_path_union(pc.paths[k], lab.x, lab.y)) {
+                                        any_avoids = true;
+                                        break;
+                                    }
                                 }
-                            }
-                            if (any_avoids) {
-                                lab.tag = 'L';             // c = 白第 1 手
-                                lab.steps = 2 * m;         // 黑第 m 手成五在步 2m
+                                if (!any_avoids) m_min = 0;
                             }
                         }
+                        if (st.timeout || m_min > 0) break;
                     }
+                    if (m_min > 0) {
+                        if (color == BLACK) {
+                            lab.tag = 'W';                 // c = 黑第 1 手
+                            lab.steps = 2 * m_min - 1;     // 黑第 m 手成五在步 2m-1
+                        } else {
+                            lab.tag = 'L';                 // c = 白第 1 手
+                            lab.steps = 2 * m_min;         // 黑第 m 手成五在步 2m
+                        }
+                    }
+
                 }
                 b.undo_move();
             }
