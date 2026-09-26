@@ -1,26 +1,31 @@
-# C++ 混合规则引擎（第一步：棋盘 + 黑棋禁手）
+# C++ 混合规则引擎（棋盘 + 黑棋禁手 + 增量评估 + alpha-beta 搜索）
 
-本目录用 C++17 从零实现「五子棋(黑) vs 围棋(白)」混合规则引擎的第一部分：
-可 make/undo 的棋盘，以及移植自 Rapfi 的黑棋禁手判定。不含搜索 / 评估 / GUI。
+本目录用 C++17 从零实现「五子棋(黑) vs 围棋(白)」混合规则引擎：可 make/undo 的
+棋盘、移植自 Rapfi 的黑棋禁手判定、随 make/undo 增量维护的评估计数器，以及在
+此之上的 alpha-beta 搜索（negamax + 置换表 + 着法排序 + 迭代加深）。不含
+VCF/VCT、不做 W/L 标注、不含 GUI。
 
 ## 目录与职责
 
 | 文件 | 职责 |
 | --- | --- |
-| `src/board.h` / `src/board.cpp` | `Board` 类：19×19 上限的 `uint8` 棋盘、历史栈、白提黑、黑自杀拒绝、Zobrist 哈希、障碍摆放，以及随 `make/undo` 增量维护的评估计数器（线型六类 / 领地 / 风险）。 |
+| `src/board.h` / `src/board.cpp` | `Board` 类：19×19 上限的 `uint8` 棋盘、历史栈、白提黑、黑自杀拒绝、Zobrist 哈希、障碍摆放，随 `make/undo` 增量维护的评估计数器（线型六类 / 领地 / 风险），以及搜索用的 O(1) 计数器（黑/白/障碍子数、开放五连窗格数）与终局判定。 |
 | `src/pattern_count.h` / `src/pattern_count.cpp` | 六类线型计数：按 Python `rules.PATTERNS` 逐类复制，对一条线字符串按“位置 × 类别”计数（查表实现）。 |
-| `src/eval.h` / `src/eval.cpp` | `pack_score(board)`：把六类计数 / 风险 / 领地打包成字典序可比较的 `int64`。 |
-| `src/forbidden.h` / `src/forbidden.cpp` | `check_forbidden(board,x,y)`：黑棋长连 / 四四 / 三三禁手判定；线型分类查表；`probe_forbidden` 诊断接口。 |
+| `src/eval.h` / `src/eval.cpp` | `pack_score(board)`：把六类计数 / 风险 / 领地打包成字典序可比较的 `int64`；`stm_score(board, winmode)`：negamax 用的“轮到谁走”视角分数。 |
+| `src/forbidden.h` / `src/forbidden.cpp` | `check_forbidden(board,x,y)`：黑棋长连 / 四四 / 三三禁手判定；线型分类查表；`classify_point(...)` 供着法排序复用；`probe_forbidden` 诊断接口。 |
+| `src/search.h` / `src/search.cpp` | 搜索：常量、`gen_moves`、`order_score`、置换表、`alphabeta`（negamax）、`search_root`（迭代加深）。 |
 | `src/main.cpp` | 命令行循环（逐行读、逐行 flush），协议见下。 |
 | `build.bat` | 调用指定路径的 `vcvars64.bat`，用 `cl /std:c++17 /O2 /MT` 编译 `src\*.cpp` 到 `build\engine.exe`。 |
 | `tests/diff_forbidden.py` | 与 Python `board.HybridBoard` + `rules.is_black_legal_move` 的差分测试，以及 make/undo 压力测试。 |
 | `tests/diff_eval.py` | 增量评估计数器的差分测试（种子 20240917）：随机自对弈逐步比对 counters/eval/packed，逐步 undo 可逆，查询命令无副作用。 |
+| `tests/search_sanity.py` | 搜索健全性测试（种子 20240917）：自对弈合法性、搜索无副作用、确定性、必胜立即执行、救叫吃、depth6 nps 报告。 |
 | `tests/verify_rapfi.py` | 交叉验证：用独立重实现的 Rapfi 判定与引擎 `checkforbidden` 逐点比较。 |
 
 ## 构建与运行
 
 ```bat
 cmd /c cpp\build.bat
+py cpp\tests\search_sanity.py
 py cpp\tests\diff_forbidden.py
 py cpp\tests\diff_eval.py
 ```
@@ -84,13 +89,13 @@ bencheval 20000 56 353978      :: 约 315k~354k evals/sec（要求 >= 200000）
 ## 命令行协议（`main.cpp`）
 
 ```
-size <n>             9..19 奇数，重置空盘
+size <n>             9..19 奇数，重置空盘（同时清空置换表）
 set <x> <y> <b|w|o>  摆子（o=障碍），不提子、不换回合
 clear                清空棋盘
 checkforbidden       输出所有黑棋非法点(禁手+自杀)，每行 "x y"，末尾 end
 quit                 退出
 move <x> <y> <b|w>   正式落子(白提黑、黑自杀拒绝)，输出 ok / err
-undo                 悔一步，输出 ok / err
+undo                 悔一步，输出 ok / err（空历史返回 err，与既有测试一致）
 hash                 输出 16 位十六进制 Zobrist
 dump                 输出 size 行、每行 size 个格子值(0..3)
 pat <x> <y>          诊断：输出四方向线型、组合线型、四数、真三数、是否禁手
@@ -98,7 +103,131 @@ eval                 输出一行：eval <packed> F1=.. F2=.. F3=.. F4=.. F5=.. 
 counters             输出一行：cnt b=<6 个逗号分隔> w=<6 个逗号分隔> risk=<n> terr=<n>
 bencheval <n>        随机走 n 步；每步 make_move+pack_score，每 200 步 undo 一次；
                      输出：bencheval <n> <毫秒> <每秒 eval 次数>
+play <b|w> <x> <y>   正式落子(bool 返回值语义同 move)，输出 ok / illegal
+winmode <0|1>        设置胜负模式（0=line_block 默认，1=occupy）
+genmove <b|w> [max_depth] [min_sec] [max_sec] [winmode]
+                     迭代加深搜索（默认 max_depth=4, min_sec=0, max_sec=10,
+                     winmode=当前全局值）。每完成一个偶深度输出一行
+                     info depth <d> move <x> <y> score <packed>；
+                     最后输出 move <x> <y>（当前方无着：白 pass / 黑 resign）。
+                     搜索不落子、不改棋盘。
+searchstat           输出上次 genmove 的 nodes / depth / 毫秒（nps 报告用）
 ```
+
+> `undo` 在任务指令里写作输出 `ok`/`nohistory`，但既有回归测试
+> `diff_forbidden.py` 明确断言空历史 undo 返回 `err`；为不改动既有断言，
+> 这里保留 `ok`/`err`。
+
+## 搜索（`search.h` / `search.cpp`）
+
+### negamax 与元组比较的结合
+
+评估元组是**黑棋视角**的 `pack_score(board)`（int64，高位字段优先，整数比较
+即字典序）。要让 negamax 在轮到白方时“取负仍保持字典序”，关键是：
+
+```
+stm_score(board) = f(pack_score(board)) * (turn == BLACK ? +1 : -1)
+```
+
+* `f` 是一个**严格单调**（保序）变换：先按指令 5 平移
+  `packed - EVAL_CENTER`（`EVAL_CENTER = 1<<62`），把“黑越大越好”的点数搬进
+  int64 的负数区间；再做一次保序压缩。
+* **为什么要压缩**：`pack_score` 可达 2^56 量级，直接减 `EVAL_CENTER` 后是
+  ±2^62 量级，而 `MATE = 2^40`。若不压缩，终局分会被普通评估完全淹没——白方
+  甚至会为了普通评估里更大的分值而**拒绝取胜**，`MATE` 级别的 ply 归一化
+  （`|score| > MATE_BOUND`）也会把所有普通分值误判成终局分。
+  因此 `compress_eval_tuple` 把 7 个 8 bit 字段压成
+  `F1:4 F2:4 F3:5 F4:5 F5:5 F6:5 F7:6` bits（按字段高位优先拼接，风险/领地
+  用 `min(risk,31)` / `min(territory,63)` 反转），严格保序，值域 `|v| <= 2^33`。
+  于是 `|普通评估| <= 2^33 < MATE_BOUND = 2^40-4096 < MATE`，终局分严格支配
+  普通评估，TT 的 MATE ply 归一化也只在真正的终局分上生效。
+* 终局分按“轮到谁走”的视角给出：黑恰五时轮到白走 → 白方视角 `-MATE`；
+  白达成胜利条件时轮到黑走 → `-MATE`。搜索节点内的终局分统一写成
+  `MATE - ply - 1`（走子方获胜）或 `-MATE + ply`（走子方落败），越小 ply 的
+  胜利越大、失败越小。
+
+### 着法生成与排序分层（`gen_moves` / `order_score`）
+
+候选 = 与任一黑/白子切比雪夫距离 ≤ 2 的空点（障碍不产生候选；空盘返回天元）。
+黑方剔除 `is_dead_empty`（无气自杀）与 `check_forbidden`（长连/四四/三三）的点；
+白方所有空点合法。`order_score` 纯启发、不落子，分五层：
+
+| 层 | 条件 | 分值 |
+| --- | --- | --- |
+| a | 落此点立即成**恰五** | 1 000 000 000 |
+| b | 白：堵黑成五点；黑：补活唯一气被叫吃的块 | 500 000 000 |
+| c | 己方成活四，或堵对方活四点 | 100 000 000 |
+| d | 己方成冲四或活三 | 10 000 000 |
+| e | 四方向等级分求和：`B4=800, FLEX3=400, B3=80, FLEX2=40, B2=8` | — |
+
+方向等级由 `classify_point(board,x,y,color,dx,dy)` 给出（Rapfi 线型 DP，与禁手
+判定共用；`F5→PP_FIVE, F4→PP_FLEX4, B4/B4S→PP_B4, F3/F3S→PP_FLEX3,
+B3/B3S→PP_B3, F2*→PP_FLEX2, B2/B1→PP_B2, OL→PP_OL`）。`gen_moves` 返回前按
+score 降序、同分按 `(x,y)` 升序排序，保证确定性。
+
+性能优化（结果与朴素实现等价）：
+* `order_score` 顺带输出“己方最强方向等级”；黑方只有 `own_level >= PP_B3`
+  才需要调用昂贵的 `check_forbidden`（其第一步预筛正是“存在
+  OL/B4/B4S/F4/F3/F3S 方向”）。
+* `white_would_capture` 在 BFS 发现“该黑块还有别的气”时立即退出。
+
+### 置换表
+
+```cpp
+struct TTEntry { uint64_t key; int16_t depth; int8_t flag; int64_t score; uint16_t best; };
+```
+
+固定 `2^20` 项（`new` 一次，引擎生命周期复用），索引 `key & (2^20-1)`，
+always-replace；`flag` 0=空 / 1=EXACT / 2=LOWER / 3=UPPER；`best` 为
+`index(x,y)`，`0xFFFF` 表示无。查询时 key 完全匹配且 `depth` 足够才按 flag
+返回/收窄窗口，`depth` 不足只用 `best` 排序。MATE 级别分值存入前 `score+ply`、
+取出时还原（LOWER/UPPER/EXACT 都做），避免不同 ply 的同一局面取到错位的
+“几步杀”。`tt_clear()` 在 `size` 命令时调用；`search_root` 每次开始也清空一次，
+保证“同局面 + 同参数 → 同输出”（迭代加深内部的复用不受影响）。
+
+### 终局检测计数器
+
+`Board` 增量维护（`HistoryEntry` 存旧值，`undo` O(1) 还原）：
+`black_count_`、`white_count_`、`obstacle_count_`、`alive_windows_`
+（`wins_total_ > wins_blocked_` 的格数 = 仍有开放五连窗的格数）。据此：
+
+* `last_move_was_five()`：最后一手是黑且 `black_run_length == 5`；
+* `white_wins_now(winmode)`：吃光黑子（`black_count_==0 && white_count_>0`）；
+  `winmode==0` 再判断全线封堵 `alive_windows_==0`；`winmode==1`（occupy）判断
+  `white_count_ == size²`。
+
+`alive_windows_` 与 `territory_` 独立维护：前者只跟踪“是否还有白子未被挡的
+五连窗”，后者还包含“无气自杀空点”等修正。
+
+### 节点与迭代加深
+
+* 每个节点入口检查 deadline，超时抛 `SearchAbort`；所有 `make_move` 都用
+  try/catch 保证抛出前成对 `undo_move`（并在 `#ifndef NDEBUG` 下用 RAII
+  断言进出节点 Zobrist 完全相等）。
+* `depth<=0` 返回 `stm_score`；无合法着法时黑方返回 `-MATE+ply`（白胜），
+  白方返回 `stm_score`（白 pass、黑继续）。
+* 子着法：`make_move` 后依次判断“黑方刚成恰五”“白方达成胜利条件”，否则
+  `-alphabeta(depth-1, -beta, -alpha, ply+1)`；随后 `undo_move`，按
+  alpha/beta 提升情况写 TT（EXACT/LOWER/UPPER）。
+* `search_root` 迭代加深 `depth = 0,2,4,6,8`（到 `max_depth` 为止，
+  `max_depth==0` 只做 depth0）；depth0 只用排序给出候选。每层重排根着法：
+  上一轮最佳第一、TT best 第二、其余按 `order_score`；根节点不看 TT 的 depth
+  截止。捕获 `SearchAbort` 时返回上一完整深度的结果。`max_sec<=0` 表示无限。
+* `SearchResult` 额外携带每个完成深度的最佳着法与分值，供 `main.cpp` 打印
+  `info depth ...`。
+
+### 实测（本机，`/O2`）
+
+固定 10 手中局（`search_sanity.py` 的 `SEQ_MID`，非战术局面，评分非 MATE）：
+
+```
+[nps] fixed midgame depth6: completed_depth=6 elapsed=17.03s nodes=558547 nps=32803
+```
+
+即 **depth6 在 max_sec 30 内完成（约 17s，33k nodes/s）**，远超“完成深度 6”
+的验收要求；`search_sanity.py` 会在未完成 depth6 时直接 FAIL。
+作为参照，另一固定局面（`SEQ12` 的 12 手更松散中局，同样非战术局面）：
+`nodes=605194 elapsed=21.4s`，depth6 也在 30s 内完成。
 
 ## 评估元组（增量维护，只评估不搜索）
 
