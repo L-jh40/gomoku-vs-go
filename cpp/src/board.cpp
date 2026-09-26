@@ -345,20 +345,34 @@ void Board::eval_update_after_move(int pos, int color, HistoryEntry& h,
     h.old_territory = territory_;
     h.old_risk      = risk_;
 
-    // (1) 经过落子点的 4 条线：只重算这 4 条并把差量加进全局计数器。
-    for (int d = 0; d < 4; ++d) {
-        int sx, sy, len, k;
-        line_through(d, x, y, sx, sy, len, k);
-        const int id = line_id(d, sx, sy);
-        int newB[NUM_EVAL_CLASSES], newW[NUM_EVAL_CLASSES];
-        count_line_both(d, sx, sy, len, newB, newW);
-        for (int c = 0; c < NUM_EVAL_CLASSES; ++c) {
-            h.old_line[d][0][c] = line_cnt_[d][id][0][c];
-            h.old_line[d][1][c] = line_cnt_[d][id][1][c];
-            black_cnt_[c] += newB[c] - line_cnt_[d][id][0][c];
-            white_cnt_[c] += newW[c] - line_cnt_[d][id][1][c];
-            line_cnt_[d][id][0][c] = static_cast<int16_t>(newB[c]);
-            line_cnt_[d][id][1][c] = static_cast<int16_t>(newW[c]);
+    // (1) 受影响的线：落子点所在 4 条线 + 每个被提子所在 4 条线
+    //     （提子会移除不经过落子点的线上的黑子，必须一并重算）。
+    ++line_gen_;
+    if (line_gen_ == 0) { std::memset(line_stamp_, 0, sizeof(line_stamp_)); line_gen_ = 1; }
+    {
+        // 待扫描的中心点：落子点 + 被提子点。
+        int centers[1 + MAX_CELLS];
+        int nc = 0;
+        centers[nc++] = pos;
+        for (int i = 0; i < ncap; ++i) centers[nc++] = captured[i];
+        for (int ci = 0; ci < nc; ++ci) {
+            const int cx0 = centers[ci] / MAX_BOARD;
+            const int cy0 = centers[ci] % MAX_BOARD;
+            for (int d = 0; d < 4; ++d) {
+                int sx, sy, len, k;
+                line_through(d, cx0, cy0, sx, sy, len, k);
+                const int id = line_id(d, sx, sy);
+                if (line_stamp_[d][id] == line_gen_) continue;
+                line_stamp_[d][id] = line_gen_;
+                int newB[NUM_EVAL_CLASSES], newW[NUM_EVAL_CLASSES];
+                count_line_both(d, sx, sy, len, newB, newW);
+                for (int c = 0; c < NUM_EVAL_CLASSES; ++c) {
+                    black_cnt_[c] += newB[c] - line_cnt_[d][id][0][c];
+                    white_cnt_[c] += newW[c] - line_cnt_[d][id][1][c];
+                    line_cnt_[d][id][0][c] = static_cast<int16_t>(newB[c]);
+                    line_cnt_[d][id][1][c] = static_cast<int16_t>(newW[c]);
+                }
+            }
         }
     }
 
@@ -726,24 +740,15 @@ bool Board::undo_move() {
     hash_ ^= zob().turn;
 
     // ---- 评估计数器还原 ----
-    // 全局线型计数与每条线缓存从历史 O(1) 取回。
+    // 12 个全局线型计数值从历史 O(1) 取回；线的逐条缓存与逐格缓存
+    // （窗口 blocked / 无气 / 死格）按其定义精确重建。
     for (int c = 0; c < NUM_EVAL_CLASSES; ++c) {
         black_cnt_[c] = h.old_black[c];
         white_cnt_[c] = h.old_white[c];
     }
-    const int x = h.pos / MAX_BOARD, y = h.pos % MAX_BOARD;
-    for (int d = 0; d < 4; ++d) {
-        int sx, sy, len, k;
-        line_through(d, x, y, sx, sy, len, k);
-        const int id = line_id(d, sx, sy);
-        for (int c = 0; c < NUM_EVAL_CLASSES; ++c) {
-            line_cnt_[d][id][0][c] = h.old_line[d][0][c];
-            line_cnt_[d][id][1][c] = h.old_line[d][1][c];
-        }
-    }
+    rebuild_eval_lines(false);
     territory_ = h.old_territory;
     risk_      = h.old_risk;
-    // 逐格缓存（窗口 blocked / 无气 / 死格）按其定义精确重建。
     rebuild_cell_caches();
     return true;
 }

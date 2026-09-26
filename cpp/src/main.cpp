@@ -163,7 +163,12 @@ int main() {
                                 if (board.is_empty(x, y) && board.make_move(x, y, color))
                                     placed = true;
                     }
-                    if (!placed) break;
+                    if (!placed) {
+                        // 盘面已满（黑自杀/无气等原因无合法点）：清盘继续，
+                        // 保证 bench 实际完成 n 次 make_move + pack_score。
+                        board.clear();
+                        continue;
+                    }
                     sink += gvg::pack_score(board);
                     ++evals;
                     if ((i + 1) % 200 == 0) board.undo_move();
