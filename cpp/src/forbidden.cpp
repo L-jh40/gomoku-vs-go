@@ -186,27 +186,63 @@ uint8_t combine_pattern4(uint8_t p1, uint8_t p2, uint8_t p3, uint8_t p4) {
 const int DX4[4] = {1, 0, 1, 1};
 const int DY4[4] = {0, 1, 1, -1};
 
-// 从黑棋视角把一格编码成 Flag。障碍 / 白子 / 棋盘外 / 无气空点 都算阻挡(OPPO)。
-inline uint8_t cell_flag(const Board& b, int x, int y) {
+// 从 color 视角把一格编码成 Flag。障碍 / 对方子 / 棋盘外 都算阻挡(OPPO)。
+// 黑棋视角下“无气空点”也等同阻挡（黑棋不能落）；白棋视角下空点一律可落。
+inline uint8_t cell_flag_color(const Board& b, int x, int y, int color) {
     if (!b.in_bounds(x, y)) return OPPO;
     const uint8_t v = b.at(x, y);
-    if (v == BLACK) return SELF;
-    if (v == WHITE || v == OBSTACLE) return OPPO;
-    return b.is_dead_empty(x, y) ? static_cast<uint8_t>(OPPO) : static_cast<uint8_t>(EMPT);
+    if (static_cast<int>(v) == color) return SELF;
+    if (v == EMPTY) {
+        if (color == BLACK && b.is_dead_empty(x, y))
+            return static_cast<uint8_t>(OPPO);
+        return static_cast<uint8_t>(EMPT);
+    }
+    return OPPO;
+}
+
+// 黑棋视角的格编码（禁手判定用）。
+inline uint8_t cell_flag(const Board& b, int x, int y) {
+    return cell_flag_color(b, x, y, BLACK);
 }
 
 // 构造以 (x,y) 为中心、方向 (dx,dy) 的 11 格窗口（中心恒为 SELF）。
-void build_flags(const Board& b, int x, int y, int dx, int dy, uint8_t* f) {
+void build_flags_color(const Board& b, int x, int y, int color, int dx, int dy,
+                       uint8_t* f) {
     for (int i = -H; i <= H; ++i) {
         if (i == 0) { f[MID] = SELF; continue; }
-        f[i + MID] = cell_flag(b, x + i * dx, y + i * dy);
+        f[i + MID] = cell_flag_color(b, x + i * dx, y + i * dy, color);
     }
 }
 
-inline uint8_t dir_pattern(const Board& b, int x, int y, int dx, int dy) {
+inline uint8_t dir_pattern_color(const Board& b, int x, int y, int color,
+                                 int dx, int dy) {
     uint8_t f[LEN];
-    build_flags(b, x, y, dx, dy, f);
+    build_flags_color(b, x, y, color, dx, dy, f);
     return get_pattern_rec(f);
+}
+
+inline uint8_t dir_pattern(const Board& b, int x, int y, int dx, int dy) {
+    return dir_pattern_color(b, x, y, BLACK, dx, dy);
+}
+
+// Rapfi 线型枚举 -> 点线型等级（供 order_score 用）。
+inline PointPattern to_point_pattern(uint8_t p) {
+    switch (p) {
+        case F5: return PP_FIVE;
+        case OL: return PP_OL;
+        case F4: return PP_FLEX4;
+        case B4: case B4S: return PP_B4;
+        case F3: case F3S: return PP_FLEX3;
+        case B3: case B3S: return PP_B3;
+        case F2: case F2A: case F2B: return PP_FLEX2;
+        case B2: case B1: return PP_B2;
+        default: return PP_NONE;  // DEAD / F1
+    }
+}
+
+PointPattern point_pattern_at(const Board& b, int x, int y, int color,
+                              int dx, int dy) {
+    return to_point_pattern(dir_pattern_color(b, x, y, color, dx, dy));
 }
 
 inline uint8_t pattern4_at(const Board& b, int x, int y) {
@@ -295,6 +331,11 @@ bool check_forbidden_impl(Board& b, int x, int y, int depth) {
 
 bool check_forbidden(Board& board, int x, int y) {
     return check_forbidden_impl(board, x, y, 0);
+}
+
+PointPattern classify_point(const Board& board, int x, int y, int color,
+                            int dx, int dy) {
+    return point_pattern_at(board, x, y, color, dx, dy);
 }
 
 ForbiddenProbe probe_forbidden(Board& board, int x, int y) {

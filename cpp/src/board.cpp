@@ -205,8 +205,18 @@ void Board::recompute_all_counters() {
     rebuild_cell_caches();
 
     territory_ = 0;
-    for (int x = 0; x < size_; ++x)
-        for (int y = 0; y < size_; ++y) territory_ += dead_[index(x, y)];
+    black_count_ = white_count_ = obstacle_count_ = alive_windows_ = 0;
+    for (int x = 0; x < size_; ++x) {
+        for (int y = 0; y < size_; ++y) {
+            const int idx = index(x, y);
+            territory_ += dead_[idx];
+            const uint8_t v = cells_[idx];
+            if (v == BLACK) ++black_count_;
+            else if (v == WHITE) ++white_count_;
+            else if (v == OBSTACLE) ++obstacle_count_;
+            if (wins_total_[idx] > wins_blocked_[idx]) ++alive_windows_;
+        }
+    }
 
     risk_ = risk_full();
 }
@@ -344,6 +354,18 @@ void Board::eval_update_after_move(int pos, int color, HistoryEntry& h,
     }
     h.old_territory = territory_;
     h.old_risk      = risk_;
+    h.old_black_count    = black_count_;
+    h.old_white_count    = white_count_;
+    h.old_obstacle_count = obstacle_count_;
+    h.old_alive_windows  = alive_windows_;
+
+    // (0b) O(1) 棋子计数：落子 +1，白棋提走的黑子从黑计数扣除。
+    if (color == BLACK) {
+        ++black_count_;
+    } else {
+        ++white_count_;
+        black_count_ -= ncap;
+    }
 
     // (1) 受影响的线：落子点所在 4 条线 + 每个被提子所在 4 条线
     //     （提子会移除不经过落子点的线上的黑子，必须一并重算）。
@@ -396,7 +418,12 @@ void Board::eval_update_after_move(int pos, int color, HistoryEntry& h,
                 win_blocked_[d][id][s] = nb ? 1 : 0;
                 for (int i = 0; i < 5; ++i) {
                     const int ci = index(x0 + i * EDX[d], y0 + i * EDY[d]);
+                    // alive_windows_ 与 territory_ 独立维护：这里只跟踪
+                    // “该格是否仍有开放五连窗”（不含无气自杀空点）。
+                    const bool was_alive = wins_total_[ci] > wins_blocked_[ci];
                     if (nb) ++wins_blocked_[ci]; else --wins_blocked_[ci];
+                    const bool now_alive = wins_total_[ci] > wins_blocked_[ci];
+                    alive_windows_ += (now_alive ? 1 : 0) - (was_alive ? 1 : 0);
                 }
             }
             for (int i = 0; i < 5; ++i) {
@@ -749,8 +776,96 @@ bool Board::undo_move() {
     rebuild_eval_lines(false);
     territory_ = h.old_territory;
     risk_      = h.old_risk;
+    black_count_    = h.old_black_count;
+    white_count_    = h.old_white_count;
+    obstacle_count_ = h.old_obstacle_count;
+    alive_windows_  = h.old_alive_windows;
     rebuild_cell_caches();
     return true;
+}
+
+// ===========================================================================
+// 搜索辅助：回合切换 / 终局判定 / 连子长度
+// ===========================================================================
+
+void Board::set_turn(int t) {
+    if (t != BLACK && t != WHITE) return;
+    if (t == turn_) return;
+    turn_ = t;
+    hash_ ^= zob().turn;
+}
+
+int Board::black_run_length(int x, int y) const {
+    if (!in_bounds(x, y) || cells_[index(x, y)] != BLACK) return 0;
+    int best = 1;
+    for (int d = 0; d < 4; ++d) {
+        const int dx = EDX[d], dy = EDY[d];
+        int run = 1;
+        for (int sgn = -1; sgn <= 1; sgn += 2) {
+            int cx = x + sgn * dx, cy = y + sgn * dy;
+            while (in_bounds(cx, cy) && cells_[index(cx, cy)] == BLACK) {
+                ++run;
+                cx += sgn * dx;
+                cy += sgn * dy;
+            }
+        }
+        if (run > best) best = run;
+    }
+    return best;
+}
+
+bool Board::last_move_was_five() const {
+    if (move_count_ <= 0) return false;
+    const HistoryEntry& h = history_[move_count_ - 1];
+    if (h.color != BLACK) return false;
+    const int x = h.pos / MAX_BOARD, y = h.pos % MAX_BOARD;
+    return black_run_length(x, y) == 5;
+}
+
+bool Board::white_wins_now(int winmode) const {
+    // 吃光黑子（空盘除外：开局黑 0 子不算白胜）。
+    if (black_count_ == 0 && white_count_ > 0) return true;
+    if (winmode == 0) return alive_windows_ == 0;
+    // occupy：所有格子都是白（没有非白格子）。
+    return white_count_ == size_ * size_;
+}
+
+bool Board::white_would_capture(int x, int y) const {
+    if (!in_bounds(x, y) || cells_[index(x, y)] != EMPTY) return false;
+    // 快速版：只判断“是否存在某相邻黑块，其唯一气就是 (x,y)”。
+    // 一旦在 BFS 中发现别的气就提前退出（predict_captures 会继续收集整块）。
+    const int pidx = index(x, y);
+    uint8_t seen[MAX_CELLS];
+    std::memset(seen, 0, sizeof(seen));
+    int stack[MAX_CELLS];
+    for (int k = 0; k < 4; ++k) {
+        const int nx = x + DX4[k], ny = y + DY4[k];
+        if (!in_bounds(nx, ny)) continue;
+        const int ni = index(nx, ny);
+        if (cells_[ni] != BLACK || seen[ni]) continue;
+        int top = 0;
+        stack[top++] = ni;
+        seen[ni] = 1;
+        bool other_lib = false;
+        for (int q = 0; q < top && !other_lib; ++q) {
+            const int cur = stack[q];
+            const int cx = cur / MAX_BOARD, cy = cur % MAX_BOARD;
+            for (int kk = 0; kk < 4; ++kk) {
+                const int ax = cx + DX4[kk], ay = cy + DY4[kk];
+                if (!in_bounds(ax, ay)) continue;
+                const int ai = index(ax, ay);
+                const uint8_t av = cells_[ai];
+                if (av == EMPTY) {
+                    if (ai != pidx) { other_lib = true; break; }
+                } else if (av == BLACK && !seen[ai]) {
+                    seen[ai] = 1;
+                    stack[top++] = ai;
+                }
+            }
+        }
+        if (!other_lib) return true;
+    }
+    return false;
 }
 
 }  // namespace gvg

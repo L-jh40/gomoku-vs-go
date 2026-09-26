@@ -77,6 +77,27 @@ public:
     int move_count() const { return move_count_; }
     uint64_t hash() const { return hash_; }
 
+    // 强制切换回合（搜索入口用：允许对“轮到的那一方”以外的颜色发起搜索）。
+    // 只翻转 Zobrist 的 turn 键，不影响棋子/历史；调用方负责还原。
+    void set_turn(int t);
+
+    // ---- O(1) 计数器（搜索终局判定用） ----
+    int black_count() const { return black_count_; }
+    int white_count() const { return white_count_; }
+    int obstacle_count() const { return obstacle_count_; }
+    // wins_total_ > wins_blocked_ 的格子数：仍有开放五连窗的格子数。
+    int alive_windows() const { return alive_windows_; }
+
+    // 最后一手是否为黑棋的“恰好五连”（长连不算）。O(常数)。
+    bool last_move_was_five() const;
+    // 白方是否已达成胜利条件。winmode 0=line_block（全线封堵/吃光），
+    // 1=occupy（全盘皆白）。O(1)，只用上面的计数器。
+    bool white_wins_now(int winmode) const;
+    // 以 (x,y) 为中心的 4 方向最长黑棋连子数（非黑子返回 0）。
+    int black_run_length(int x, int y) const;
+    // 若白棋落在 (x,y)，是否会提走某个无气黑块（即 (x,y) 是某黑块唯一的气）。
+    bool white_would_capture(int x, int y) const;
+
     // 空点：若黑棋落在此处会立刻无气（自杀）。障碍/白子/棋盘外/已成子处返回 false。
     bool is_dead_empty(int x, int y) const;
     // (x,y) 所在的棋块是否有至少一口气（用于黑棋自杀检测）。非黑子返回 false。
@@ -105,6 +126,10 @@ private:
         int32_t  old_white[NUM_EVAL_CLASSES];  // 本步前的白线型全局计数
         int32_t  old_territory;
         int32_t  old_risk;
+        int32_t  old_black_count;
+        int32_t  old_white_count;
+        int32_t  old_obstacle_count;
+        int32_t  old_alive_windows;
     };
 
     // ---- 线 / 窗口几何 ----
@@ -160,6 +185,11 @@ private:
     uint8_t  dead_[MAX_CELLS];
     int32_t  territory_ = 0;
     int32_t  risk_      = 0;
+    // 搜索用的 O(1) 计数器（随 make/undo/set_cell 增量维护）。
+    int32_t  black_count_    = 0;
+    int32_t  white_count_    = 0;
+    int32_t  obstacle_count_ = 0;
+    int32_t  alive_windows_  = 0;
 
     // 组件 / 气 去重时间戳（避免每次 BFS 都 memset）。
     mutable uint32_t comp_stamp_[MAX_CELLS];

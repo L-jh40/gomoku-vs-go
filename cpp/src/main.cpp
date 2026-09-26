@@ -17,9 +17,18 @@
 //   eval                输出打包后的 int64 评估值与各字段
 //   counters            输出黑白六类线型计数 / 风险 / 领地
 //   bencheval <n>       随机走 n 步 make_move+pack_score，输出毫秒与 evals/sec
+// 搜索相关（只搜索，不落子；落子由调用方用 play 执行）：
+//   play <b|w> <x> <y>          正式落子(白提黑、黑自杀拒绝)，输出 ok / illegal
+//   winmode <0|1>               设置胜负模式（0=line_block 默认，1=occupy）
+//   genmove <b|w> [max_depth] [min_sec] [max_sec] [winmode]
+//                               迭代加深搜索；每完成一个偶深度输出一行
+//                               info depth <d> move <x> <y> score <packed>，
+//                               最后输出 move <x> <y>（白无着 pass / 黑无着 resign）
+//   searchstat                  输出上一次 genmove 的 nodes / depth / 毫秒
 #include "board.h"
 #include "eval.h"
 #include "forbidden.h"
+#include "search.h"
 
 #include <algorithm>
 #include <chrono>
@@ -28,10 +37,39 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <vector>
 
 namespace {
 
 uint64_t g_rng = 0x243F6A8885A308D3ULL;
+
+int  g_winmode = 0;               // 0=line_block, 1=occupy
+gvg::SearchResult g_last_search;  // 供 searchstat 报告
+
+struct TurnRestore {
+    gvg::Board& board;
+    int orig;
+    bool active;
+    ~TurnRestore() {
+        if (active) board.set_turn(orig);
+    }
+};
+
+int to_int(const std::string& s, int def) {
+    try {
+        return std::stoi(s);
+    } catch (...) {
+        return def;
+    }
+}
+
+double to_double(const std::string& s, double def) {
+    try {
+        return std::stod(s);
+    } catch (...) {
+        return def;
+    }
+}
 
 inline uint64_t rnd() {
     uint64_t z = (g_rng += 0x9E3779B97F4A7C15ULL);
@@ -83,7 +121,66 @@ int main() {
 
         if (cmd == "size") {
             int n = 15;
-            if (in >> n) board.reset(n);
+            if (in >> n) {
+                board.reset(n);
+                gvg::tt_clear();   // 尺寸变化后置换表作废
+            }
+        } else if (cmd == "play") {
+            std::string c;
+            int x, y;
+            bool ok = false;
+            if (in >> c >> x >> y) {
+                const int color = (c == "b") ? gvg::BLACK : gvg::WHITE;
+                ok = board.make_move(x, y, color);
+            }
+            std::cout << (ok ? "ok" : "illegal") << '\n';
+        } else if (cmd == "winmode") {
+            int m = 0;
+            if (in >> m) g_winmode = m;
+        } else if (cmd == "genmove") {
+            std::string c;
+            if (in >> c) {
+                std::vector<std::string> rest;
+                std::string tok;
+                while (in >> tok) rest.push_back(tok);
+                int    max_depth = 4;
+                double min_sec   = 0.0;
+                double max_sec   = 10.0;
+                int    wm        = g_winmode;
+                if (rest.size() >= 1) max_depth = to_int(rest[0], max_depth);
+                if (rest.size() >= 2) min_sec   = to_double(rest[1], min_sec);
+                if (rest.size() >= 3) max_sec   = to_double(rest[2], max_sec);
+                if (rest.size() >= 4) wm        = to_int(rest[3], wm);
+
+                const int want = (c == "b") ? gvg::BLACK : gvg::WHITE;
+                TurnRestore guard{board, board.turn(), false};
+                if (board.turn() != want) {
+                    board.set_turn(want);
+                    guard.active = true;
+                }
+                g_last_search = gvg::search_root(board, max_depth, min_sec,
+                                                 max_sec, wm);
+
+                for (size_t i = 0; i < g_last_search.depth_scores.size(); ++i) {
+                    std::cout << "info depth " << (static_cast<int>(i) * 2)
+                              << " move " << g_last_search.depth_move_x[i]
+                              << ' ' << g_last_search.depth_move_y[i]
+                              << " score " << g_last_search.depth_scores[i]
+                              << '\n';
+                }
+                if (g_last_search.move_x < 0)
+                    std::cout << (want == gvg::WHITE ? "pass" : "resign")
+                              << '\n';
+                else
+                    std::cout << "move " << g_last_search.move_x << ' '
+                              << g_last_search.move_y << '\n';
+            }
+        } else if (cmd == "searchstat") {
+            std::cout << "searchstat nodes " << g_last_search.nodes
+                      << " depth " << g_last_search.completed_depth << " ms "
+                      << static_cast<long long>(g_last_search.elapsed_sec *
+                                                1000.0)
+                      << '\n';
         } else if (cmd == "set") {
             int x, y;
             std::string c;
