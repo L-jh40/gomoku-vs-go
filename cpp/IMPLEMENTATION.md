@@ -221,7 +221,7 @@ always-replace；`flag` 0=空 / 1=EXACT / 2=LOWER / 3=UPPER；`best` 为
 固定 10 手中局（`search_sanity.py` 的 `SEQ_MID`，非战术局面，评分非 MATE）：
 
 ```
-[nps] fixed midgame depth6: completed_depth=6 elapsed=17.03s nodes=558547 nps=32803
+[nps] fixed midgame depth6: completed_depth=6 elapsed=16.85s nodes=558547 nps=33155
 ```
 
 即 **depth6 在 max_sec 30 内完成（约 17s，33k nodes/s）**，远超“完成深度 6”
