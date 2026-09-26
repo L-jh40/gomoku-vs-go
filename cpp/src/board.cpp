@@ -340,6 +340,32 @@ void Board::touch_push(uint16_t* list, int& n, int idx) {
 // 增量更新：落子后调用，差量维护全部评估计数器
 // ===========================================================================
 
+void Board::refresh_lines(const uint16_t* centers, int nc, bool update_globals) {
+    ++line_gen_;
+    if (line_gen_ == 0) { std::memset(line_stamp_, 0, sizeof(line_stamp_)); line_gen_ = 1; }
+    for (int ci = 0; ci < nc; ++ci) {
+        const int cx0 = centers[ci] / MAX_BOARD;
+        const int cy0 = centers[ci] % MAX_BOARD;
+        for (int d = 0; d < 4; ++d) {
+            int sx, sy, len, k;
+            line_through(d, cx0, cy0, sx, sy, len, k);
+            const int id = line_id(d, sx, sy);
+            if (line_stamp_[d][id] == line_gen_) continue;
+            line_stamp_[d][id] = line_gen_;
+            int newB[NUM_EVAL_CLASSES], newW[NUM_EVAL_CLASSES];
+            count_line_both(d, sx, sy, len, newB, newW);
+            for (int c = 0; c < NUM_EVAL_CLASSES; ++c) {
+                if (update_globals) {
+                    black_cnt_[c] += newB[c] - line_cnt_[d][id][0][c];
+                    white_cnt_[c] += newW[c] - line_cnt_[d][id][1][c];
+                }
+                line_cnt_[d][id][0][c] = static_cast<int16_t>(newB[c]);
+                line_cnt_[d][id][1][c] = static_cast<int16_t>(newW[c]);
+            }
+        }
+    }
+}
+
 void Board::eval_update_after_move(int pos, int color, HistoryEntry& h,
                                    const uint16_t* captured, int ncap,
                                    const uint16_t* riskCells, int rn,

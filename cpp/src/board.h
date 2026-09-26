@@ -148,6 +148,9 @@ private:
                                 const uint16_t* captured, int ncap,
                                 const uint16_t* riskCells, int rn,
                                 int risk_before);
+    // 重算给定中心点所在全部线的线型计数缓存（make 的落子点+被提子；
+    // undo 同一集合即可精确还原缓存）。update_globals 为真时同步调整全局计数。
+    void refresh_lines(const uint16_t* centers, int nc, bool update_globals);
     int  risk_of_cells(const uint16_t* cells, int n) const;
     int  risk_full() const;
     // 预判白棋落子 (x,y) 会提走哪些黑子（不改动棋盘）。
