@@ -395,33 +395,12 @@ void Board::eval_update_after_move(int pos, int color, HistoryEntry& h,
 
     // (1) 受影响的线：落子点所在 4 条线 + 每个被提子所在 4 条线
     //     （提子会移除不经过落子点的线上的黑子，必须一并重算）。
-    ++line_gen_;
-    if (line_gen_ == 0) { std::memset(line_stamp_, 0, sizeof(line_stamp_)); line_gen_ = 1; }
     {
-        // 待扫描的中心点：落子点 + 被提子点。
-        int centers[1 + MAX_CELLS];
+        uint16_t centers[1 + MAX_CELLS];
         int nc = 0;
-        centers[nc++] = pos;
+        centers[nc++] = static_cast<uint16_t>(pos);
         for (int i = 0; i < ncap; ++i) centers[nc++] = captured[i];
-        for (int ci = 0; ci < nc; ++ci) {
-            const int cx0 = centers[ci] / MAX_BOARD;
-            const int cy0 = centers[ci] % MAX_BOARD;
-            for (int d = 0; d < 4; ++d) {
-                int sx, sy, len, k;
-                line_through(d, cx0, cy0, sx, sy, len, k);
-                const int id = line_id(d, sx, sy);
-                if (line_stamp_[d][id] == line_gen_) continue;
-                line_stamp_[d][id] = line_gen_;
-                int newB[NUM_EVAL_CLASSES], newW[NUM_EVAL_CLASSES];
-                count_line_both(d, sx, sy, len, newB, newW);
-                for (int c = 0; c < NUM_EVAL_CLASSES; ++c) {
-                    black_cnt_[c] += newB[c] - line_cnt_[d][id][0][c];
-                    white_cnt_[c] += newW[c] - line_cnt_[d][id][1][c];
-                    line_cnt_[d][id][0][c] = static_cast<int16_t>(newB[c]);
-                    line_cnt_[d][id][1][c] = static_cast<int16_t>(newW[c]);
-                }
-            }
-        }
+        refresh_lines(centers, nc, true);
     }
 
     // (2) 领地：受影响的窗口 blocked 标志差量 + 受影响格的死格重算。
@@ -793,13 +772,20 @@ bool Board::undo_move() {
     hash_ ^= zob().turn;
 
     // ---- 评估计数器还原 ----
-    // 12 个全局线型计数值从历史 O(1) 取回；线的逐条缓存与逐格缓存
-    // （窗口 blocked / 无气 / 死格）按其定义精确重建。
+    // 12 个全局线型计数值从历史 O(1) 取回；只需重算本步影响过的那些线
+    // （落子点 + 被提子），其余线的缓存未被 make 触碰，仍然有效。
     for (int c = 0; c < NUM_EVAL_CLASSES; ++c) {
         black_cnt_[c] = h.old_black[c];
         white_cnt_[c] = h.old_white[c];
     }
-    rebuild_eval_lines(false);
+    {
+        uint16_t centers[1 + MAX_CELLS];
+        int nc = 0;
+        centers[nc++] = h.pos;
+        for (int i = 0; i < h.cap_count; ++i)
+            centers[nc++] = captured_pool_[h.cap_begin + i];
+        refresh_lines(centers, nc, false);
+    }
     territory_ = h.old_territory;
     risk_      = h.old_risk;
     black_count_    = h.old_black_count;

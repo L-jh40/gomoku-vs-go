@@ -226,6 +226,7 @@ int order_score(const Board& board, int x, int y, int color, int* own_level) {
 std::vector<Move> gen_moves(const Board& board, int color) {
     const int n = board.size();
     std::vector<Move> out;
+    out.reserve(96);   // 避免热路径上的多次扩容
 
     uint8_t seen[MAX_CELLS];
     std::memset(seen, 0, sizeof(seen));
@@ -266,11 +267,11 @@ std::vector<Move> gen_moves(const Board& board, int color) {
     // 每个候选先算 order_score；对黑棋，只有 own_level >= PP_B3（即该方向
     // 出现眠三/活三/冲四/活四/长连等禁手成分）才需要调用昂贵的
     // check_forbidden。该预筛是充分必要的：check_forbidden 的第一步预筛
-    // 正是“四方向线型中必须含 OL/B4/B4S/F4/F3/F3S”。
-    std::vector<Move> kept;
-    kept.reserve(out.size());
+    // 正是“四方向线型中必须含 OL/B4/B4S/F4/F3/F3S”。过滤在原数组上原地完成。
     Board& mb = const_cast<Board&>(board);
-    for (Move& m : out) {
+    size_t w = 0;
+    for (size_t i = 0; i < out.size(); ++i) {
+        Move m = out[i];
         int own_level = gvg::PP_NONE;
         m.score = order_score(board, m.x, m.y, color, &own_level);
         if (color == BLACK) {
@@ -278,9 +279,9 @@ std::vector<Move> gen_moves(const Board& board, int color) {
             if (own_level >= gvg::PP_B3 && check_forbidden(mb, m.x, m.y))
                 continue;
         }
-        kept.push_back(m);
+        out[w++] = m;
     }
-    out.swap(kept);
+    out.resize(w);
 
     std::sort(out.begin(), out.end(), [](const Move& a, const Move& b) {
         if (a.score != b.score) return a.score > b.score;
