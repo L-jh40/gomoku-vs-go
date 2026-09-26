@@ -1,5 +1,73 @@
 # C++ 混合规则引擎（棋盘 + 黑棋禁手 + 增量评估 + alpha-beta 搜索）
 
+## 总览与快速上手
+
+**一句话定位**：五子棋(黑) vs 围棋(白)混合规则 C++ 引擎 —— make/undo 增量引擎 +
+Rapfi 禁手移植 + 字典序元组评估 + alpha-beta 搜索 + VCF/VCT 威胁搜索 + W/L 标注。
+
+### 构建与运行
+
+```bat
+cmd /c cpp\build.bat          :: 编译 cpp\src\*.cpp -> cpp\build\engine.exe
+cpp\build\engine.exe          :: 启动引擎，从 stdin 逐行读命令、stdout 逐行输出并 flush
+```
+
+`build.bat` 调用本机 MSVC 的 `vcvars64.bat`，以
+`cl /nologo /utf-8 /EHsc /O2 /std:c++17 /MT` 编译 `src\*.cpp`。
+引擎是纯 stdin/stdout 协议进程，既可人工交互，也可由测试脚本逐行驱动。
+
+### 命令表（与 `src/main.cpp` 逐条核对）
+
+| 命令 | 参数 | 功能 | 输出格式 |
+| --- | --- | --- | --- |
+| `size` | `<n>`（9..19 奇数） | 重置 n×n 空盘，同时清空置换表 | 无输出 |
+| `set` | `<x> <y> <b\|w\|o>` | 直接摆子（`o`=障碍），不提子、不换回合 | 无输出 |
+| `clear` | 无 | 清空棋盘 | 无输出 |
+| `checkforbidden` | 无 | 列出所有黑棋非法点（Rapfi 禁手 ∪ 无气自杀） | 每行 `x y`，末尾 `end` |
+| `play` | `<b\|w> <x> <y>` | 正式落子（白提黑、黑自杀拒绝），不自动换回合语义由 `make_move` 决定 | `ok` / `illegal` |
+| `move` | `<x> <y> <b\|w>` | 同 `play`（旧接口，参数顺序不同） | `ok` / `err` |
+| `undo` | 无 | 悔一步 | `ok` / `err`（空历史 `err`） |
+| `hash` | 无 | 当前局面 Zobrist 哈希 | 16 位小写十六进制 |
+| `dump` | 无 | 棋盘转储 | `size` 行，每行 `size` 个格子值 `0..3` |
+| `pat` | `<x> <y>` | 禁手诊断 | 四方向线型、`p4 fours threes forbidden` |
+| `eval` | 无 | 打包评估（只评估不搜索） | `eval <packed> F1=.. F2=.. F3=.. F4=.. F5=.. risk=.. terr=..` |
+| `counters` | 无 | 黑白六类线型计数 / 风险 / 领地 | `cnt b=<6 个逗号分隔> w=<6 个逗号分隔> risk=<n> terr=<n>` |
+| `bencheval` | `<n>` | 随机走 n 步 `make_move` + `pack_score`（每 200 步 undo 一次） | `bencheval <n> <毫秒> <evals/sec>` |
+| `winmode` | `<0\|1>` | 胜负模式（0=line_block 默认，1=occupy） | 无输出 |
+| `genmove` | `<b\|w> [max_depth] [min_sec] [max_sec] [winmode]` | 迭代加深搜索，不落子、不改棋盘 | 每完成一个偶深度一行 `info depth <d> move <x> <y> score <packed>`；末行 `move <x> <y>`，白方无着 `pass`、黑方无着 `resign` |
+| `searchstat` | 无 | 上一次 `genmove` 的统计 | `searchstat nodes <n> depth <d> ms <毫秒>` |
+| `candidates` | `<b\|w> [steps=11] [max_sec=10] [winmode=0]` | 对 `gen_moves(color)` 的每个候选做 VCF/VCT W/L 标注 | 每行 `cand <x> <y> <W\|L><steps>`，截断时一行 `timeout`，末尾 `end`；检测到哈希被改动时只输出 `error hash` |
+| `quit` | 无 | 退出进程 | 无 |
+
+> `undo` 的既有实现输出 `ok` / `err`（空历史 `err`），与早期任务文字里的
+> `ok` / `nohistory` 不同；`diff_forbidden.py` 明确断言空历史返回 `err`，
+> 故保持不变。测试脚本把 `err` 视为“无更多历史”。
+
+### 测试清单（`cpp\tests\*.py`，均在仓库根目录运行）
+
+| 文件 | 一句话说明 | 运行 |
+| --- | --- | --- |
+| `tests/engine_protocol.py` | 命令行协议回归：十手落子全 `ok`、非法落子、11 次 undo 回到初始 `hash`、`genmove`/`candidates` 无副作用、`size` 切换与 `quit` 干净退出（43 条断言）。 | `py cpp\tests\engine_protocol.py` |
+| `tests/diff_forbidden.py` | 黑棋禁手判定与 Python `HybridBoard + rules.is_black_legal_move` 的差分测试，对 Rapfi 语义差异逐条归因，附 make/undo 压力测试。 | `py cpp\tests\diff_forbidden.py` |
+| `tests/diff_eval.py` | 增量评估计数器差分（种子 20240917）：随机自对弈逐步比对 `counters`/`eval`/packed，逐步 undo 可逆、查询命令无副作用。 | `py cpp\tests\diff_eval.py` |
+| `tests/search_sanity.py` | alpha-beta 搜索健全性（种子 20240917）：自对弈合法性、搜索无副作用、确定性、必胜立即执行、救叫吃、depth6 nps 报告。 | `py cpp\tests\search_sanity.py` |
+| `tests/tactics.py` | VCF/VCT 威胁搜索 + W/L 标注的战术用例（T1..T8，33 条断言）。 | `py cpp\tests\tactics.py` |
+
+### 四条已知限制
+
+1. **线式必胜判定偏乐观**：VCF/VCT 的路径枚举是“线式”的 —— 收到一条路径只说明
+   “存在某个白应手序列让黑方成五”，并不要求白方每个应手都输；三的防御集取超集
+   只保证不遗漏真实防守，判定“必胜”时不做全分支 AND。实测反例：任务书 T5 局面
+   `candidates w 11` 会把白 (7,7) 标成 `L6`。
+2. **攻击候选不查禁手**：根候选来自 `gen_moves`（黑方已过滤禁手与自杀点），但搜索
+   内部的攻击手只按 `attack_class` 枚举，不查 `check_forbidden`，极小概率枚举到
+   黑方实际不能走的禁手攻击手，分析结果偏乐观。
+3. **超时截断漏标注**：`nodes > 300000` 或超过 `max_sec` 时 `AnalysisResult::timeout = true`，
+   正在搜索的候选与之后所有候选都保持无标注（宁可漏标，不可错标），并追加一行 `timeout`。
+4. **GUI 未接入**：引擎只提供 stdin/stdout 命令行协议，尚未接入任何图形界面。
+
+> 本节是总览与快速上手；技术细节若与下文“分步实现记录”冲突，**以下文为准**。
+
 本目录用 C++17 从零实现「五子棋(黑) vs 围棋(白)」混合规则引擎：可 make/undo 的
 棋盘、移植自 Rapfi 的黑棋禁手判定、随 make/undo 增量维护的评估计数器，以及在
 此之上的 alpha-beta 搜索（negamax + 置换表 + 着法排序 + 迭代加深）。不含
