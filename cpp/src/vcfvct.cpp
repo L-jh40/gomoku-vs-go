@@ -359,8 +359,12 @@ bool black_attacks(Board& b, int steps_left, WinPath* cur, PathCollector* pc,
             continue;
         }
 
-        // 四的精确防御集：白方唯一不立刻输的应手集合。
-        std::vector<Pt> wdefs = white_defense_for_fours(b);
+        // 防御集按黑方这一手的成分选择（2.8.2）：
+        //   四成分（含成五）→ 四的精确防御集；纯活三 → 三的防御超集。
+        std::vector<Pt> wdefs =
+            (c.rank >= static_cast<int>(AtkType::RUSH_FOUR))
+                ? white_defense_for_fours(b)
+                : white_defense_for_threes(b, c.x, c.y);
         cur->black_moves.push_back(Pt(c.x, c.y));
         cur->defense_sets.push_back(wdefs);
 
@@ -425,7 +429,10 @@ bool enum_black_wins(Board& b, WinPath* cur, int steps_left, PathCollector* pc,
     cur->defense_sets.back() = wdefs;
 
     if (wdefs.empty()) {
-        pc->collect(*cur);
+        // 白方无应手 = 黑方威胁无法防守 → 收集一条路径。
+        // 仅当黑方上一手确实是威胁（四/三/成五）时该结论才成立；普通落子没有
+        // 威胁可言，此时“防御集为空”只是启发式集合为空，不能算必胜。
+        if (rank >= static_cast<int>(AtkType::OPEN_THREE)) pc->collect(*cur);
         return false;
     }
 
