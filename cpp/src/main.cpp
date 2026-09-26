@@ -29,6 +29,7 @@
 #include "eval.h"
 #include "forbidden.h"
 #include "search.h"
+#include "vcfvct.h"
 
 #include <algorithm>
 #include <chrono>
