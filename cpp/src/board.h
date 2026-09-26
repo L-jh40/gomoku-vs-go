@@ -119,7 +119,9 @@ private:
     void rebuild_cell_caches();
     void count_line_both(int d, int sx, int sy, int len, int* outB, int* outW) const;
     void eval_update_after_move(int pos, int color, HistoryEntry& h,
-                                const uint16_t* captured, int ncap, int risk_before);
+                                const uint16_t* captured, int ncap,
+                                const uint16_t* riskCells, int rn,
+                                int risk_before);
     int  risk_of_cells(const uint16_t* cells, int n) const;
     int  risk_full() const;
     // 预判白棋落子 (x,y) 会提走哪些黑子（不改动棋盘）。
