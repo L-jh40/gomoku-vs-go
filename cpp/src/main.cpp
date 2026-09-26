@@ -25,6 +25,12 @@
 //                               info depth <d> move <x> <y> score <packed>，
 //                               最后输出 move <x> <y>（白无着 pass / 黑无着 resign）
 //   searchstat                  输出上一次 genmove 的 nodes / depth / 毫秒
+// 战术搜索（VCF/VCT + W/L 标注）：
+//   candidates <b|w> [steps=11] [max_sec=10] [winmode=0]
+//                               给 gen_moves(color) 的每个候选打标注；每行输出
+//                               cand <x> <y> <tag><steps>（tag=W/L），超时截断时
+//                               额外输出一行 timeout，末尾 end。棋盘被改动时
+//                               只输出 error hash。
 #include "board.h"
 #include "eval.h"
 #include "forbidden.h"
@@ -182,6 +188,36 @@ int main() {
                       << static_cast<long long>(g_last_search.elapsed_sec *
                                                 1000.0)
                       << '\n';
+        } else if (cmd == "candidates") {
+            std::string c;
+            if (in >> c) {
+                std::vector<std::string> rest;
+                std::string tok;
+                while (in >> tok) rest.push_back(tok);
+                int    steps   = 11;
+                double max_sec = 10.0;
+                int    wm      = g_winmode;
+                if (rest.size() >= 1) steps   = to_int(rest[0], steps);
+                if (rest.size() >= 2) max_sec = to_double(rest[1], max_sec);
+                if (rest.size() >= 3) wm      = to_int(rest[2], wm);
+
+                const int color = (c == "b") ? gvg::BLACK : gvg::WHITE;
+                const uint64_t h0 = board.hash();
+                gvg::AnalysisResult r =
+                    gvg::analyse(board, color, steps, wm, max_sec, 300000);
+                if (board.hash() != h0) {
+                    std::cout << "error hash\n";
+                } else {
+                    for (size_t i = 0; i < r.labels.size(); ++i) {
+                        const gvg::CandidateLabel& lab = r.labels[i];
+                        if (lab.tag == 0) continue;
+                        std::cout << "cand " << lab.x << ' ' << lab.y << ' '
+                                  << lab.tag << lab.steps << '\n';
+                    }
+                    if (r.timeout) std::cout << "timeout\n";
+                    std::cout << "end\n";
+                }
+            }
         } else if (cmd == "set") {
             int x, y;
             std::string c;
