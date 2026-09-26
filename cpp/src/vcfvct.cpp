@@ -345,9 +345,11 @@ void order_white_defenses(const Board& b, std::vector<Pt>* pts) {
 // 返回 minimax 手数 m：0 = 该局面下黑方无必胜；m>0 = 黑方 m 手内必成五。
 // 语义（健全性）：m>0 要求存在一个攻击手 e，使得 e 之后**每一个**白应手都仍然
 // 必输（对白方取 max、对黑方候选取 min）。同时把枚举到的必胜路径收集进 pc。
+// limit：上界剪枝（0=不限）。limit>0 时只需判断“能否比 limit-1 更好”：
+//   返回值 >= limit 表示“不优于 limit-1”（调用方据此剪掉该候选）。
 // 限流（st->timeout）时按“未知 = 否”返回 0，保证不会产生虚假标注。
 int black_attacks(Board& b, int steps_left, WinPath* cur, PathCollector* pc,
-                  SearchStats* st, bool allow_three) {
+                  SearchStats* st, bool allow_three, int limit) {
     if (budget_exceeded(st)) return 0;
     if (steps_left <= 0) return 0;
 
@@ -355,7 +357,7 @@ int black_attacks(Board& b, int steps_left, WinPath* cur, PathCollector* pc,
     cands.reserve(32);
     gen_attack_candidates(b, steps_left, allow_three, &cands);
 
-    int best = 0;   // 黑方对候选取最好（手数最小）
+    int best = (limit > 0) ? limit : 0;   // 黑方对候选取最好（手数最小）
     for (size_t ci = 0; ci < cands.size(); ++ci) {
         const AttackCand& c = cands[ci];
         if (!b.make_move(c.x, c.y, BLACK)) continue;   // 无气自杀等非法点跳过
@@ -392,19 +394,24 @@ int black_attacks(Board& b, int steps_left, WinPath* cur, PathCollector* pc,
             order_white_defenses(b, &wdefs);
             int worst = 0;               // 白方最佳防守下的黑方手数（取 max）
             bool white_holds = false;    // 存在白应手让黑方失去必胜
+            bool no_gain = false;        // 该候选已不可能改进上界
             for (size_t wi = 0; wi < wdefs.size(); ++wi) {
                 if (!b.make_move(wdefs[wi].first, wdefs[wi].second, WHITE)) {
                     white_holds = true;      // 理论不可达：白方无合法应手
                     break;
                 }
-                const int cm =
-                    black_attacks(b, steps_left - 1, cur, pc, st, allow_three);
+                // 子节点只需给出 < best-1 的改进：若它返回 >= best-1（含被截断的
+                // limit 值），则本候选手数 >= best，不可能改进，直接剪掉。
+                const int child_limit = (best > 0 && best - 1 > 0) ? best - 1 : 0;
+                const int cm = black_attacks(b, steps_left - 1, cur, pc, st,
+                                             allow_three, child_limit);
                 b.undo_move();
                 if (st->timeout) { white_holds = true; break; }
                 if (cm == 0) { white_holds = true; break; }   // 白方守住了
                 if (cm > worst) worst = cm;
+                if (best > 0 && 1 + worst >= best) { no_gain = true; break; }
             }
-            if (!white_holds) cand_m = 1 + worst;
+            if (!no_gain && !white_holds) cand_m = 1 + worst;
         }
 
         cur->black_moves.pop_back();
@@ -413,6 +420,7 @@ int black_attacks(Board& b, int steps_left, WinPath* cur, PathCollector* pc,
 
         if (st->timeout) return 0;
         if (cand_m > 0 && (best == 0 || cand_m < best)) best = cand_m;
+        if (best == 1) return 1;     // 已是最优手数
     }
     return best;
 }
@@ -420,13 +428,13 @@ int black_attacks(Board& b, int steps_left, WinPath* cur, PathCollector* pc,
 // 2.7 纯 VCF：候选只含四与成五。
 int vcf_dfs(Board& b, int steps_left, WinPath* cur, PathCollector* pc,
             SearchStats* st) {
-    return black_attacks(b, steps_left, cur, pc, st, /*allow_three=*/false);
+    return black_attacks(b, steps_left, cur, pc, st, /*allow_three=*/false, 0);
 }
 
 // 2.8 VCT：候选含四、三与成五。
 int vct_dfs(Board& b, int steps_left, WinPath* cur, PathCollector* pc,
             SearchStats* st) {
-    return black_attacks(b, steps_left, cur, pc, st, /*allow_three=*/true);
+    return black_attacks(b, steps_left, cur, pc, st, /*allow_three=*/true, 0);
 }
 
 // 2.9 统一枚举器。
@@ -436,7 +444,7 @@ int vct_dfs(Board& b, int steps_left, WinPath* cur, PathCollector* pc,
 int enum_black_wins(Board& b, WinPath* cur, int steps_left, PathCollector* pc,
                     SearchStats* st) {
     if (b.turn() == BLACK) {
-        return black_attacks(b, steps_left, cur, pc, st, /*allow_three=*/true);
+        return black_attacks(b, steps_left, cur, pc, st, /*allow_three=*/true, 0);
     }
 
     if (budget_exceeded(st)) return 0;
@@ -467,7 +475,7 @@ int enum_black_wins(Board& b, WinPath* cur, int steps_left, PathCollector* pc,
     for (size_t wi = 0; wi < wdefs.size(); ++wi) {
         if (!b.make_move(wdefs[wi].first, wdefs[wi].second, WHITE)) return 0;
         const int cm = black_attacks(b, steps_left, cur, pc, st,
-                                     /*allow_three=*/true);
+                                     /*allow_three=*/true, 0);
         b.undo_move();
         if (st->timeout) return 0;
         if (cm == 0) return 0;        // 白方守住 → 黑方这一手不构成必胜
