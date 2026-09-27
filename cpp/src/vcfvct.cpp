@@ -502,7 +502,7 @@ bool prove_black_dfs(Board& b, int steps_left, bool allow_three, ProveCtx* ctx,
     if (steps_left <= 0) return false;
 
     const uint64_t key = b.hash();
-    {
+    if (false) {
         ProveTT::const_iterator it = tt->find(key);
         if (it != tt->end() && it->second >= steps_left) return true;
     }
@@ -516,7 +516,7 @@ bool prove_black_dfs(Board& b, int steps_left, bool allow_three, ProveCtx* ctx,
         if (!b.make_move(c.x, c.y, BLACK)) continue;   // 禁手之外再验一次（自杀等）
         if (b.last_move_was_five()) {                  // 成五：1 手证明，直接成功
             b.undo_move();
-            (*tt)[key] = steps_left;
+            if (false) (*tt)[key] = steps_left;
             return true;
         }
 
@@ -528,7 +528,7 @@ bool prove_black_dfs(Board& b, int steps_left, bool allow_three, ProveCtx* ctx,
 
         if (wdefs.empty()) {                           // 白方无应手可防 → 证明成功
             b.undo_move();
-            (*tt)[key] = steps_left;
+            if (false) (*tt)[key] = steps_left;
             return true;
         }
 
@@ -544,7 +544,7 @@ bool prove_black_dfs(Board& b, int steps_left, bool allow_three, ProveCtx* ctx,
         }
         b.undo_move();
         if (all_ok) {
-            (*tt)[key] = steps_left;
+            if (false) (*tt)[key] = steps_left;
             return true;
         }
     }
