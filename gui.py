@@ -228,6 +228,11 @@ class GameGUI:
         self.engine_candidates_job = 0
         # Latest engine search progress: {"move": (x, y) | None, "depth": d}
         self._engine_info = {"move": None, "depth": 0}
+        # Engine threads must never touch Tk directly (after() from a
+        # non-main thread raises "main thread is not in main loop" on this
+        # Tcl build): they queue messages and _poll_worker applies them on
+        # the Tk main thread instead.
+        self.engine_ui_queue = queue_mod.Queue()
 
         # Board style lives on the main window (outside the mode window).
         style_row = tk.Frame(self.info)
@@ -1914,10 +1919,7 @@ class GameGUI:
 
             def on_info(depth, move):
                 self._engine_info = {"move": move, "depth": depth}
-                now = time.monotonic()
-                if now - self._last_progress_ui_time >= 0.5:
-                    self._last_progress_ui_time = now
-                    self.root.after(0, self._update_engine_progress, depth)
+                self.engine_ui_queue.put(("progress", epoch, depth))
 
             client = self._ensure_engine_client()
             try:
