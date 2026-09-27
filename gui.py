@@ -1608,6 +1608,31 @@ class GameGUI:
                 self.root.after(self.worker_poll_ms, self._poll_worker)
         except Exception:
             return
+        # Engine-mode messages first (they are thread-safe queue items, so
+        # they must be applied even while the Python worker is not in use).
+        try:
+            while True:
+                kind, *payload = self.engine_ui_queue.get_nowait()
+                if kind == "progress":
+                    _, epoch, depth = payload
+                    if epoch == self.search_epoch and self.ai_thinking:
+                        now = time.monotonic()
+                        if now - self._last_progress_ui_time >= 0.5:
+                            self._last_progress_ui_time = now
+                            self._update_engine_progress(depth)
+                elif kind == "apply":
+                    self._apply_engine_result(payload[0])
+                elif kind == "labels":
+                    epoch, labels = payload
+                    if epoch == self.engine_candidates_job:
+                        self.engine_labels = (
+                            {(x, y): (tag, k) for (x, y, tag, k) in labels}
+                            if labels else {})
+                        self.draw_board()
+        except queue_mod.Empty:
+            pass
+        except Exception:
+            pass
         if self.result_queue is None:
             return
         refresh = False
@@ -1936,73 +1961,85 @@ class GameGUI:
                     result = {"verdict": "move",
                               "move": self._engine_info["move"]}
 
-            def apply():
-                if epoch != self.search_epoch:
-                    return
-                self._cancel_max_search_timer()
-                self.ai_thinking = False
-                total = time.time() - self.search_start_time
-                depth = self._engine_info["depth"]
-                self.thinking_label.config(
-                    text=f"AI搜索中，用时: {total:.2f}s，深度: {depth}")
-                self.depth_label.config(
-                    text=f"上一步AI用时: {total:.2f}s | 搜索深度: {depth}")
-                if error is not None and result is None:
-                    self._show_search_error(f"C++引擎: {error}")
-                    return
-                if assist:
-                    self._record_human_move_time(color)
-                    self._finish_turn_time(color, False)
-                else:
-                    self._add_ai_search_time(color, total)
-                verdict = result["verdict"] if result else "none"
-                if verdict == "resign":
-                    self.end_game("黑棋无合法着法，白胜" if color == BLACK
-                                  else "白棋投子认负，黑胜")
-                    return
-                if verdict == "pass" or result is None:
-                    if result is None:
-                        self.handle_no_move(color, self.board)
-                    else:
-                        self._pass_turn()
-                    return
-                x, y = result["move"]
-                if color == BLACK:
-                    ok, _ = self.board.play_black(x, y)
-                    if not ok:
-                        self.end_game("黑棋 AI 落子失败")
-                        return
-                    self.last_move = (x, y)
-                    self.pass_count = 0
-                    self.pass_log = []
-                    self._register_move()
-                    if self.board.check_black_five(x, y):
-                        self.draw_board(with_hints=False)
-                        self.end_game("黑棋连五，黑胜!")
-                        return
-                    self.current = WHITE
-                    self._start_turn_timer(WHITE)
-                else:
-                    ok, _ = self.board.play_white(x, y)
-                    if not ok:
-                        self.end_game("白棋 AI 落子失败")
-                        return
-                    self.last_move = (x, y)
-                    self.pass_count = 0
-                    self.pass_log = []
-                    self._register_move()
-                    if self.check_white_win():
-                        return
-                    self.current = BLACK
-                    self._start_turn_timer(BLACK)
-                self.draw_board()
-                self.update_info()
-                self._maybe_refresh_engine_labels()
-                self.root.after(300, self.maybe_play_ai)
-
-            self.root.after(0, apply)
+            # Hand the finished search to the main thread via the queue:
+            # after() from this worker thread would raise on this Tcl build.
+            self.engine_ui_queue.put(("apply", {
+                "epoch": epoch, "color": color, "assist": assist,
+                "error": error, "result": result,
+            }))
 
         threading.Thread(target=work, daemon=True).start()
+
+    def _apply_engine_result(self, data):
+        """Apply a finished engine search (runs on the Tk main thread,
+        called from _poll_worker)."""
+        epoch = data["epoch"]
+        color = data["color"]
+        assist = data["assist"]
+        error = data["error"]
+        result = data["result"]
+        if epoch != self.search_epoch:
+            return
+        self._cancel_max_search_timer()
+        self.ai_thinking = False
+        total = time.time() - self.search_start_time
+        depth = self._engine_info["depth"]
+        self.thinking_label.config(
+            text=f"AI搜索中，用时: {total:.2f}s，深度: {depth}")
+        self.depth_label.config(
+            text=f"上一步AI用时: {total:.2f}s | 搜索深度: {depth}")
+        if error is not None and result is None:
+            self._show_search_error(f"C++引擎: {error}")
+            return
+        if assist:
+            self._record_human_move_time(color)
+            self._finish_turn_time(color, False)
+        else:
+            self._add_ai_search_time(color, total)
+        verdict = result["verdict"] if result else "none"
+        if verdict == "resign":
+            self.end_game("黑棋无合法着法，白胜" if color == BLACK
+                          else "白棋投子认负，黑胜")
+            return
+        if verdict == "pass" or result is None:
+            if result is None:
+                self.handle_no_move(color, self.board)
+            else:
+                self._pass_turn()
+            return
+        x, y = result["move"]
+        if color == BLACK:
+            ok, _ = self.board.play_black(x, y)
+            if not ok:
+                self.end_game("黑棋 AI 落子失败")
+                return
+            self.last_move = (x, y)
+            self.pass_count = 0
+            self.pass_log = []
+            self._register_move()
+            if self.board.check_black_five(x, y):
+                self.draw_board(with_hints=False)
+                self.end_game("黑棋连五，黑胜!")
+                return
+            self.current = WHITE
+            self._start_turn_timer(WHITE)
+        else:
+            ok, _ = self.board.play_white(x, y)
+            if not ok:
+                self.end_game("白棋 AI 落子失败")
+                return
+            self.last_move = (x, y)
+            self.pass_count = 0
+            self.pass_log = []
+            self._register_move()
+            if self.check_white_win():
+                return
+            self.current = BLACK
+            self._start_turn_timer(BLACK)
+        self.draw_board()
+        self.update_info()
+        self._maybe_refresh_engine_labels()
+        self.root.after(300, self.maybe_play_ai)
 
     def _update_engine_progress(self, depth):
         """Engine "info depth" line reached the main thread: refresh the
@@ -2034,15 +2071,7 @@ class GameGUI:
             except engine_client.EngineError:
                 pass
 
-            def apply():
-                if self.engine_candidates_job != epoch:
-                    return
-                self.engine_labels = (
-                    {(x, y): (tag, k) for (x, y, tag, k) in labels}
-                    if labels else {})
-                self.draw_board()
-
-            self.root.after(0, apply)
+            self.engine_ui_queue.put(("labels", epoch, labels))
 
         threading.Thread(target=work, daemon=True).start()
 
