@@ -134,6 +134,9 @@
 | `_ensure_worker / _shutdown_worker / _poll_worker` | AI 工作进程的启动/关闭与结果队列轮询 |
 | `_sync_worker_epoch / _abort_active_search / _stop_search` | 跨进程中断：纪元计数器同步、“AI 立即落子”中断、废弃搜索 |
 | `_worker_progress / _handle_worker_done / _finish_finished_search` | 工作进程进度回传与搜索结果落子 |
+| `_ensure_engine_client / _run_ai_move_engine` | C++ 引擎子进程客户端（懒创建）与 C++ 引擎搜索落子（勾选“C++引擎”时替代工作进程路径） |
+| `_update_engine_progress / _maybe_refresh_engine_labels` | 引擎 info depth 进度刷新、候选点 W/L 标注异步刷新（`engine_labels` → `draw_board`） |
+| `_on_engine_toggle / _on_candidates_toggle` | “C++引擎”“显示AI候选点”勾选框回调（切换时清空/重新取标注） |
 | `_handle_replay_done` | 复盘模式下工作进程算出的黑棋应手 |
 | `progress_callback` | AI 进度回传 |
 | `apply` | AI 结果应用与落子 |
