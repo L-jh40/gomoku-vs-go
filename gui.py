@@ -1417,6 +1417,7 @@ class GameGUI:
         self._start_turn_timer(WHITE)
         self.draw_board()
         self.update_info()
+        self._maybe_refresh_engine_labels()
         self.root.after(300, self.maybe_play_ai)
 
     def try_play_white(self, x, y):
@@ -1449,6 +1450,7 @@ class GameGUI:
         self._start_turn_timer(BLACK)
         self.draw_board()
         self.update_info()
+        self._maybe_refresh_engine_labels()
         self.root.after(300, self.maybe_play_ai)
 
     def human_pass(self):
@@ -1479,6 +1481,7 @@ class GameGUI:
         self.thinking_label.config(text="")
         self.draw_board()
         self.update_info()
+        self._maybe_refresh_engine_labels()
         self.root.after(300, self.maybe_play_ai)
 
     # ------------------------------------------------------------------
@@ -2607,9 +2610,11 @@ class GameGUI:
         self.thinking_label.config(text="")
         self.depth_label.config(text="")
         self._apply_canvas_size()
+        self.engine_labels = {}
         self.draw_board()
         self.update_info()
         self.update_mode_label()
+        self._maybe_refresh_engine_labels()
         if self.current == BLACK and self.black_ai_var.get():
             self.root.after(300, self.maybe_play_ai)
         elif self.current == WHITE and self.white_ai_var.get():
@@ -2669,6 +2674,8 @@ class GameGUI:
         if not self.board.history:
             if self.previous_game_snapshot is not None:
                 self._restore_previous_game()
+                self.engine_labels = {}
+                self._maybe_refresh_engine_labels()
                 return
             messagebox.showinfo("悔棋", "没有可悔的棋")
             return
@@ -2697,8 +2704,10 @@ class GameGUI:
                     (self.board.history[-1][1], self.board.history[-1][2])
                     if self.board.history else None
                 )
+                self.engine_labels = {}
                 self.draw_board()
                 self.update_info()
+                self._maybe_refresh_engine_labels()
                 self.root.after(300, self.maybe_play_ai)
                 return
             # Reached the resignation point: undo the move that caused the
@@ -2720,9 +2729,11 @@ class GameGUI:
                 (self.board.history[-1][1], self.board.history[-1][2])
                 if self.board.history else None
             )
+            self.engine_labels = {}
             self.draw_board()
             self.update_info()
             self.update_mode_label()
+            self._maybe_refresh_engine_labels()
             self.root.after(300, self.maybe_play_ai)
             return
 
@@ -2740,9 +2751,11 @@ class GameGUI:
         self.last_move = (self.board.history[-1][1], self.board.history[-1][2]) \
             if self.board.history else None
         self.current = self.board.turn
+        self.engine_labels = {}
         self.draw_board()
         self.update_info()
         self.update_mode_label()
+        self._maybe_refresh_engine_labels()
         self.root.after(300, self.maybe_play_ai)
 
 
