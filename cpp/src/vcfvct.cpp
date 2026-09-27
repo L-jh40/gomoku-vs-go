@@ -477,7 +477,15 @@ struct ProveCtx {
     bool      timeout = false;
 };
 
-// hash -> 已证明成功的最大预算（只存“证明成功”的结果；预算相关的 UNKNOWN 不存）。
+// hash -> 已证明成功的**最小**黑攻击手数（证明距离）。只存“证明成功”的结果
+// （UNKNOWN 与预算相关，不能存）。
+//
+// 方向说明（与任务书 2.3 步骤 2 的 `tt[hash] >= steps_left` 不同，是必须的健全性
+// 修正）：“预算 k 内必胜”是**单调增**的（k 手内能赢 ⇒ 更多手也能赢），因此已证明
+// 的 k 只能推出“任何 steps_left >= k 都成立”。若按 `stored >= steps_left` 命中，
+// 等于用“6 手内必胜”去断言“4 手内必胜”——不成立。实测反例（第 6 步调试记录）：
+// T4 局面候选 (5,8) 在带该错误方向的 TT 下会拿到 W9（预算 4）标签，而同一调用用
+// 空 TT 重跑在 2998 个节点内即被白方反驳（win=false）；修成 <= 后两张表一致。
 using ProveTT = std::unordered_map<uint64_t, int>;
 
 // 节点入口的预算检查：超限即 timeout=true。
@@ -494,6 +502,15 @@ bool budget_exceeded(ProveCtx* ctx) {
     return false;
 }
 
+// 记录“该局面（黑先）在 budget 手内被证明必胜”，保留最小证明距离。
+void tt_store(ProveTT* tt, uint64_t key, int budget) {
+    ProveTT::iterator it = tt->find(key);
+    if (it == tt->end())
+        tt->emplace(key, budget);
+    else if (budget < it->second)
+        it->second = budget;
+}
+
 // 黑方节点（OR 节点）。前置 b.turn()==BLACK，steps_left = 剩余黑攻击手数。
 // 返回 true 当且仅当“存在一手攻击 e，使白方防御集内每个应手后黑方仍被证明必胜”。
 bool prove_black_dfs(Board& b, int steps_left, bool allow_three, ProveCtx* ctx,
@@ -504,7 +521,8 @@ bool prove_black_dfs(Board& b, int steps_left, bool allow_three, ProveCtx* ctx,
     const uint64_t key = b.hash();
     {
         ProveTT::const_iterator it = tt->find(key);
-        if (it != tt->end() && it->second >= steps_left) return true;
+        // 已证明的距离 <= 当前预算 ⇒ 预算内同样必胜（单调增方向）。
+        if (it != tt->end() && it->second <= steps_left) return true;
     }
 
     std::vector<AttackCand> cands;
@@ -516,7 +534,7 @@ bool prove_black_dfs(Board& b, int steps_left, bool allow_three, ProveCtx* ctx,
         if (!b.make_move(c.x, c.y, BLACK)) continue;   // 禁手之外再验一次（自杀等）
         if (b.last_move_was_five()) {                  // 成五：1 手证明，直接成功
             b.undo_move();
-            (*tt)[key] = steps_left;
+            tt_store(tt, key, steps_left);
             return true;
         }
 
@@ -528,7 +546,7 @@ bool prove_black_dfs(Board& b, int steps_left, bool allow_three, ProveCtx* ctx,
 
         if (wdefs.empty()) {                           // 白方无应手可防 → 证明成功
             b.undo_move();
-            (*tt)[key] = steps_left;
+            tt_store(tt, key, steps_left);
             return true;
         }
 
@@ -544,7 +562,7 @@ bool prove_black_dfs(Board& b, int steps_left, bool allow_three, ProveCtx* ctx,
         }
         b.undo_move();
         if (all_ok) {
-            (*tt)[key] = steps_left;
+            tt_store(tt, key, steps_left);
             return true;
         }
     }
