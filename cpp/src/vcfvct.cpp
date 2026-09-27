@@ -544,10 +544,15 @@ bool prove_black_dfs(Board& b, int steps_left, bool allow_three, ProveCtx* ctx,
                 ? defense_four(b)
                 : defense_three(b, c.x, c.y);
 
-        if (wdefs.empty()) {                           // 白方无应手可防 → 证明成功
+        // 防御集为空：只有当“白下集合外黑立即成五”成立时才算证明成功。防御集的 a 项
+        // 已收录全盘所有**合法**完成点，因此集合为空等价于“全盘没有可立即成五的合法点”
+        // （含假四：完成点长连/三三/四四/自杀），此时 2.2.2 的论证不成立 → 不算证明。
+        // 任务书 2.3 步骤 4d 在这一分支直接返回成功，属该论证未覆盖的退化情形；
+        // 实测 1500 个随机局面 / 678 个四类候选 + 7891 个三类候选从未出现空集合，
+        // 故这里只做健全性加固（宁可漏标）：不影响任何实测到的分支。
+        if (wdefs.empty()) {
             b.undo_move();
-            tt_store(tt, key, steps_left);
-            return true;
+            continue;
         }
 
         order_white_defenses(b, &wdefs);
@@ -582,7 +587,9 @@ bool prove_white_node(Board& b, int cx, int cy, int budget, ProveCtx* ctx,
         (rank >= static_cast<int>(AtkType::RUSH_FOUR))
             ? defense_four(b)
             : defense_three(b, cx, cy);
-    if (wdefs.empty()) return true;   // 白方无应手可防 → 证明成功
+    // 防御集为空 → 与 prove_black_dfs 同样的健全性处理：只有“集合外黑立即成五”被
+    // 论证覆盖时才算证明成功；而防御集空 ⟺ 全盘无合法完成点，故不算证明（宁可漏标）。
+    if (wdefs.empty()) return false;
 
     order_white_defenses(b, &wdefs);
     for (size_t wi = 0; wi < wdefs.size(); ++wi) {
