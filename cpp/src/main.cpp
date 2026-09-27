@@ -31,6 +31,10 @@
 //                               cand <x> <y> <tag><steps>（tag=W/L），超时截断时
 //                               额外输出一行 timeout，末尾 end。棋盘被改动时
 //                               只输出 error hash。
+//   prove <steps> [max_sec=10]  黑方证明搜索（含三的 VCT）：轮到黑方时，在 steps
+//                               个黑攻击手数内对白方全部防御都被证明则输出 win；
+//                               证明不出输出 no；触限流输出 timeout；非黑方回合
+//                               输出 error turn。不落子、不改棋盘。
 #include "board.h"
 #include "eval.h"
 #include "forbidden.h"
@@ -216,6 +220,32 @@ int main() {
                     }
                     if (r.timeout) std::cout << "timeout\n";
                     std::cout << "end\n";
+                }
+            }
+        } else if (cmd == "prove") {
+            // 黑方证明搜索（VCT，含三）：不落子、不改棋盘，与 g_winmode 无关。
+            int    steps   = 11;
+            double max_sec = 10.0;
+            std::vector<std::string> rest;
+            std::string tok;
+            while (in >> tok) rest.push_back(tok);
+            if (rest.size() >= 1) steps   = to_int(rest[0], steps);
+            if (rest.size() >= 2) max_sec = to_double(rest[1], max_sec);
+
+            if (board.turn() != gvg::BLACK) {
+                std::cout << "error turn\n";
+            } else {
+                const uint64_t h0 = board.hash();
+                const gvg::ProveResult r = gvg::prove_black(
+                    board, steps, /*allow_three=*/true, max_sec, 300000);
+                if (board.hash() != h0) {
+                    std::cout << "error hash\n";
+                } else if (r == gvg::ProveResult::WIN) {
+                    std::cout << "win\n";
+                } else if (r == gvg::ProveResult::TIMEOUT) {
+                    std::cout << "timeout\n";
+                } else {
+                    std::cout << "no\n";
                 }
             }
         } else if (cmd == "set") {
