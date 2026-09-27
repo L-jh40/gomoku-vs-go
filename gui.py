@@ -291,7 +291,7 @@ class GameGUI:
         self.show_candidates_var = tk.IntVar(value=0)
         tk.Checkbutton(self.info, text="显示AI候选点",
                        variable=self.show_candidates_var,
-                       command=self.draw_board).pack(anchor=tk.W)
+                       command=self._on_candidates_toggle).pack(anchor=tk.W)
         self.cancel_resign_var = tk.IntVar(value=0)
         tk.Checkbutton(self.info, text="取消投子认负",
                        variable=self.cancel_resign_var).pack(anchor=tk.W)
@@ -364,6 +364,11 @@ class GameGUI:
         return not self.white_ai_var.get()
 
     def _on_close(self):
+        if self.engine_client:
+            try:
+                self.engine_client.quit()
+            except Exception:
+                pass
         self._shutdown_worker()
         self._close_active_dialog()
         self._close_mode_window()
@@ -1009,6 +1014,11 @@ class GameGUI:
             self.draw_hints(dead)
         elif self.show_candidates_var.get():
             self._draw_candidate_squares()
+            self._draw_engine_labels()
+        else:
+            # with_hints=False: no hint overlay, but the C++ engine's W/L
+            # annotation (if any) still belongs on the board.
+            self._draw_engine_labels()
         self._draw_foul_lines()
         self._draw_top_band()
 
@@ -1094,6 +1104,7 @@ class GameGUI:
 
         # Candidate squares are below red markers.
         self._draw_candidate_squares()
+        self._draw_engine_labels()
 
         # Red markers.
         threats = self.board.compute_threats()
@@ -1151,6 +1162,20 @@ class GameGUI:
                     cx - r, cy - r, cx + r, cy + r,
                     outline=color, width=2
                 )
+
+    def _draw_engine_labels(self):
+        """C++ engine candidate annotation: "W<k>" / "L<k>" corner text on
+        empty points (green = win within k, red = loss within k)."""
+        if not self.engine_labels:
+            return
+        for (x, y), (tag, k) in self.engine_labels.items():
+            if not self.board.is_empty(x, y):
+                continue
+            cx, cy = self._point_center(x, y)
+            color = "#1a7f1a" if tag == "W" else "#c01010"
+            self.canvas.create_text(cx + CELL * 0.34, cy - CELL * 0.34,
+                                    text=f"{tag}{k}",
+                                    fill=color, font=("Arial", 8, "bold"))
 
     def _get_candidate_display_positions(self):
         threats = self.board.compute_threats()
@@ -1547,12 +1572,22 @@ class GameGUI:
     def _abort_active_search(self):
         """Interrupt the running search without invalidating its result:
         the worker commits the best completed depth and returns it."""
+        if self.engine_client is not None:
+            try:
+                self.engine_client.abort()
+            except Exception:
+                pass
         try:
             self.worker_epoch_ctl.value += 1
         except Exception:
             pass
 
     def _stop_search(self):
+        if self.engine_client is not None:
+            try:
+                self.engine_client.abort()
+            except Exception:
+                pass
         self.search_epoch += 1
         self.ai_thinking = False
         self._cancel_max_search_timer()
@@ -1749,6 +1784,18 @@ class GameGUI:
         not counted in the AI (thinking) row."""
         if self.game_over:
             return
+        if self.engine_var.get():
+            if os.path.exists(engine_client.ENGINE_PATH):
+                self._run_ai_move_engine(color, assist=assist)
+                return
+            # The C++ engine binary is missing (not built yet): say so once,
+            # turn the check box off and use the Python search.
+            self.engine_var.set(0)
+            self.update_mode_label()
+            self._restore_main_window()
+            messagebox.showinfo(
+                "C++引擎",
+                "未找到 cpp/build/engine.exe，已切换回 Python 引擎。")
         self.ai_thinking = True
         self.search_epoch += 1
         epoch = self.search_epoch
@@ -1796,6 +1843,211 @@ class GameGUI:
             "max_depth": max_depth, "min_search_time": min_search_time,
             "replay": False,
         })
+
+    # ------------------------------------------------------------------
+    # C++ engine ("C++引擎" mode)
+    # ------------------------------------------------------------------
+    def _ensure_engine_client(self):
+        """The one engine client of this window (created on first use)."""
+        if self.engine_client is None:
+            self.engine_client = engine_client.EngineClient()
+        return self.engine_client
+
+    def _run_ai_move_engine(self, color, assist=False):
+        """Run the AI move through the C++ engine subprocess.
+
+        Same scaffolding as run_ai_move (epoch, progress fields, ticker,
+        max-search timer) but the search runs in a plain thread driving
+        cpp/build/engine.exe; the result is applied on the Tk main thread.
+
+        Note: the engine path does not use the replay table /
+        black_table_mode - Black's table lookup stays a Python-engine
+        feature (limitation of this version).
+        """
+        self.ai_thinking = True
+        self.search_epoch += 1
+        epoch = self.search_epoch
+        self.last_even_depth = 0
+        self.last_even_time = 0.0
+        self.last_layer_depth = 0
+        self.last_layer_time = 0.0
+        self._last_progress_ui_time = 0.0
+        self.depth0_unfinished = False
+        self.last_focused = False
+        self.last_focused_depth = -1
+        self.prev_layer_depth = -1
+        self.prev_layer_time = 0.0
+        self.search_start_time = time.time()
+        self.thinking_label.config(text="AI 搜索中...")
+        self.root.update_idletasks()
+        self._schedule_search_ticker()
+
+        max_depth = self.current_max_depth
+        try:
+            min_search_time = float(self.min_search_time_var.get())
+        except ValueError:
+            min_search_time = 0.0
+        if min_search_time < 0:
+            min_search_time = 0.0
+        try:
+            max_search_time = float(self.max_search_time_var.get())
+        except ValueError:
+            max_search_time = 0.0
+        if max_search_time < 0:
+            max_search_time = 0.0
+
+        if max_search_time > 0:
+            self._cancel_max_search_timer()
+            self.max_time_after_id = self.root.after(
+                int(max_search_time * 1000), self._on_max_search_time
+            )
+
+        winmode = 0 if self.white_win_var.get() == "line_block" else 1
+
+        def work():
+            error = None
+            result = None
+            self._engine_info = {"move": None, "depth": 0}
+
+            def on_info(depth, move):
+                self._engine_info = {"move": move, "depth": depth}
+                now = time.monotonic()
+                if now - self._last_progress_ui_time >= 0.5:
+                    self._last_progress_ui_time = now
+                    self.root.after(0, self._update_engine_progress, depth)
+
+            client = self._ensure_engine_client()
+            try:
+                client.reset(self.board)
+                result = client.genmove(color, self.current_max_depth,
+                                        min_search_time, max_search_time,
+                                        winmode, on_info=on_info)
+            except engine_client.EngineError as exc:
+                error = str(exc)
+                if self._engine_info["move"] is not None:
+                    # Interrupted (abort / max search time): commit the best
+                    # move of the last completed depth, exactly like the
+                    # Python path's "AI 立即落子" behaviour.
+                    result = {"verdict": "move",
+                              "move": self._engine_info["move"]}
+
+            def apply():
+                if epoch != self.search_epoch:
+                    return
+                self._cancel_max_search_timer()
+                self.ai_thinking = False
+                total = time.time() - self.search_start_time
+                depth = self._engine_info["depth"]
+                self.thinking_label.config(
+                    text=f"AI搜索中，用时: {total:.2f}s，深度: {depth}")
+                self.depth_label.config(
+                    text=f"上一步AI用时: {total:.2f}s | 搜索深度: {depth}")
+                if error is not None and result is None:
+                    self._show_search_error(f"C++引擎: {error}")
+                    return
+                if assist:
+                    self._record_human_move_time(color)
+                    self._finish_turn_time(color, False)
+                else:
+                    self._add_ai_search_time(color, total)
+                verdict = result["verdict"] if result else "none"
+                if verdict == "resign":
+                    self.end_game("黑棋无合法着法，白胜" if color == BLACK
+                                  else "白棋投子认负，黑胜")
+                    return
+                if verdict == "pass" or result is None:
+                    if result is None:
+                        self.handle_no_move(color, self.board)
+                    else:
+                        self._pass_turn()
+                    return
+                x, y = result["move"]
+                if color == BLACK:
+                    ok, _ = self.board.play_black(x, y)
+                    if not ok:
+                        self.end_game("黑棋 AI 落子失败")
+                        return
+                    self.last_move = (x, y)
+                    self.pass_count = 0
+                    self.pass_log = []
+                    self._register_move()
+                    if self.board.check_black_five(x, y):
+                        self.draw_board(with_hints=False)
+                        self.end_game("黑棋连五，黑胜!")
+                        return
+                    self.current = WHITE
+                    self._start_turn_timer(WHITE)
+                else:
+                    ok, _ = self.board.play_white(x, y)
+                    if not ok:
+                        self.end_game("白棋 AI 落子失败")
+                        return
+                    self.last_move = (x, y)
+                    self.pass_count = 0
+                    self.pass_log = []
+                    self._register_move()
+                    if self.check_white_win():
+                        return
+                    self.current = BLACK
+                    self._start_turn_timer(BLACK)
+                self.draw_board()
+                self.update_info()
+                self._maybe_refresh_engine_labels()
+                self.root.after(300, self.maybe_play_ai)
+
+            self.root.after(0, apply)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _update_engine_progress(self, depth):
+        """Engine "info depth" line reached the main thread: refresh the
+        blue progress label (runs on the Tk main thread)."""
+        self.last_layer_depth = depth
+        self._refresh_thinking_label()
+
+    def _maybe_refresh_engine_labels(self):
+        """Refresh the C++ engine's candidate W/L annotation in the
+        background (only in engine mode with "显示AI候选点" on)."""
+        if not self.engine_var.get():
+            return
+        if not self.show_candidates_var.get():
+            return
+        if self.game_over or self.ai_thinking or self.replay_mode:
+            return
+        if not os.path.exists(engine_client.ENGINE_PATH):
+            return
+        self.engine_candidates_job += 1
+        epoch = self.engine_candidates_job
+        color = self.current
+        winmode = 0 if self.white_win_var.get() == "line_block" else 1
+
+        def work():
+            client = self._ensure_engine_client()
+            labels = None
+            try:
+                labels = client.candidates(color, 11, 10, winmode)
+            except engine_client.EngineError:
+                pass
+
+            def apply():
+                if self.engine_candidates_job != epoch:
+                    return
+                self.engine_labels = (
+                    {(x, y): (tag, k) for (x, y, tag, k) in labels}
+                    if labels else {})
+                self.draw_board()
+
+            self.root.after(0, apply)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _on_candidates_toggle(self):
+        """"显示AI候选点" changed: drop the engine annotation when the
+        check box is turned off, otherwise fetch it for the position."""
+        if not self.show_candidates_var.get():
+            self.engine_labels = {}
+        self._maybe_refresh_engine_labels()
+        self.draw_board()
 
     def _show_search_error(self, msg):
         self.ai_thinking = False
