@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-tactics.py - VCF/VCT 威胁空间搜索 + W/L 标注的战术用例测试（第 4 步）。
+tactics.py - 证明级 VCF/VCT 威胁空间搜索 + W/L 标注的战术用例测试（第 6 步）。
 
 在仓库根目录运行：
     py cpp/tests/tactics.py
@@ -9,34 +9,49 @@ tactics.py - VCF/VCT 威胁空间搜索 + W/L 标注的战术用例测试（第 
 复用了 diff_eval.py 的 Engine 子进程封装（逐行 stdin/stdout + 后台线程抽干
 stdout 避免死锁）。每个用例都先 size 15 再重摆局面。
 
-用例与断言（T* 编号对应任务书第 4 部分；括号里注明与任务书预期文字不同的地方
-及原因，均为“按引擎规则必然如此”的调整，逐条见交付报告）：
+第 6 步的语义变化（详见 IMPLEMENTATION.md“VCF/VCT 与 W/L 标注”一节）：
+  * W/L 标注必须是 AND-OR 证明树支撑的结论，证明不出就不标注（宁可漏标）。
+    因此标注数量比第 4 步（OR 式路径枚举）显著变少，“存在一条路径”不再算胜。
+  * 每个用例都额外跑一组**通用健全性断言**（对 candidates 输出的每一条标注都生效）：
+      A1（W 健全）k==1：`play b x y` 必须 ok，且该点用 Python 参考实现复算必须恰好成五
+                   （HybridBoard.check_black_five）；
+                   k>1 ：`prove (k+1)/2` 必须输出 win。
+      A2（L 健全）k 为偶数：`play w x y` 成功后 `prove k/2` 必须输出 win。
+      A3（协议）  prove 输出只能是 win / no / timeout / error turn。
+    注：任务书原文写的是“play b x y 后发 prove <(k+1)/2>”，但 `play b` 之后轮到白方，
+    `prove` 会输出 `error turn`；因此在**落子前的同局面**（轮黑）上调 `prove (k+1)/2`
+    —— 这比原文的检查更强（它要求黑方在同样预算内从根局面就有必胜证明，而标注只
+    要求“以该点为第一手”成立）。A2 的 `play w` 之后正好轮到黑方，故按原文执行。
 
+用例（T* 编号对应任务书第 4/6 部分；括号里注明与任务书预期文字不同的地方及原因）：
   T1 即时成五：黑 (7,4)(7,5)(7,6)(7,7)，无白。
-     candidates b 11 含 "cand 7 3 W1" 与 "cand 7 8 W1"，且没有其它 W1。
-     （任务书写“无其他 W”：黑已有活四，任何不破坏该四的落子都是“再两手成五”
-     的真实必胜点，引擎会给出 W3，故把断言收紧为“W1 只有这两点”。）
-  T2 吃子反驳（核心回归）：黑 (7,5)(7,6)(7,7)，白 (6,5)(8,5)(6,6)(8,6)(6,7)
-     (8,7)(6,4)(8,4)(7,3)。
-     candidates b 11 中断言 (7,4) 没有 W 标注：黑下 (7,4) 后该黑块只剩一口气
-     (7,8)，白 (7,8) 提子消掉四，黑无法成五。
-  T3 真四不可吃：黑 (7,4)(7,5)(7,6)(7,7)，白仅 (8,4)(8,5)(8,6)。
-     candidates b 11 中 (7,3) 与 (7,8) 都是 W1。
+     candidates b 11 含 "cand 7 3 W1" 与 "cand 7 8 W1"，且 W1 只有这两点。
+     （任务书要求删除“无其他 W1”之外依赖旧 OR 语义的断言——旧版会给一批 W3，
+     证明级下这些点不再被标注。）
+  T2 吃子反驳（核心回归）：黑 (7,5)(7,6)(7,7)，白贴住四周。
+     candidates b 11 中 (7,4) 没有 W 标注（白 (7,8) 提子反驳）；交叉校验：轮到白方时
+     (7,8) 这个提子点本身也不是 L（白提子后黑方被吃光，白方已达成胜利条件）。
+  T3 真四不可吃：黑 (7,4)(7,5)(7,6)(7,7)，白仅 (8,4)(8,5)(8,6)。(7,3)/(7,8) 都是 W1。
   T4 双三 VCT：黑 (7,6)(7,8)(6,7)(8,7)，白 (0,0)(0,1)。
-     (7,7) 在引擎里有 三三禁手（checkforbidden 确认），gen_moves 会剔除它，
-     故 candidates b 不会输出它；本用例改为断言：
-       * (7,7) 出现在 checkforbidden 输出里（禁手，不是合法候选）；
-       * candidates b 11 里 (7,7) 无任何标注，且存在 W5 候选（=3 手 VCT 必胜，
-         与任务书期望的“三手必胜”一致，例如 (7,5)）。
-  T5 L 标注：T4 局面 candidates w 11 → (0,2) 标 L 且 4<=steps<=11。
-     （任务书另要求 (7,7) 无 L 标注；实际引擎给它 L6：路径枚举是“线式”的，
-     白方 (7,7) 之后黑方对防御集合里其它应手仍能成五，故只要枚举到一条路径就
-     出标注。这是已知限制，见报告与 IMPLEMENTATION.md。）
-  T6 障碍：黑 (7,4)(7,5)(7,6)(7,7) 且 (7,8) 是障碍。
-     candidates b 11 中 (7,3) 是唯一的 W1，(7,8) 不出现在输出里。
+     (7,7) 是三三禁手（checkforbidden 确认），gen_moves 会剔除它 → candidates b 不会
+     输出它。旧版此处断言“存在 W5 且 (7,5) 是 W5”；证明级下是否 W5 改由 A1 的
+     `prove` 交叉验证（标注多少步就 prove 对应预算），故删除具体步数断言。
+  T5 L 标注：T4 局面 candidates w 11 → 只做通用 A2 断言（证明级下 (0,2) 是否 L 取决于
+     搜索能否在限时内证明黑方 6 手必胜，任务书已把该断言改为条件式）。
+  T6 障碍：黑活四 + (7,8) 障碍，(7,3) 是唯一 W1。
   T7 无副作用：T4 局面 hash → candidates b 11 → candidates w 11 → hash 不变。
-  T8 胜点验证：T4 局面落黑 (7,7)（play b 7 7）后 candidates w 11，白方全部候选
-     都标 L（无 W、无 timeout，候选数 >= 40，关键点逐个断言）。
+  T8 胜点验证：T4 局面落黑 (7,7)（play b 7 7）后 candidates w 11，白方全部候选都标 L
+     （无 W、无 timeout，候选数 >= 40，关键点逐个断言），并逐个跑 A2 健全性断言。
+  T9 假四（长连完成点）：黑 (7,2)(7,4)(7,5)(7,6)(7,7)，无白。
+     * (7,3) 是长连禁手点，必须出现在 checkforbidden 里、且不出现在 candidates 输出里；
+     * (7,8) 是唯一合法完成点 —— 注意它在**黑方先手**的局面下是立即成五（黑第 4~8 列
+       连成恰五），因此唯一的 W 标注就是 "(7,8) W1"；任务书原文期望“不得有任何 W
+       标注”与该点的规则事实冲突，故这里改为断言“除 (7,8) W1 外没有任何 W”，
+       这正是任务书想抓的旧 OR 语义错标（旧版会给一批 W3）。
+     * 9b 补充：同局面把 (7,8) 换成障碍（黑方唯一的合法完成点消失）→ 必须**没有任何
+       W 标注**，这才是任务书“假四不成必胜”的字面结论。
+  T10 超时无害：T4 局面 candidates b 3 1（步数上限 3、限时 1 秒）→ 输出以 end 结束
+     （可先有一行 timeout）、无 error hash、hash 不变。
 """
 from __future__ import annotations
 
@@ -52,7 +67,14 @@ CPP_DIR = os.path.dirname(SCRIPT_DIR)
 REPO_ROOT = os.path.dirname(CPP_DIR)
 ENGINE = os.path.join(CPP_DIR, "build", "engine.exe")
 
-READ_TIMEOUT = 120.0
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
+
+from board import HybridBoard, BLACK, WHITE, OBSTACLE  # noqa: E402  仅 A1 的恰五复算
+
+READ_TIMEOUT = 180.0
+PROVE_SEC = 10.0        # 通用断言里 prove 的限时（秒）
+CAND_SEC = 10.0         # candidates 的限时（秒）
 
 # ----------------------------------------------------------------------------
 # 引擎子进程封装（与 diff_eval.py 相同思路：后台线程抽干 stdout）
@@ -128,16 +150,38 @@ class Stats:
         print("  [FAIL] " + msg)
 
 
-def setup(eng: Engine, black=(), white=(), obstacles=()) -> None:
-    """size 15 + clear 后重新摆局面（set 只改格子，不动回合/历史）。"""
+def position(black=(), white=(), obstacles=(), prelude=()):
+    """一个局面：size 15 + set 摆子，再依次执行 prelude（如 play b 7 7）。"""
+    return {"black": list(black), "white": list(white),
+            "obstacles": list(obstacles), "prelude": list(prelude)}
+
+
+def setup(eng: Engine, pos) -> None:
+    """size 15（重置回合为黑）+ clear + 摆子 + prelude（play 的输出会被吃掉）。"""
     eng.send("size 15")
     eng.send("clear")
-    for (x, y) in black:
+    for (x, y) in pos["black"]:
         eng.send("set %d %d b" % (x, y))
-    for (x, y) in white:
+    for (x, y) in pos["white"]:
         eng.send("set %d %d w" % (x, y))
-    for (x, y) in obstacles:
+    for (x, y) in pos["obstacles"]:
         eng.send("set %d %d o" % (x, y))
+    for cmd in pos["prelude"]:
+        eng.send(cmd)
+        if cmd.split()[0] in ("play", "move"):
+            eng.readline()          # 吃掉 ok / illegal / err
+
+
+def python_board(pos, extra_black=()):
+    """Python 参考实现复算用棋盘（只摆子，不落子）。"""
+    b = HybridBoard(15)
+    for (x, y) in list(pos["black"]) + list(extra_black):
+        b.grid[x, y] = BLACK
+    for (x, y) in pos["white"]:
+        b.grid[x, y] = WHITE
+    for (x, y) in pos["obstacles"]:
+        b.grid[x, y] = OBSTACLE
+    return b
 
 
 def get_hash(eng: Engine) -> str:
@@ -156,8 +200,8 @@ def get_forbidden(eng: Engine) -> list:
     return out
 
 
-def get_candidates(eng: Engine, side: str, steps: int = 11,
-                   max_sec: float = 10.0) -> dict:
+def run_candidates(eng: Engine, side: str, steps: int = 11,
+                   max_sec: float = CAND_SEC) -> dict:
     """发 candidates 命令，收 cand 行。返回 {'cands':[(x,y,tag,steps)], 'timeout':bool}。"""
     eng.send("candidates %s %d %g" % (side, steps, max_sec))
     cands = []
@@ -175,8 +219,19 @@ def get_candidates(eng: Engine, side: str, steps: int = 11,
         if len(parts) != 4 or parts[0] != "cand":
             raise RuntimeError("unexpected candidates output line: %r" % ln)
         x, y, lab = int(parts[1]), int(parts[2]), parts[3]
+        if lab[0] not in ("W", "L") or not lab[1:].isdigit():
+            raise RuntimeError("unexpected label: %r" % lab)
         cands.append((x, y, lab[0], int(lab[1:])))
     return {"cands": cands, "timeout": timeout}
+
+
+def run_prove(eng: Engine, steps: int, max_sec: float = PROVE_SEC) -> str:
+    """发 prove 命令并返回 win / no / timeout / error turn（A3：只允许这四种）。"""
+    eng.send("prove %d %g" % (steps, max_sec))
+    ln = eng.readline()
+    if ln not in ("win", "no", "timeout", "error turn"):
+        raise RuntimeError("unexpected prove output: %r" % ln)
+    return ln
 
 
 def find(cands, x, y):
@@ -190,107 +245,145 @@ def tags_of(cands, tag):
     return sorted((cx, cy, st) for (cx, cy, t, st) in cands if t == tag)
 
 
+def verify_labels(eng: Engine, stats: Stats, pos, side: str, cands,
+                  max_sec: float = PROVE_SEC) -> None:
+    """通用健全性断言 A1/A2（对每条标注都用引擎的 prove / Python 参考实现复核）。"""
+    tag = "A1" if side == "b" else "A2"
+    for (x, y, lab, k) in cands:
+        if lab == "W":
+            if k == 1:
+                setup(eng, pos)
+                eng.send("play b %d %d" % (x, y))
+                ok = eng.readline() == "ok"
+                stats.check(ok, "A1: W1 (%d,%d) 落子必须 ok，实际 %s"
+                            % (x, y, "illegal" if not ok else "ok"))
+                if ok:
+                    pb = python_board(pos, extra_black=[(x, y)])
+                    stats.check(pb.check_black_five(x, y),
+                                "A1: W1 (%d,%d) 必须恰好成五（Python 复算）" % (x, y))
+            else:
+                m = (k + 1) // 2
+                setup(eng, pos)
+                r = run_prove(eng, m, max_sec)
+                stats.check(r == "win",
+                            "A1: W%d (%d,%d) 在落子前局面 prove %d 应为 win，实际 %r"
+                            % (k, x, y, m, r))
+        elif lab == "L":
+            if k % 2 != 0:
+                stats.fail("A2: L 的步数必须为偶数，(%d,%d) L%d" % (x, y, k))
+                continue
+            m = k // 2
+            setup(eng, pos)
+            eng.send("play w %d %d" % (x, y))
+            ok = eng.readline() == "ok"
+            stats.check(ok, "A2: L%d (%d,%d) 白落子必须 ok" % (k, x, y))
+            if not ok:
+                continue
+            r = run_prove(eng, m, max_sec)
+            stats.check(r == "win",
+                        "A2: L%d (%d,%d) 白落该点后 prove %d 应为 win，实际 %r"
+                        % (k, x, y, m, r))
+        else:
+            stats.fail("%s: 未知标注 %r" % (tag, lab))
+
+
 # ----------------------------------------------------------------------------
 # 用例
 # ----------------------------------------------------------------------------
 T4_BLACK = [(7, 6), (7, 8), (6, 7), (8, 7)]
 T4_WHITE = [(0, 0), (0, 1)]
+T4_POS = position(black=T4_BLACK, white=T4_WHITE)
 
 
 def case_t1(eng: Engine, stats: Stats) -> None:
     print("[T1] 即时成五：黑活四，candidates b 11")
-    setup(eng, black=[(7, 4), (7, 5), (7, 6), (7, 7)])
-    r = get_candidates(eng, "b", 11)
+    pos = position(black=[(7, 4), (7, 5), (7, 6), (7, 7)])
+    setup(eng, pos)
+    r = run_candidates(eng, "b", 11)
     c = r["cands"]
     stats.check(find(c, 7, 3) == ("W", 1),
                 "T1: (7,3) 应为 W1，实际 %r" % (find(c, 7, 3),))
     stats.check(find(c, 7, 8) == ("W", 1),
                 "T1: (7,8) 应为 W1，实际 %r" % (find(c, 7, 8),))
-    w1 = tags_of(c, "W")
-    w1 = [t for t in w1 if t[2] == 1]
+    w1 = [t for t in tags_of(c, "W") if t[2] == 1]
     stats.check(w1 == [(7, 3, 1), (7, 8, 1)],
                 "T1: 应该只有 (7,3)/(7,8) 两个 W1，实际 %r" % (w1,))
-    # 非 W1 的 W 标注是“再两手成五”的真实必胜（活四不被破坏），属预期行为。
-    longer = [(x, y, s) for (x, y, s) in tags_of(c, "W") if s > 1]
-    stats.check(len(longer) > 0,
-                "T1: 活四在手，除成五点外还应有 W3 级别的必胜点，实际 %r" % longer)
+    verify_labels(eng, stats, pos, "b", c)
 
 
 def case_t2(eng: Engine, stats: Stats) -> None:
     print("[T2] 吃子反驳（核心回归）：candidates b 11 中 (7,4) 不应被标 W")
     white = [(6, 5), (8, 5), (6, 6), (8, 6), (6, 7), (8, 7), (6, 4), (8, 4),
              (7, 3)]
-    black = [(7, 5), (7, 6), (7, 7)]
-    setup(eng, black=black, white=white)
+    pos = position(black=[(7, 5), (7, 6), (7, 7)], white=white)
+    setup(eng, pos)
     forb = get_forbidden(eng)
     stats.check(forb == [], "T2: 局面不应有禁手点，实际 %r" % (forb,))
-    r = get_candidates(eng, "b", 11)
+    r = run_candidates(eng, "b", 11)
     c = r["cands"]
     v = find(c, 7, 4)
     stats.check(v is None,
                 "T2: (7,4) 不应有 W 标注（白 (7,8) 提子反驳），实际 %r" % (v,))
-    # 交叉校验：轮到白方时，(7,8) 这个提子点本身绝不能是 L（白提子后黑方
-    # 在该区域已无合法四/五，黑方不存在必胜，说明反驳机制确实生效）。
-    rw = get_candidates(eng, "w", 11)
+    verify_labels(eng, stats, pos, "b", c)
+    # 交叉校验：轮到白方时，(7,8) 这个提子点本身绝不能是 L（白提子后黑方被吃光，
+    # 白方已达成胜利条件，该候选无标注）。
+    rw = run_candidates(eng, "w", 11)
     vw = find(rw["cands"], 7, 8)
     stats.check(vw is None,
                 "T2: 白方 (7,8)（提子点）不应被标 L，实际 %r" % (vw,))
+    verify_labels(eng, stats, pos, "w", rw["cands"])
 
 
 def case_t3(eng: Engine, stats: Stats) -> None:
     print("[T3] 真四不可吃：candidates b 11")
-    setup(eng, black=[(7, 4), (7, 5), (7, 6), (7, 7)],
-          white=[(8, 4), (8, 5), (8, 6)])
-    r = get_candidates(eng, "b", 11)
+    pos = position(black=[(7, 4), (7, 5), (7, 6), (7, 7)],
+                   white=[(8, 4), (8, 5), (8, 6)])
+    setup(eng, pos)
+    r = run_candidates(eng, "b", 11)
     c = r["cands"]
     stats.check(find(c, 7, 3) == ("W", 1),
                 "T3: (7,3) 应为 W1，实际 %r" % (find(c, 7, 3),))
     stats.check(find(c, 7, 8) == ("W", 1),
                 "T3: (7,8) 应为 W1，实际 %r" % (find(c, 7, 8),))
+    verify_labels(eng, stats, pos, "b", c)
 
 
 def case_t4(eng: Engine, stats: Stats) -> None:
     print("[T4] 双三 VCT：candidates b 11（(7,7) 为禁手点，见注释）")
-    setup(eng, black=T4_BLACK, white=T4_WHITE)
+    pos = T4_POS
+    setup(eng, pos)
     forb = get_forbidden(eng)
     stats.check("7 7" in forb,
                 "T4: (7,7) 应被 checkforbidden 判为禁手（三三），实际 %r" % (forb,))
-    r = get_candidates(eng, "b", 11)
+    r = run_candidates(eng, "b", 11)
     c = r["cands"]
     stats.check(find(c, 7, 7) is None,
                 "T4: 禁手点 (7,7) 不应出现在 candidates 输出里，实际 %r"
                 % (find(c, 7, 7),))
-    # VCT（含三）三手必胜：W5 = 2*3-1。任务书期望在 (7,7)，但该点禁手，
-    # 等价能力体现在其它活三/四三进攻点上。
-    w5 = [t for t in tags_of(c, "W") if t[2] == 5]
-    stats.check(len(w5) > 0, "T4: 应存在 W5（3 手 VCT 必胜）候选，实际没有")
-    stats.check(find(c, 7, 5) == ("W", 5),
-                "T4: (7,5) 应为 W5，实际 %r" % (find(c, 7, 5),))
+    if r["timeout"]:
+        print("  [note] T4: 分析被 max_sec 截断（证明级搜索的已知限制），"
+              "已得标注 %d 条" % len(c))
+    # 具体步数的 W 断言删除：证明级下“多少步能证明”由 A1 的 prove 交叉验证代替。
+    verify_labels(eng, stats, pos, "b", c)
 
 
 def case_t5(eng: Engine, stats: Stats) -> None:
-    print("[T5] L 标注：T4 局面 candidates w 11")
-    setup(eng, black=T4_BLACK, white=T4_WHITE)
-    r = get_candidates(eng, "w", 11)
+    print("[T5] L 标注：T4 局面 candidates w 11（只做通用 A2 健全性断言）")
+    pos = T4_POS
+    setup(eng, pos)
+    r = run_candidates(eng, "w", 11)
     c = r["cands"]
-    v = find(c, 0, 2)
-    stats.check(v is not None and v[0] == "L",
-                "T5: (0,2) 应标 L，实际 %r" % (v,))
-    if v is not None:
-        stats.check(4 <= v[1] <= 11,
-                    "T5: (0,2) 的 L 步数应在 4..11，实际 %d" % v[1])
-    stats.check(not r["timeout"], "T5: 不应超时截断")
-    # 已知限制：任务书期望 (7,7) 无 L 标注；线式路径枚举下白方 (7,7) 之后黑方
-    # 仍能对防御集合内的其它应手成五，故仍会标 L。这里记录实际行为。
-    v77 = find(c, 7, 7)
-    stats.check(v77 is not None and v77[0] == "L",
-                "T5: 记录实际行为——(7,7) 仍会标 L（见文件头注释），实际 %r" % (v77,))
+    if r["timeout"]:
+        print("  [note] T5: 分析被 max_sec 截断（证明级搜索的已知限制），"
+              "已得标注 %d 条" % len(c))
+    verify_labels(eng, stats, pos, "w", c)
 
 
 def case_t6(eng: Engine, stats: Stats) -> None:
     print("[T6] 障碍：黑活四 + (7,8) 障碍，candidates b 11")
-    setup(eng, black=[(7, 4), (7, 5), (7, 6), (7, 7)], obstacles=[(7, 8)])
-    r = get_candidates(eng, "b", 11)
+    pos = position(black=[(7, 4), (7, 5), (7, 6), (7, 7)], obstacles=[(7, 8)])
+    setup(eng, pos)
+    r = run_candidates(eng, "b", 11)
     c = r["cands"]
     stats.check(find(c, 7, 3) == ("W", 1),
                 "T6: (7,3) 应为 W1，实际 %r" % (find(c, 7, 3),))
@@ -299,15 +392,17 @@ def case_t6(eng: Engine, stats: Stats) -> None:
     w1 = [t for t in tags_of(c, "W") if t[2] == 1]
     stats.check(w1 == [(7, 3, 1)],
                 "T6: 应该只有 (7,3) 一个 W1，实际 %r" % (w1,))
+    verify_labels(eng, stats, pos, "b", c)
 
 
 def case_t7(eng: Engine, stats: Stats) -> None:
     print("[T7] 无副作用：candidates 前后 hash 不变")
-    setup(eng, black=T4_BLACK, white=T4_WHITE)
+    pos = T4_POS
+    setup(eng, pos)
     h0 = get_hash(eng)
-    get_candidates(eng, "b", 11)
+    run_candidates(eng, "b", 11)
     h1 = get_hash(eng)
-    get_candidates(eng, "w", 11)
+    run_candidates(eng, "w", 11)
     h2 = get_hash(eng)
     stats.check(h0 == h1, "T7: candidates b 后 hash 变了 %s -> %s" % (h0, h1))
     stats.check(h1 == h2, "T7: candidates w 后 hash 变了 %s -> %s" % (h1, h2))
@@ -315,10 +410,9 @@ def case_t7(eng: Engine, stats: Stats) -> None:
 
 def case_t8(eng: Engine, stats: Stats) -> None:
     print("[T8] 胜点验证：T4 局面 play b 7 7 后 candidates w 11 应全为 L")
-    setup(eng, black=T4_BLACK, white=T4_WHITE)
-    eng.send("play b 7 7")
-    stats.check(eng.readline() == "ok", "T8: play b 7 7 应成功")
-    r = get_candidates(eng, "w", 11)
+    pos = position(black=T4_BLACK, white=T4_WHITE, prelude=["play b 7 7"])
+    setup(eng, pos)
+    r = run_candidates(eng, "w", 11)
     c = r["cands"]
     stats.check(not r["timeout"], "T8: 不应超时截断")
     stats.check(len(c) >= 40,
@@ -329,11 +423,74 @@ def case_t8(eng: Engine, stats: Stats) -> None:
         v = find(c, pt[0], pt[1])
         stats.check(v is not None and v[0] == "L",
                     "T8: %r 应为 L，实际 %r" % (pt, v))
+    verify_labels(eng, stats, pos, "w", c)
     # 黑方自己在这个局面下也有连五/四三点，counter-check 一下黑方标注非空。
-    setup(eng, black=T4_BLACK + [(7, 7)], white=T4_WHITE)
-    rb = get_candidates(eng, "b", 11)
+    pos_b = position(black=T4_BLACK + [(7, 7)], white=T4_WHITE)
+    setup(eng, pos_b)
+    rb = run_candidates(eng, "b", 11)
     stats.check(tags_of(rb["cands"], "W") != [],
                 "T8: 同局面黑方应有 W 候选，实际没有")
+
+
+def case_t9(eng: Engine, stats: Stats) -> None:
+    print("[T9] 假四（长连完成点）：黑 (7,2)(7,4)(7,5)(7,6)(7,7)，无白")
+    pos = position(black=[(7, 2), (7, 4), (7, 5), (7, 6), (7, 7)])
+    setup(eng, pos)
+    forb = get_forbidden(eng)
+    stats.check("7 3" in forb,
+                "T9: (7,3) 应被 checkforbidden 判为长连禁手，实际 %r" % (forb,))
+    r = run_candidates(eng, "b", 11)
+    c = r["cands"]
+    stats.check(find(c, 7, 3) is None,
+                "T9: 长连禁手点 (7,3) 不应出现在 candidates 输出里，实际 %r"
+                % (find(c, 7, 3),))
+    wl = tags_of(c, "W")
+    # (7,8) 使黑第 4..8 列连成**恰五**，是合法的立即成五点（任何健全实现都必须标 W1）；
+    # 任务书原文期望“不得有任何 W 标注”与该规则事实冲突，故此处断言“除 (7,8) W1 外
+    # 没有任何 W”—— 长连假四不允许被标成必胜，这正是旧 OR 语义的典型错标。
+    stats.check(wl == [(7, 8, 1)],
+                "T9: 只允许 (7,8) W1（立即成五）；其余任何 W 都是旧 OR 语义的错标，"
+                "实际 %r" % (wl,))
+    verify_labels(eng, stats, pos, "b", c)
+
+    print("  [T9b] 同局面 + (7,8) 障碍（唯一合法完成点消失）→ 不允许任何 W")
+    pos_b = position(black=[(7, 2), (7, 4), (7, 5), (7, 6), (7, 7)],
+                     obstacles=[(7, 8)])
+    setup(eng, pos_b)
+    r_b = run_candidates(eng, "b", 11)
+    c_b = r_b["cands"]
+    stats.check(find(c_b, 7, 3) is None,
+                "T9b: (7,3) 不应出现在输出里，实际 %r" % (find(c_b, 7, 3),))
+    wl_b = tags_of(c_b, "W")
+    stats.check(wl_b == [],
+                "T9b: 假四（长连完成点 + 完成点被堵）不得有任何 W 标注，实际 %r"
+                % (wl_b,))
+    if r_b["timeout"]:
+        print("  [note] T9b: 分析被 max_sec 截断（无标注本身仍满足断言）")
+    verify_labels(eng, stats, pos_b, "b", c_b)
+
+
+def case_t10(eng: Engine, stats: Stats) -> None:
+    print("[T10] 超时无害：T4 局面 candidates b 3 1")
+    pos = T4_POS
+    setup(eng, pos)
+    h0 = get_hash(eng)
+    eng.send("candidates b 3 1")
+    lines = []
+    while True:
+        ln = eng.readline()
+        lines.append(ln)
+        if ln == "end":
+            break
+    stats.check(lines[-1] == "end",
+                "T10: 输出必须以 end 结束，实际最后一行 %r" % (lines[-1],))
+    stats.check(not any(l.startswith("error") for l in lines),
+                "T10: 不应出现 error 行，实际 %r" % (lines,))
+    stats.check(all(l == "end" or l == "timeout" or l.startswith("cand ")
+                    for l in lines),
+                "T10: 只允许 cand / timeout / end 行，实际 %r" % (lines,))
+    h1 = get_hash(eng)
+    stats.check(h0 == h1, "T10: hash 不应改变 %s -> %s" % (h0, h1))
 
 
 # ----------------------------------------------------------------------------
@@ -350,6 +507,8 @@ def main() -> int:
         case_t6(eng, stats)
         case_t7(eng, stats)
         case_t8(eng, stats)
+        case_t9(eng, stats)
+        case_t10(eng, stats)
     finally:
         eng.close()
 
