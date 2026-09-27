@@ -9,17 +9,20 @@ five line (or by capturing all black stones).
 from __future__ import annotations
 
 import io
+import os
 import tkinter as tk
 from tkinter import font as tkfont
 from tkinter import messagebox
 import multiprocessing
 import queue as queue_mod
+import threading
 import time
 
 from board import EMPTY, BLACK, WHITE, HybridBoard, THREAT_MARKER
 import rules
 import ai_search
 import ai_worker
+import engine_client
 
 CELL = 30
 MARGIN = 24
@@ -211,6 +214,21 @@ class GameGUI:
                        variable=self.white_ai_var,
                        command=self.update_mode_label).pack(anchor=tk.W)
 
+        # "C++引擎": AI moves and the candidate W/L annotation are computed
+        # by the C++ subprocess (cpp/build/engine.exe) instead of the Python
+        # search.  Defaults to on when the engine binary is present.
+        self.engine_var = tk.IntVar(
+            value=1 if os.path.exists(engine_client.ENGINE_PATH) else 0)
+        tk.Checkbutton(self.info, text="C++引擎", variable=self.engine_var,
+                       command=self._on_engine_toggle).pack(anchor=tk.W)
+        self.engine_client = None
+        # (x, y) -> (tag, steps) of the engine's candidate W/L annotation.
+        self.engine_labels = {}
+        # Job counter that discards stale candidate results.
+        self.engine_candidates_job = 0
+        # Latest engine search progress: {"move": (x, y) | None, "depth": d}
+        self._engine_info = {"move": None, "depth": 0}
+
         # Board style lives on the main window (outside the mode window).
         style_row = tk.Frame(self.info)
         style_row.pack(fill=tk.X, pady=1)
@@ -367,6 +385,11 @@ class GameGUI:
         except Exception:
             pass
 
+    def _on_engine_toggle(self):
+        """C++ engine check box changed: drop the engine's annotations."""
+        self.engine_labels = {}
+        self.draw_board()
+
     def _on_depth_change(self):
         try:
             self.current_max_depth = int(self.depth_var.get())
@@ -379,9 +402,10 @@ class GameGUI:
         wh = "人类" if self.white_is_human() else "AI"
         extra = " | 黑棋查表必胜" if self.black_table_mode else ""
         torus = " | 环面" if self.board.torus else ""
+        engine = " | C++引擎" if self.engine_var.get() else ""
         self.mode_label.config(
             text=f"模式: 黑({bh}) vs 白({wh}) | 深度 {self.depth_var.get()}"
-                 f"{extra}{torus}"
+                 f"{extra}{torus}{engine}"
         )
         self.draw_board()
 
