@@ -3,7 +3,7 @@
 ## 总览与快速上手
 
 **一句话定位**：五子棋(黑) vs 围棋(白)混合规则 C++ 引擎 —— make/undo 增量引擎 +
-Rapfi 禁手移植 + 字典序元组评估 + alpha-beta 搜索 + VCF/VCT 威胁搜索 + W/L 标注。
+Rapfi 禁手移植 + 字典序元组评估 + alpha-beta 搜索 + 证明级(AND-OR) VCF/VCT + W/L 标注。
 
 ### 构建与运行
 
@@ -37,6 +37,7 @@ cpp\build\engine.exe          :: 启动引擎，从 stdin 逐行读命令、stdo
 | `genmove` | `<b\|w> [max_depth] [min_sec] [max_sec] [winmode]` | 迭代加深搜索，不落子、不改棋盘 | 每完成一个偶深度一行 `info depth <d> move <x> <y> score <packed>`；末行 `move <x> <y>`，白方无着 `pass`、黑方无着 `resign` |
 | `searchstat` | 无 | 上一次 `genmove` 的统计 | `searchstat nodes <n> depth <d> ms <毫秒>` |
 | `candidates` | `<b\|w> [steps=11] [max_sec=10] [winmode=0]` | 对 `gen_moves(color)` 的每个候选做 VCF/VCT W/L 标注 | 每行 `cand <x> <y> <W\|L><steps>`，截断时一行 `timeout`，末尾 `end`；检测到哈希被改动时只输出 `error hash` |
+| `prove` | `<steps> [max_sec=10]` | 黑方证明搜索（含三的 VCT，不落子、不改棋盘） | `win` / `no` / `timeout`；非黑方回合输出 `error turn` |
 | `quit` | 无 | 退出进程 | 无 |
 
 > `undo` 的既有实现输出 `ok` / `err`（空历史 `err`），与早期任务文字里的
@@ -51,27 +52,25 @@ cpp\build\engine.exe          :: 启动引擎，从 stdin 逐行读命令、stdo
 | `tests/diff_forbidden.py` | 黑棋禁手判定与 Python `HybridBoard + rules.is_black_legal_move` 的差分测试，对 Rapfi 语义差异逐条归因，附 make/undo 压力测试。 | `py cpp\tests\diff_forbidden.py` |
 | `tests/diff_eval.py` | 增量评估计数器差分（种子 20240917）：随机自对弈逐步比对 `counters`/`eval`/packed，逐步 undo 可逆、查询命令无副作用。 | `py cpp\tests\diff_eval.py` |
 | `tests/search_sanity.py` | alpha-beta 搜索健全性（种子 20240917）：自对弈合法性、搜索无副作用、确定性、必胜立即执行、救叫吃、depth6 nps 报告。 | `py cpp\tests\search_sanity.py` |
-| `tests/tactics.py` | VCF/VCT 威胁搜索 + W/L 标注的战术用例（T1..T8，33 条断言）。 | `py cpp\tests\tactics.py` |
+| `tests/tactics.py` | 证明级 VCF/VCT 战术用例（T1..T10，241 条断言，含 A1/A2/A3 标注健全性交叉验证）。 | `py cpp\tests\tactics.py` |
 
-### 四条已知限制
+### 三条已知限制
 
-1. **线式必胜判定偏乐观**：VCF/VCT 的路径枚举是“线式”的 —— 收到一条路径只说明
-   “存在某个白应手序列让黑方成五”，并不要求白方每个应手都输；三的防御集取超集
-   只保证不遗漏真实防守，判定“必胜”时不做全分支 AND。实测反例：任务书 T5 局面
-   `candidates w 11` 会把白 (7,7) 标成 `L6`。
-2. **攻击候选不查禁手**：根候选来自 `gen_moves`（黑方已过滤禁手与自杀点），但搜索
-   内部的攻击手只按 `attack_class` 枚举，不查 `check_forbidden`，极小概率枚举到
-   黑方实际不能走的禁手攻击手，分析结果偏乐观。
-3. **超时截断漏标注**：`nodes > 300000` 或超过 `max_sec` 时 `AnalysisResult::timeout = true`，
+1. **证明级下标注显著变少、且深证明很贵**：第 6 步把 W/L 改成 AND-OR 证明搜索后，
+   只有能对白方**全部**防御都证明必胜的候选才会被标注（旧版“枚举到一条路径即标 W”
+   已废弃）。T4 双三局面的候选要 6 手（11 步）才证明得出，`candidates b 11 10`
+   会被 `max_sec` 自限截断并输出 `timeout`（实测 10.5 s）。这是“宁可漏标，不可错标”
+   的预期代价，不是 bug。
+2. **超时截断漏标注**：`nodes > 300000` 或超过 `max_sec` 时 `AnalysisResult::timeout = true`，
    正在搜索的候选与之后所有候选都保持无标注（宁可漏标，不可错标），并追加一行 `timeout`。
-4. **GUI 未接入**：引擎只提供 stdin/stdout 命令行协议，尚未接入任何图形界面。
+3. **GUI 未接入**：引擎只提供 stdin/stdout 命令行协议，尚未接入任何图形界面。
 
 > 本节是总览与快速上手；技术细节若与下文“分步实现记录”冲突，**以下文为准**。
 
 本目录用 C++17 从零实现「五子棋(黑) vs 围棋(白)」混合规则引擎：可 make/undo 的
-棋盘、移植自 Rapfi 的黑棋禁手判定、随 make/undo 增量维护的评估计数器，以及在
-此之上的 alpha-beta 搜索（negamax + 置换表 + 着法排序 + 迭代加深）。不含
-VCF/VCT、不做 W/L 标注、不含 GUI。
+棋盘、移植自 Rapfi 的黑棋禁手判定、随 make/undo 增量维护的评估计数器、在此之上的
+alpha-beta 搜索（negamax + 置换表 + 着法排序 + 迭代加深），以及证明级（AND-OR）
+VCF/VCT 威胁搜索与 W/L 步数标注。不含 GUI。
 
 ## 目录与职责
 
