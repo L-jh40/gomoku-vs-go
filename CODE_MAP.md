@@ -18,7 +18,7 @@
 | `ai_worker.py` | 常驻 AI 搜索工作进程（GUI 经多进程调度搜索，主窗口不卡） |
 | `engine_client.py` | C++ 引擎子进程封装（GUI"C++引擎"模式走它，协议见 cpp/README.md） |
 | `cpp/` | C++ 引擎（make/undo+Rapfi 禁手+元组评估+alpha-beta+VCF/VCT），见 cpp/README.md |
-| `board_tools.py` | 棋盘文本导出/解析与分析 CLI（威胁、蓝叉、禁手地图、AI 着法） |
+| `board_tools.py` | 坐标代码（`a15`/`p0`）与棋盘文本互转、导出/导入、分析 CLI（威胁、蓝叉、禁手地图、AI 着法） |
 | `tests_torus.py` | 环面/禁手/GUI 自动化测试（`python tests_torus.py`） |
 | `tests_text.py` | text.md 局面的自动化测试 |
 | `AI_ALGORITHM.md` | 算法逻辑说明 |
@@ -113,7 +113,7 @@
 ## 5. GUI - gui.py
 
 ### UI 区域
-- 顶部按钮：新对局、选择模式、悔棋、Pass、AI 立即落子
+- 顶部按钮：新对局、选择模式、悔棋、Pass、AI 立即落子、导出棋盘(复制)(G)、导入坐标(I)
 - 勾选框：黑棋 AI / 白棋 AI、C++引擎（勾选后 AI 落子与候选点 W/L 角标都走 cpp/build/engine.exe）、棋盘样式（交叉点/格子，即时生效）、玩家落子提示、显示手数、显示AI候选点、取消投子认负
 - 搜索设置：Minimax 层数（0~4）、最短搜索时间、最长搜索时间
 - 黄色棋盘区顶部统计条：黑棋时间/AI/人类（靠棋盘左缘三行）、白吃黑 N子（垂直居中）、白棋时间/AI/人类（靠棋盘右缘三行）；微软雅黑UI字体 9路≈9pt → 15路起封顶20pt，与棋盘间隔一行。AI 行=自动AI搜索思考时间（蓝字口径）累计；人类行=人类落子用时（含右键AI辅助）；同方人类+AI≈该方总用时
@@ -123,6 +123,9 @@
 - 环面模式：上下/左右互通（气、连五、禁手、领地、距离全部回绕，AI 只搜索实际 n×n 棋盘）
 - 环面提示（主面板复选框）：开启后四周显示镜面复制区，宽度可选 2 格（n+4）或 4 格（n+8），关闭则只显示 n×n；复制区背景统一用第一圈色、网格线统一 50% 白、假棋子=50%棋子色+50%棋盘底色，实际棋盘四周只有一条 #f2f2f2 粗镜框；鼠标在复制区时幽灵棋子只显示在实际对应格；点击复制格映射到实际格落子
 - 棋盘尺寸自适应：读取窗口/屏幕大小，优先完整显示棋盘；棋盘放不下时按比例缩小格子（最多缩小 50%，最小 15px），随后再按剩余空间选顶部字号；若顶部放不下，时间/吃子自动改到棋盘旁边（右侧面板）显示
+- 保存目录/坐标文件：在"选择模式"窗口里改"保存目录"（浏览）与"坐标文件"名（默认 `粘贴板.md`，可"打开"），立即生效；导出时把每步坐标按行追加到该文件，方便以后读取测试
+- 导出棋盘(复制)（G 键）：复制完整棋盘文本到剪贴板、写 `保存目录/board_dump.txt`，并把**只含坐标**的一行追加到坐标文件（无落子记录时不追加）
+- 导入坐标（I 键/按钮）：弹窗内粘贴坐标或整份导出文本，也可"从文件读取…"（默认读坐标文件最后一行），选先行后回放；被规则拒绝的着法会跳过并提示
 
 ### 功能函数
 
@@ -148,7 +151,10 @@
 | `_get_candidate_display_positions` | 候选点显示 |
 | `_finish_turn_time / update_info` | 用时统计 |
 | `play_replay_black` | 复盘黑棋应对 |
-| `undo_move / human_pass` | 悔棋、Pass |
+| `undo_move / human_pass / _pass_turn` | 悔棋、Pass（`_pass_turn` 把"已下子数"记入 `pass_records`，导出时还原 `p0` 位置；悔棋时 `_trim_pass_records` 清理） |
+| `_default_save_dir / _save_dir / _codes_file_path / _choose_save_dir / _open_codes_file` | 保存目录与坐标文件路径（相对路径按程序目录解析、自动建目录），"浏览""打开"按钮 |
+| `export_moves_line / export_board_text / export_board` | 仅坐标行；完整导出文本（头部+`moves:`+棋盘点阵）；G 键导出（剪贴板+dump+追加坐标行） |
+| `open_import_dialog / _apply_imported_board` | 导入坐标弹窗（粘贴/读文件/选先行）与回放落子、重建 `pass_records`、同步环面/尺寸设置 |
 
 ---
 
@@ -225,3 +231,35 @@ draw_board / update_info
 ```
 
 修改一个功能前，先根据本文档找到对应函数，再判断是否会影响其他层。
+
+---
+
+## 8. 坐标代码与棋盘文本（导出/导入）
+
+### 坐标代码
+- 每步一个记号，从先行方开始按颜色交替；字母=列（从左到右 a..），数字=行（**从下往上**数，1..size），所以 15 路上正中央是 `h8`
+- Pass 记作 `p0`；导出列表按真实手序插入，例如 `moves: a15 b15 p0 f10`
+- 内部实现：`board_tools.coord_to_code / code_to_coord / moves_from_board / pass_records_from_codes`（`pass_records` 存每次 Pass 时的已落子数）
+
+### 导出文本（`board_dump.txt`）
+
+```text
+# 头部：size / torus / first / 禁手开关 / obstacles=(x,y),... / no_liberty=(x,y),...
+moves: a15 b15 p0 f10 ...
+棋盘点阵，每行 size 个字符（示例）:
+```
+
+- 点阵：`1`=黑子，`2`=白子 / 障碍 / 无气（黑落子即自吃）位置，`0`=空点；障碍写在 `# obstacles=`、无气空点写在 `# no_liberty=` 头部，导入时据此还原（无气点仍是空点，不会被读成白子）
+- 无气判定：`board.get_no_liberty_positions()` 扫描**全部**空点（不限于 relevant 点），四周被黑/障碍填满且整块无气才算；导出时约 0.6ms（15 路稠密盘），不在 AI 热路径上
+- 头部里的禁手开关会随导入一起生效（同步到"选择模式"里的三个禁手复选框）；只导入坐标（没有头部）时保持界面当前设置不变
+- 坐标文件（默认 `粘贴板.md`）每次导出追加一行纯坐标，方便以后按行读取测试；`board_tools.codes_from_text` 会自动跳过头部与点阵行，取最后一行坐标
+
+### CLI 用法
+
+```bat
+python board_tools.py board_dump.txt            :: 分析（威胁/蓝叉/禁手地图）
+python board_tools.py board_dump.txt --ai black --depth 2
+python board_tools.py --code "h8 h7 g7 p0" --size 15
+python board_tools.py --code-file 粘贴板.md     :: 读坐标文件最后一行
+```
+

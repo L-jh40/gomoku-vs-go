@@ -44,6 +44,26 @@ Dependencies: Python 3.9+ with `numpy` and `tkinter`.
 | `gui.py` | windowed AI-vs-AI application, pass, resign + black-win replay dialog |
 | `main.py` | GUI / CLI entry point |
 
+## Move-code export / import
+
+Press **G** (or 导出棋盘(复制)) to copy the full board text, write
+`board_dump.txt` and append one coordinate-only line to the
+coordinate file (default `粘贴板.md`; directory and file name are
+editable in the 选择模式 window).  Press **I** (or 导入坐标) to paste codes or load
+a file and replay it.
+
+- code: letter = column (a..), number = row counted from the bottom (1..size)
+  so the centre of 15x15 is `h8`; a pass is `p0`
+- dump rows: `1` = black, `2` = white / obstacle / no-liberty
+  point, `0` = empty; obstacles are also listed in the header
+
+```bat
+python board_tools.py board_dump.txt                 :: analyse a position
+python board_tools.py board_dump.txt --ai black --depth 2
+python board_tools.py --code "h8 h7 g7 p0" --size 15
+python board_tools.py --code-file 粘贴板.md          :: last line of the file
+```
+
 ## Board injection helper
 
 Tests can inject a pattern and use AI functions without a GUI:

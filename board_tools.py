@@ -7,14 +7,18 @@ Coordinate code (one token per move, colours alternate from the first player):
     so on 15x15 the centre is "h8"; a pass is "p0".
 
 Export format (produced by the GUI "导出棋盘(复制)" / G key):
-    # header lines (size, torus, first, forbid settings, obstacles)
+    # header lines (size, torus, first, forbid, obstacles, no-liberty)
     moves: a15 b14 p0 c13 ...
     <size rows of 0/1/2>   (2 = white, obstacle or no-liberty point)
+
+The GUI appends the bare coordinate line to 粘贴板.md, so several positions
+can be kept in one file (one line each) and re-imported later.
 
 Usage:
     python board_tools.py board_dump.txt
     python board_tools.py board_dump.txt --ai black --depth 2
     python board_tools.py --code "h8 h7 g7 p0" --size 15
+    python board_tools.py --code-file 粘贴板.md
 """
 from __future__ import annotations
 
@@ -34,6 +38,7 @@ MARKERS = {
 }
 
 PASS_CODE = "p0"
+ROW_CHARS = set("0123456789Xx")
 
 
 def coord_to_code(x: int, y: int, size: int) -> str:
@@ -44,7 +49,7 @@ def coord_to_code(x: int, y: int, size: int) -> str:
 def code_to_coord(code: str, size: int):
     """Code -> (row, col); returns None for a pass token."""
     token = code.strip().lower()
-    if token in (PASS_CODE, "pass", "p", "p0"):
+    if token in (PASS_CODE, "pass", "p"):
         return None
     if len(token) < 2 or not token[0].isalpha() or not token[1:].isdigit():
         raise ValueError("bad move code: " + code)
@@ -54,6 +59,10 @@ def code_to_coord(code: str, size: int):
     if not (0 <= x < size and 0 <= y < size):
         raise ValueError("move code out of board: " + code)
     return x, y
+
+
+def is_pass(token: str) -> bool:
+    return code_to_coord(token, 15) is None
 
 
 def moves_from_board(board, pass_records=None) -> list:
@@ -77,6 +86,49 @@ def moves_from_board(board, pass_records=None) -> list:
     return codes
 
 
+def codes_line(codes) -> str:
+    return " ".join(codes)
+
+
+def pass_records_from_codes(codes) -> list:
+    """Rebuild the GUI pass list (stones played before each pass)."""
+    out = []
+    played = 0
+    for token in codes:
+        if is_pass(token):
+            out.append(played)
+        else:
+            played += 1
+    return out
+
+
+def codes_from_text(text: str) -> str:
+    """Last move-code line of a dump or of a coordinates-only file.
+
+    Header lines and board rows are skipped, so the same helper works for
+    board_dump.txt and for the appended 粘贴板.md file.
+    """
+    candidate = ""
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        lower = line.lower()
+        if lower.startswith("moves:"):
+            candidate = line.split(":", 1)[1].strip()
+            continue
+        stripped = line.replace(" ", "")
+        if stripped and all(ch in ROW_CHARS for ch in stripped):
+            continue  # board row of a dump
+        candidate = line
+    return candidate
+
+
+def codes_from_file(path: str) -> str:
+    with open(path, "r", encoding="utf-8") as f:
+        return codes_from_text(f.read())
+
+
 def _parse_obstacles(text: str):
     out = []
     i = 0
@@ -97,8 +149,8 @@ def _parse_obstacles(text: str):
 
 
 def board_to_text(board, pass_records=None, moves=None,
-                  first: str = "black") -> str:
-    """Full dump text: header + move code + board rows."""
+                  first: str = "black", extra=()) -> str:
+    """Full dump text: header + move code line + board rows."""
     if moves is None:
         moves = moves_from_board(board, pass_records)
     obstacles = sorted(board.obstacle_positions())
@@ -110,8 +162,12 @@ def board_to_text(board, pass_records=None, moves=None,
             int(board._forbid_overline), int(board._forbid_44),
             int(board._forbid_33)),
         "# obstacles=" + ",".join("(%d,%d)" % p for p in obstacles),
-        "moves: " + " ".join(moves),
+        "# no_liberty=" + ",".join("(%d,%d)" % p
+                                   for p in sorted(no_liberty)),
     ]
+    for line in extra:
+        lines.append(str(line))
+    lines.append("moves: " + codes_line(moves))
     for x in range(board.size):
         row = []
         for y in range(board.size):
@@ -162,54 +218,73 @@ def board_from_code(text: str, size: int = 15, first: int = BLACK,
     return board, color
 
 
-def load_board(path, torus=None):
-    """Parse a dump file into a HybridBoard.  Returns (board, named_points)."""
+def parse_dump(text: str, torus=None, size=None, first=None):
+    """Parse dump text or a bare code line.
+
+    Returns (board, named_points, info).  Header values win; torus/size/
+    first are only fallbacks for files that carry no header.
+    """
     header = {}
     moves_line = None
     rows = []
     named = {}
-    with open(path, "r", encoding="utf-8") as f:
-        for raw in f:
-            line = raw.rstrip("\r\n")
-            if not line:
-                continue
-            if line.startswith("#"):
-                body = line.lstrip("#").strip()
-                for token in body.split():
-                    if "=" in token and ":" not in token:
-                        key, value = token.split("=", 1)
-                        header[key.strip().lower()] = value.strip()
-                if body.lower().startswith("obstacles"):
-                    header["obstacles"] = body.split("=", 1)[1].strip()
-                continue
-            if line.lower().startswith("moves:"):
-                moves_line = line.split(":", 1)[1].strip()
-                continue
+    for raw in text.splitlines():
+        line = raw.rstrip("\r\n")
+        if not line:
+            continue
+        if line.startswith("#"):
+            body = line.lstrip("#").strip()
+            for token in body.split():
+                if "=" in token and ":" not in token:
+                    key, value = token.split("=", 1)
+                    header[key.strip().lower()] = value.strip()
+            if body.lower().startswith("obstacles"):
+                header["obstacles"] = body.split("=", 1)[1].strip()
+            continue
+        if line.lower().startswith("moves:"):
+            moves_line = line.split(":", 1)[1].strip()
+            continue
+        stripped = line.replace(" ", "")
+        if stripped and all(ch in ROW_CHARS for ch in stripped):
             rows.append(line)
-    size = int(header.get("size", 0)) or max(
-        [len(r) for r in rows] + [len(rows), 15])
-    torus_flag = bool(int(header.get("torus", 0))) if torus is None else torus
-    first = WHITE if header.get("first", "black").startswith("w") else BLACK
+            continue
+        moves_line = line.strip()  # a bare coordinate line
+    fallback_size = int(size or 0)
+    row_size = max([len(r) for r in rows] + [len(rows), 0])
+    size_value = int(header.get("size", 0)) or fallback_size or row_size or 15
+    # A header written by board_to_text wins; torus/size/first are only
+    # fallbacks for bare coordinate lines (no header).
+    if "torus" in header:
+        torus_flag = bool(int(header["torus"]))
+    else:
+        torus_flag = bool(torus) if torus is not None else False
+    if "first" in header:
+        first_value = (WHITE if str(header["first"]).lower().startswith("w")
+                       else BLACK)
+    elif first is not None:
+        first_value = first
+    else:
+        first_value = BLACK
     obstacles = _parse_obstacles(header.get("obstacles", ""))
+    # Empty points where black has no liberty are printed as 2 as well,
+    # so remember them to keep the row import from reading them as white.
+    no_liberty = _parse_obstacles(header.get("no_liberty", ""))
 
     if moves_line:
-        board, _side = board_from_code(moves_line, size=size, first=first,
-                                       torus=torus_flag, obstacles=obstacles)
-        for i, row in enumerate(rows):
-            for j, ch in enumerate(row):
-                if ch.isalpha() and not ch.isdigit():
-                    # named test points on top of a replayed board
-                    named[ch.upper()] = (i, j)
-        return board, named
+        board, _side = board_from_code(moves_line, size=size_value,
+                                       first=first_value, torus=torus_flag,
+                                       obstacles=obstacles)
+        info = {"size": size_value, "torus": torus_flag,
+                "first": first_value, "obstacles": obstacles,
+                "no_liberty": no_liberty,
+                "moves": moves_line, "source": "moves",
+                "errors": list(getattr(board, "import_errors", []))}
+        return _finish_dump(board, named, info, header)
 
-    if not rows:
-        board, _side = board_from_code("", size=size, first=first,
-                                       torus=torus_flag, obstacles=obstacles)
-        return board, named
-    board = HybridBoard(max(size, len(rows)))
+    board = HybridBoard(max(size_value, row_size or size_value))
     board.torus = torus_flag
     r0 = (board.size - len(rows)) // 2
-    c0 = (board.size - size) // 2
+    c0 = (board.size - size_value) // 2
     for i, row in enumerate(rows):
         for j, ch in enumerate(row):
             up = ch.upper()
@@ -225,7 +300,36 @@ def load_board(path, torus=None):
     for cell in obstacles:
         if board.in_bounds(*cell):
             board.grid[cell] = OBSTACLE
+    info = {"size": board.size, "torus": torus_flag,
+            "first": first_value, "obstacles": obstacles,
+            "no_liberty": no_liberty,
+            "moves": "", "source": "rows", "errors": []}
+    return _finish_dump(board, named, info, header)
+
+
+def _finish_dump(board, named, info, header):
+    """Apply # forbid: flags from the header and finish a parse."""
+    forbid = None
+    if any(k in header for k in ("overline", "four_four", "three_three")):
+        forbid = (bool(int(header.get("overline", 1))),
+                  bool(int(header.get("four_four", 1))),
+                  bool(int(header.get("three_three", 1))))
+        board._forbid_overline, board._forbid_44, board._forbid_33 = forbid
+    # A no-liberty point is empty, not a white stone: the row dump prints
+    # it as 2, so undo that reading when the board is built from rows.
+    for cell in (info.get("no_liberty") or []):
+        if board.in_bounds(*cell):
+            board.grid[cell] = EMPTY
     board._invalidate_caches()
+    info["forbid"] = forbid
+    return board, named, info
+
+
+def load_board(path, torus=None):
+    """Parse a dump file into a HybridBoard.  Returns (board, named_points)."""
+    with open(path, "r", encoding="utf-8") as f:
+        text = f.read()
+    board, named, _info = parse_dump(text, torus=torus)
     return board, named
 
 
@@ -269,14 +373,16 @@ def main(argv):
     if not argv:
         print(__doc__)
         return 1
-    if argv[0] == "--code":
-        text = argv[1] if len(argv) > 1 else ""
-        size = 15
+    if argv[0] in ("--code", "--code-file"):
+        if argv[0] == "--code":
+            text = argv[1] if len(argv) > 1 else ""
+        else:
+            text = codes_from_file(argv[1])
+        fallback_size = 15
         if "--size" in argv:
-            size = int(argv[argv.index("--size") + 1])
-        first = WHITE if "--white-first" in argv else BLACK
-        board, _side = board_from_code(text, size=size, first=first)
-        named = {}
+            fallback_size = int(argv[argv.index("--size") + 1])
+        first = WHITE if "--white-first" in argv else None
+        board, named, info = parse_dump(text, size=fallback_size, first=first)
     else:
         path = argv[0]
         torus = True if "--torus" in argv else None

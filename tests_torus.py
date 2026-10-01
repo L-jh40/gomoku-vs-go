@@ -307,28 +307,117 @@ def test_gui_torus():
     g._on_key(types.SimpleNamespace(keysym="Left", widget=None))
     g.display_shift = [0, 0]
     # board export/import round-trip (the channel for reporting positions)
+    import shutil
+    import board_tools
+    # Workspace-local scratch directory (the file sandbox allows writes
+    # inside the workspace only).
+    tmp_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                           "_tmp_export")
+    os.makedirs(tmp_dir, exist_ok=True)
+    g.save_dir_var.set(tmp_dir)
     g.board.grid.fill(0)
+    g.board.history = []
+    g.pass_records = []
     g.board.grid[7, 7] = BLACK
     g.board.grid[7, 8] = WHITE
     g.board.grid[6, 6] = 3
+    # white stones around the corner: (0, 0) becomes a dead (no-liberty)
+    # empty point for black (the board is in torus mode here, so the
+    # wrapped neighbours count as well)
+    g.board.grid[0, 1] = WHITE
+    g.board.grid[0, g.size - 1] = WHITE
+    g.board.grid[1, 0] = WHITE
+    g.board.grid[g.size - 1, 0] = WHITE
     g.board._invalidate_caches()
-    import board_tools
-    with open("board_dump_test.txt", "w", encoding="utf-8") as fh:
+    dump_path = os.path.join(tmp_dir, "board_dump_test.txt")
+    with open(dump_path, "w", encoding="utf-8") as fh:
         fh.write(g.export_board_text())
-    b_rt, _named = board_tools.load_board("board_dump_test.txt")
+    b_rt, _named = board_tools.load_board(dump_path)
     check("board export/import round-trips",
           b_rt.grid.tobytes() == g.board.grid.tobytes()
           and b_rt.size == g.size, str(b_rt.size))
-    os.remove("board_dump_test.txt")
-    # 'g' exports the current board as well
+    dump_text = open(dump_path, encoding="utf-8").read()
+    dump_lines = dump_text.split(chr(10))
+    rows = [l for l in dump_lines
+            if l and not l.startswith("#") and not l.startswith("moves:")]
+    check("white and obstacle rows both export as 2",
+          rows[7][7] == "1" and rows[7][8] == "2" and rows[6][6] == "2",
+          rows[7][7] + rows[7][8] + rows[6][6])
+    check("obstacles are recorded in the header",
+          "(6,6)" in [l for l in dump_lines if l.startswith("# obstacles")][0],
+          [l for l in dump_lines if l.startswith("# obstacles")][0])
+    no_liberty_header = [l for l in dump_lines
+                         if l.startswith("# no_liberty")][0]
+    check("dead (no-liberty) empty points export as 2",
+          rows[0][0] == "2" and "(0,0)" in no_liberty_header,
+          rows[0][0] + " " + no_liberty_header)
+
+    # a real game: G appends the coordinate line to 粘贴板.md
+    g.new_game()
+    root.update()
+    g.try_play_black(7, 7)
+    g.try_play_white(7, 8)
+    g.human_pass()
+    g.try_play_white(6, 6)
+    root.update()
     g.thinking_label.config(text="")
     g._on_key(types.SimpleNamespace(keysym="g", widget=None))
-    check("G key exports the board",
-          "导出" in g.thinking_label.cget("text")
-          or os.path.exists("board_dump.txt"),
-          g.thinking_label.cget("text"))
-    if os.path.exists("board_dump.txt"):
-        os.remove("board_dump.txt")
+    codes_path = os.path.join(tmp_dir, "粘贴板.md")
+    last_line = ""
+    if os.path.exists(codes_path):
+        with open(codes_path, encoding="utf-8") as fh:
+            text_lines = [l for l in fh.read().split(chr(10)) if l.strip()]
+        last_line = text_lines[-1] if text_lines else ""
+    check("G appends one coordinate line to 粘贴板.md",
+          last_line == "h8 i8 p0 g9",
+          repr(last_line) + " / " + g.thinking_label.cget("text"))
+    check("G writes the dump into the chosen directory",
+          os.path.exists(os.path.join(tmp_dir, "board_dump.txt")),
+          tmp_dir)
+    b_code, _n2, info_code = board_tools.parse_dump(last_line, size=g.size,
+                                                    first=BLACK)
+    check("the code line replays to the same position",
+          b_code.grid.tobytes() == g.board.grid.tobytes(),
+          info_code["source"])
+    check("pass records are rebuilt from the code line",
+          board_tools.pass_records_from_codes(last_line.split()) == [2],
+          str(board_tools.pass_records_from_codes(last_line.split())))
+    # importing through the GUI replays the codes into the board
+    g.board.grid.fill(0)
+    g.board.history = []
+    g.new_game()
+    root.update()
+    g.board, _n3, info3 = board_tools.parse_dump(last_line, size=g.size,
+                                                 first=BLACK)
+    g._apply_imported_board(g.board, info3)
+    root.update()
+    check("imported board matches the exported position",
+          g.board.grid.tobytes() == b_code.grid.tobytes()
+          and g.pass_records == [2],
+          str(g.pass_records) + " " + g.thinking_label.cget("text"))
+    # forbid settings travel with the dump
+    g.new_game()
+    root.update()
+    g.board._forbid_33 = False
+    dump_ff = g.export_board_text()
+    b_ff, _n4, info_ff = board_tools.parse_dump(dump_ff, size=g.size)
+    check("forbid flags are read back from the dump header",
+          info_ff["forbid"] == (True, True, False)
+          and b_ff._forbid_33 is False,
+          str(info_ff["forbid"]))
+    g.forbid_33_var.set(1)
+    g._apply_imported_board(b_ff, info_ff)
+    root.update()
+    check("importing a dump syncs the forbid check boxes",
+          g.forbid_33_var.get() == 0 and g.board._forbid_33 is False,
+          str(g.forbid_33_var.get()))
+    # a bare code line keeps the current settings instead
+    _b_bare, _n5, info_bare = board_tools.parse_dump("h8 i8", size=g.size)
+    check("bare codes carry no forbid settings",
+          info_bare["forbid"] is None, str(info_bare["forbid"]))
+    g.forbid_33_var.set(1)
+    g.board._forbid_33 = True
+    shutil.rmtree(tmp_dir, ignore_errors=True)
 
     # torus off: back to n grid and n canvas
     g.torus_mode_var.set(0)

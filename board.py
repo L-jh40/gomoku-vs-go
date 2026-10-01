@@ -711,12 +711,31 @@ class HybridBoard:
         return set(blue)
 
     def get_no_liberty_positions(self) -> set[tuple[int, int]]:
-        import rules
-        out = set()
-        for x, y in self.get_blue_cross_positions():
-            ok, ftype = rules.is_black_legal_move(self, x, y)
-            if not ok and ftype == "self_capture":
-                out.add((x, y))
+        """Empty cells where a black stone would have no liberty (dead move).
+
+        Placing black there is an immediate self-capture, so the point can
+        never hold a black stone; it is usually white territory (or a dead
+        corner).  Unlike get_blue_cross_positions this scans every empty
+        point, not just the relevant ones, because the board export must
+        mark all of them.
+        """
+        out: set[tuple[int, int]] = set()
+        for x in range(self.size):
+            for y in range(self.size):
+                if self.grid[x, y] != EMPTY:
+                    continue
+                neighbours = self.neighbors(x, y)
+                if any(self.grid[nx, ny] == EMPTY for nx, ny in neighbours):
+                    continue  # the new stone itself keeps a liberty
+                # Fully surrounded: the merged group may still reach a
+                # liberty through the stones it connects to.
+                self.grid[x, y] = BLACK
+                try:
+                    _stones, liberties = self.get_group(x, y)
+                finally:
+                    self.grid[x, y] = EMPTY
+                if not liberties:
+                    out.add((x, y))
         return out
 
     # ------------------------------------------------------------------

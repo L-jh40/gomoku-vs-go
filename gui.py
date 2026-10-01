@@ -13,6 +13,7 @@ import os
 import tkinter as tk
 from tkinter import font as tkfont
 from tkinter import messagebox
+from tkinter import filedialog
 import multiprocessing
 import queue as queue_mod
 import threading
@@ -23,6 +24,7 @@ import rules
 import ai_search
 import ai_worker
 import engine_client
+import board_tools
 
 CELL = 30
 MARGIN = 24
@@ -102,6 +104,11 @@ class GameGUI:
         self.prev_layer_depth = -1
         self.prev_layer_time = 0.0
         self.pass_log: list[int] = []
+        # Stones played at the moment of each pass, so the move-code export
+        # can interleave "p0" back into the coordinate list.
+        self.pass_records: list[int] = []
+        # Colour that started the current game (front of the move-code list).
+        self.game_first_color = BLACK
         self.previous_game_snapshot = None
         self.moves_since_new_game = 0
         self.max_time_after_id = None
@@ -185,8 +192,10 @@ class GameGUI:
             fill=tk.X, pady=1)
         tk.Button(self.info, text="AI 立即落子",
                   command=self.force_ai_current).pack(fill=tk.X, pady=1)
-        tk.Button(self.info, text="导出棋盘(复制)",
+        tk.Button(self.info, text="导出棋盘(复制 G)",
                   command=self.export_board).pack(fill=tk.X, pady=1)
+        tk.Button(self.info, text="导入坐标(I)",
+                  command=self.open_import_dialog).pack(fill=tk.X, pady=1)
 
         self.black_ai_var = tk.IntVar(value=1 if black_is_ai else 0)
         self.white_ai_var = tk.IntVar(value=1 if white_is_ai else 0)
@@ -310,6 +319,10 @@ class GameGUI:
                        variable=self.auto_white_win_var).pack(anchor=tk.W)
         tk.Button(self.info, text="手动判定白棋获胜",
                   command=self.manual_white_win_check).pack(fill=tk.X, pady=1)
+
+        # Export path state lives here (the editors are in the mode window).
+        self.save_dir_var = tk.StringVar(value=self._default_save_dir())
+        self.save_name_var = tk.StringVar(value="粘贴板.md")
 
         self.mode_label = tk.Label(self.info, text="", font=("Arial", 9),
                                    fg="gray")
@@ -662,34 +675,99 @@ class GameGUI:
             text=f"人类 | {self._display_clock(WHITE, False)}",
             font=reg, fill="#202020", tags=tag)
 
-    def export_board_text(self):
-        """Board as text rows: 1 black, 2 white, 0 empty, X obstacle.
+    # ------------------------------------------------------------------
+    # Move-code export / import
+    # ------------------------------------------------------------------
+    def _default_save_dir(self):
+        """Directory holding board_dump.txt and the coordinate file."""
+        try:
+            return os.path.dirname(os.path.abspath(__file__))
+        except Exception:
+            return os.getcwd()
 
-        The first lines are a small header with the settings needed to
-        reproduce the position.
+    def _save_dir(self):
+        directory = os.path.expanduser(self.save_dir_var.get().strip())
+        if not directory:
+            directory = self._default_save_dir()
+        if not os.path.isabs(directory):
+            directory = os.path.join(self._default_save_dir(), directory)
+        try:
+            os.makedirs(directory, exist_ok=True)
+        except Exception:
+            directory = self._default_save_dir()
+        return directory
+
+    def _codes_file_path(self):
+        name = self.save_name_var.get().strip() or "粘贴板.md"
+        if not os.path.splitext(name)[1]:
+            name += ".md"
+        return os.path.join(self._save_dir(), name)
+
+    def _choose_save_dir(self):
+        chosen = filedialog.askdirectory(initialdir=self._save_dir(),
+                                         title="选择保存目录")
+        if chosen:
+            self.save_dir_var.set(chosen)
+
+    def _open_codes_file(self):
+        path = self._codes_file_path()
+        if not os.path.exists(path):
+            messagebox.showinfo("坐标文件", "文件还不存在:\n" + path)
+            return
+        try:
+            os.startfile(path)
+        except Exception as exc:
+            messagebox.showinfo("坐标文件", path + "\n" + str(exc))
+
+    def export_moves_line(self):
+        """Only the per-move coordinate codes ("p0" for a pass)."""
+        moves = board_tools.moves_from_board(self.board, self.pass_records)
+        return board_tools.codes_line(moves)
+
+    def export_board_text(self):
+        """Board dump: header + move-code line + board rows.
+
+        Rows use 1 for black and 2 for white, obstacles and no-liberty
+        points; 0 is an empty point.
         """
-        chars = {0: "0", 1: "1", 2: "2", 3: "X"}
-        rows = ["".join(chars[int(self.board.grid[x, y])]
-                        for y in range(self.size))
-                for x in range(self.size)]
-        header = [
-            "# Gomoku-vs-Go board dump",
-            f"# size={self.size} torus={int(self.board.torus)}"
-            f" style={self.board_style} turn={'black' if self.current == BLACK else 'white'}",
-            f"# forbid: overline={int(self.board._forbid_overline)}"
-            f" four_four={int(self.board._forbid_44)}"
-            f" three_three={int(self.board._forbid_33)}",
-        ]
-        return chr(10).join(header + rows)
+        first = "black" if self.game_first_color == BLACK else "white"
+        turn = "black" if self.current == BLACK else "white"
+        return board_tools.board_to_text(
+            self.board, self.pass_records, first=first,
+            extra=[f"# style={self.board_style} turn={turn}"])
 
     def export_board(self):
-        """Copy the current board to the clipboard and board_dump.txt."""
+        """Copy the dump, write board_dump.txt, append the codes line."""
         text = self.export_board_text()
+        moves = self.export_moves_line()
+        notes = []
         try:
-            with io.open("board_dump.txt", "w", encoding="utf-8") as f:
+            with io.open(os.path.join(self._save_dir(), "board_dump.txt"),
+                         "w", encoding="utf-8") as f:
                 f.write(text)
-        except Exception:
-            pass
+            notes.append("board_dump.txt")
+        except Exception as exc:
+            notes.append("board_dump.txt 写入失败: " + str(exc))
+        codes_path = self._codes_file_path()
+        if not moves:
+            notes.append("无落子记录")
+            codes_path = None
+        if codes_path:
+            try:
+                # Append on its own line so the file keeps one position per
+                # line and stays easy to read back later.
+                prefix = ""
+                if os.path.exists(codes_path):
+                    with io.open(codes_path, "r", encoding="utf-8") as f:
+                        old = f.read()
+                    if old and not old.endswith("\n"):
+                        prefix = "\n"
+                with io.open(codes_path, "a", encoding="utf-8") as f:
+                    f.write(prefix + moves + "\n")
+                notes.append(os.path.basename(codes_path))
+            except Exception as exc:
+                notes.append(os.path.basename(codes_path)
+                             + " 写入失败: " + str(exc))
         try:
             self.root.clipboard_clear()
             self.root.clipboard_append(text)
@@ -697,7 +775,146 @@ class GameGUI:
         except Exception:
             pass
         self.thinking_label.config(
-            text="棋盘已复制到剪贴板，并写入 board_dump.txt")
+            text="已复制，坐标追加到 " + " / ".join(notes)
+            + f"（{len(self.board.history)} 手）")
+
+    def open_import_dialog(self):
+        """Import move codes (or a full dump) and replay them."""
+        if self.ai_thinking:
+            self._stop_search()
+        dialog = tk.Toplevel(self.root)
+        dialog.title("导入坐标")
+        dialog.transient(self.root)
+        tk.Label(dialog, text="粘贴坐标（如 h8 i9 p0）或整份棋盘导出文本:",
+                 font=("Arial", 9)).pack(anchor=tk.W, padx=8, pady=(8, 2))
+        text = tk.Text(dialog, width=54, height=8)
+        text.pack(padx=8, pady=2)
+        try:
+            initial = board_tools.codes_from_file(self._codes_file_path())
+        except Exception:
+            initial = ""
+        if initial:
+            text.insert("1.0", initial)
+        first_var = tk.StringVar(
+            value="black" if self.game_first_color == BLACK else "white")
+        row = tk.Frame(dialog)
+        row.pack(fill=tk.X, padx=8)
+        tk.Label(row, text="先行:", font=("Arial", 9)).pack(side=tk.LEFT)
+        tk.Radiobutton(row, text="黑", variable=first_var,
+                       value="black").pack(side=tk.LEFT)
+        tk.Radiobutton(row, text="白", variable=first_var,
+                       value="white").pack(side=tk.LEFT)
+        info_var = tk.StringVar(value=self._codes_file_path())
+        tk.Label(dialog, textvariable=info_var, font=("Arial", 8),
+                 fg="gray", wraplength=380, justify=tk.LEFT).pack(
+            anchor=tk.W, padx=8)
+
+        def load_file():
+            path = filedialog.askopenfilename(
+                initialdir=self._save_dir(),
+                filetypes=[("坐标文件", "*.md *.txt"), ("所有文件", "*.*")])
+            if not path:
+                return
+            try:
+                with io.open(path, "r", encoding="utf-8") as f:
+                    content = f.read()
+                codes = board_tools.codes_from_text(content)
+            except Exception as exc:
+                messagebox.showerror("导入坐标", str(exc), parent=dialog)
+                return
+            text.delete("1.0", tk.END)
+            text.insert("1.0", codes)
+            info_var.set(os.path.basename(path) + " → " + codes)
+
+        def do_import():
+            content = text.get("1.0", tk.END).strip()
+            if not content:
+                messagebox.showinfo("导入坐标", "没有可导入的坐标",
+                                    parent=dialog)
+                return
+            first = BLACK if first_var.get() == "black" else WHITE
+            try:
+                board, _named, info = board_tools.parse_dump(
+                    content, size=self.size,
+                    torus=bool(self.torus_mode_var.get()), first=first)
+            except Exception as exc:
+                messagebox.showerror("导入坐标", str(exc), parent=dialog)
+                return
+            dialog.destroy()
+            self._apply_imported_board(board, info)
+
+        buttons = tk.Frame(dialog)
+        buttons.pack(fill=tk.X, padx=8, pady=6)
+        tk.Button(buttons, text="从文件读取…", command=load_file).pack(
+            side=tk.LEFT)
+        tk.Button(buttons, text="取消", command=dialog.destroy).pack(
+            side=tk.RIGHT)
+        tk.Button(buttons, text="导入", command=do_import).pack(
+            side=tk.RIGHT, padx=6)
+        text.focus_set()
+
+    def _apply_imported_board(self, board, info):
+        """Replace the current position with an imported one."""
+        size_changed = board.size != self.size
+        self.board = board
+        self.size = board.size
+        # Forbid flags travel with a dump; a bare code line keeps the
+        # settings that are currently selected in the mode window.
+        forbid = info.get("forbid")
+        if forbid is None:
+            forbid = (bool(self.forbid_overline_var.get()),
+                      bool(self.forbid_44_var.get()),
+                      bool(self.forbid_33_var.get()))
+        self.forbid_overline_var.set(int(forbid[0]))
+        self.forbid_44_var.set(int(forbid[1]))
+        self.forbid_33_var.set(int(forbid[2]))
+        self.board._forbid_overline = bool(forbid[0])
+        self.board._forbid_44 = bool(forbid[1])
+        self.board._forbid_33 = bool(forbid[2])
+        first = info.get("first", BLACK)
+        if info.get("source") == "rows":
+            self.board.turn = first
+        self.board._invalidate_caches()
+        self.torus_mode_var.set(int(bool(board.torus)))
+        self.first_player_var.set("black" if first == BLACK else "white")
+        self.game_first_color = first
+        moves = (info.get("moves") or "").split()
+        self.pass_records = board_tools.pass_records_from_codes(moves)
+        self.pass_count = len(self.pass_records)
+        self.pass_log = []
+        self.game_over = False
+        self.replay_mode = False
+        self.replay_new_stones = set()
+        self.replay_map = {}
+        self.replay_black_moves = []
+        self.black_table_mode = False
+        self.moves_since_new_game = len(self.board.history)
+        self.previous_game_snapshot = None
+        self.last_move = (
+            (self.board.history[-1][1], self.board.history[-1][2])
+            if self.board.history else None)
+        self.current = self.board.turn
+        self.display_shift = [0, 0]
+        self.engine_labels = {}
+        if size_changed:
+            self._select_board_size_var(self.size)
+            self._apply_canvas_size()
+        self.draw_board()
+        self.update_info()
+        self.update_mode_label()
+        self._maybe_refresh_engine_labels()
+        errors = list(info.get("errors") or [])
+        if errors:
+            messagebox.showwarning("导入坐标",
+                                   "以下落子被跳过: " + " ".join(errors))
+        note = f"已导入 {len(self.board.history)} 手"
+        if self.pass_records:
+            note += f"，Pass {len(self.pass_records)} 次"
+        if errors:
+            note += f"，跳过 {len(errors)} 手"
+        self.thinking_label.config(text=note)
+        if not self.game_over:
+            self.root.after(300, self.maybe_play_ai)
 
     def update_info(self):
         self._draw_top_band()
@@ -1324,6 +1541,8 @@ class GameGUI:
             self.human_pass()
         elif key == "g":
             self.export_board()
+        elif key == "i":
+            self.open_import_dialog()
 
     def on_right_click(self, _event=None):
         if self.game_over or self.ai_thinking or self.replay_mode:
@@ -1476,6 +1695,9 @@ class GameGUI:
         self._finish_turn_time(color, is_ai)
         self.pass_log.append(color)
         self.pass_count += 1
+        # Remember when the pass happened (stones played so far) so the
+        # move-code export can put "p0" back in the right place.
+        self.pass_records.append(len(self.board.history))
         # Only a black pass followed by a white pass ends the game.
         if self.pass_log[-2:] == [BLACK, WHITE]:
             self.end_game("黑棋 Pass + 白棋 Pass，对局结束")
@@ -2470,6 +2692,25 @@ class GameGUI:
         tk.Entry(obstacle_frame, textvariable=self.obstacle_count_var,
                  width=6).pack(side=tk.LEFT)
 
+        tk.Label(win, text="坐标导出/导入", font=("Arial", 11, "bold")).pack(
+            anchor=tk.W, padx=10, pady=(10, 0))
+        save_dir_row = tk.Frame(win)
+        save_dir_row.pack(fill=tk.X, padx=10)
+        tk.Label(save_dir_row, text="保存目录:").pack(side=tk.LEFT)
+        tk.Entry(save_dir_row, textvariable=self.save_dir_var,
+                 width=26).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        tk.Button(save_dir_row, text="浏览",
+                  command=self._choose_save_dir).pack(side=tk.LEFT)
+        save_name_row = tk.Frame(win)
+        save_name_row.pack(fill=tk.X, padx=10)
+        tk.Label(save_name_row, text="坐标文件:").pack(side=tk.LEFT)
+        tk.Entry(save_name_row, textvariable=self.save_name_var,
+                 width=26).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        tk.Button(save_name_row, text="打开",
+                  command=self._open_codes_file).pack(side=tk.LEFT)
+        tk.Label(win, text="G 导出：复制棋盘并把每步坐标按行追加到该文件（p0 表示 Pass）",
+                 font=("Arial", 9), fg="gray").pack(anchor=tk.W, padx=10)
+
         bottom = tk.Frame(win)
         bottom.pack(side=tk.BOTTOM, fill=tk.X, pady=10)
         tk.Button(bottom, text="新对局", command=self._apply_mode_new_game).pack(
@@ -2581,6 +2822,8 @@ class GameGUI:
                 "game_over": self.game_over,
                 "pass_count": self.pass_count,
                 "pass_log": list(self.pass_log),
+                "pass_records": list(self.pass_records),
+                "game_first_color": self.game_first_color,
                 "replay_mode": self.replay_mode,
                 "replay_new_stones": set(self.replay_new_stones),
                 "replay_map": dict(self.replay_map),
@@ -2624,6 +2867,8 @@ class GameGUI:
         self.game_over = False
         self.pass_count = 0
         self.pass_log = []
+        self.pass_records = []
+        self.game_first_color = self.current
         self.time_black_ai = 0.0
         self.time_black_human = 0.0
         self.time_white_ai = 0.0
@@ -2671,6 +2916,8 @@ class GameGUI:
         self.game_over = snap["game_over"]
         self.pass_count = snap["pass_count"]
         self.pass_log = list(snap["pass_log"])
+        self.pass_records = list(snap.get("pass_records", []))
+        self.game_first_color = snap.get("game_first_color", self.board.turn)
         self.replay_mode = snap["replay_mode"]
         self.replay_new_stones = set(snap["replay_new_stones"])
         self.replay_map = dict(snap["replay_map"])
@@ -2696,6 +2943,11 @@ class GameGUI:
         self.update_mode_label()
         if not self.game_over:
             self.root.after(300, self.maybe_play_ai)
+
+    def _trim_pass_records(self):
+        """Undo removes the passes that belong to removed stones."""
+        limit = len(self.board.history)
+        self.pass_records = [p for p in self.pass_records if p <= limit]
 
     def undo_move(self):
         if self.ai_thinking:
@@ -2731,6 +2983,7 @@ class GameGUI:
                 self.current = WHITE
                 self.pass_count = 0
                 self.pass_log = []
+                self._trim_pass_records()
                 self.last_move = (
                     (self.board.history[-1][1], self.board.history[-1][2])
                     if self.board.history else None
@@ -2755,6 +3008,7 @@ class GameGUI:
             self.game_over = False
             self.pass_count = 0
             self.pass_log = []
+            self._trim_pass_records()
             self.current = self.board.turn
             self.last_move = (
                 (self.board.history[-1][1], self.board.history[-1][2])
@@ -2772,6 +3026,7 @@ class GameGUI:
         self.game_over = False
         self.pass_count = 0
         self.pass_log = []
+        self._trim_pass_records()
         if self.moves_since_new_game > 0:
             self.moves_since_new_game -= 1
         self.replay_mode = False
