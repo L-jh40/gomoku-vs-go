@@ -130,9 +130,14 @@ def board_to_text(board, pass_records=None, moves=None,
 
 def board_from_code(text: str, size: int = 15, first: int = BLACK,
                     torus: bool = False, obstacles=None):
-    """Replay a move-code string and return (board, side_to_move)."""
+    """Replay a move-code string and return (board, side_to_move).
+
+    Moves that the engine refuses are skipped and listed on
+    board.import_errors so callers can report them.
+    """
     board = HybridBoard(int(size))
     board.torus = bool(torus)
+    board.import_errors = []
     color = first
     for token in text.replace(",", " ").split():
         if not token:
@@ -142,9 +147,12 @@ def board_from_code(text: str, size: int = 15, first: int = BLACK,
             color = WHITE if color == BLACK else BLACK
             continue
         if color == BLACK:
-            board.play_black(coord[0], coord[1], check_rules=False)
+            ok, _captured = board.play_black(coord[0], coord[1],
+                                             check_rules=False)
         else:
-            board.play_white(coord[0], coord[1])
+            ok, _captured = board.play_white(coord[0], coord[1])
+        if not ok:
+            board.import_errors.append(token)
         color = WHITE if color == BLACK else BLACK
     board.turn = color
     for cell in (obstacles or []):
