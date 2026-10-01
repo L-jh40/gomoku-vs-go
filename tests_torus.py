@@ -417,6 +417,68 @@ def test_gui_torus():
           info_bare["forbid"] is None, str(info_bare["forbid"]))
     g.forbid_33_var.set(1)
     g.board._forbid_33 = True
+
+    # illegal moves in an imported code list are never played
+    # three-three at h8: black e8/f8/j8/k8, white far away in row o
+    codes_ff = "e8 o15 f8 o14 j8 o13 k8 o12 h8 i12"
+    b_ill, _n6, info_ill = board_tools.parse_dump(codes_ff, size=15,
+                                                  first=BLACK)
+    check("forbidden move in a code list is rejected, not played",
+          info_ill["errors"] == [("h8", "three_three")]
+          and b_ill.grid[7, 7] == EMPTY
+          and b_ill.grid[7, 4] == BLACK and b_ill.grid[7, 10] == BLACK,
+          str(info_ill["errors"]) + " " + str(b_ill.grid[7, 7]))
+    # i12 is white's move after the rejected h8 (the turn still passes)
+    check("the legal moves after the rejected one still land",
+          b_ill.grid[3, 8] == WHITE and b_ill.grid[7, 7] == EMPTY,
+          str(b_ill.grid[3, 8]))
+    # self-capture: (0, 0) is surrounded by white, the stone must not
+    # appear at all (it used to be placed and then vanish)
+    codes_sc = "f10 b15 g10 a14 a15"
+    b_sc, _n7, info_sc = board_tools.parse_dump(codes_sc, size=15,
+                                                first=BLACK)
+    check("no-liberty move is rejected instead of vanishing",
+          info_sc["errors"] == [("a15", "self_capture")]
+          and b_sc.grid[0, 0] == EMPTY
+          and b_sc.grid[5, 5] == BLACK,
+          str(info_sc["errors"]) + " " + str(b_sc.grid[0, 0]))
+
+    # the confirmation dialog decides whether the import happens
+    asked = {"messages": []}
+    original_ask = gui_mod.messagebox.askyesno
+    def fake_ask(title, message, **kwargs):
+        asked["title"] = title
+        asked["messages"].append(message)
+        return asked.pop("answer", False)
+    gui_mod.messagebox.askyesno = fake_ask
+    try:
+        asked["answer"] = False
+        declined = g._confirm_illegal_import([("h8", "three_three")], None)
+        asked["answer"] = True
+        accepted = g._confirm_illegal_import([("a15", "self_capture")], None)
+    finally:
+        gui_mod.messagebox.askyesno = original_ask
+    check("rejected import is cancelled by default (No)", declined is False)
+    all_text = "\n".join(asked["messages"])
+    check("the dialog names every foul and coordinate",
+          accepted is True and "h8：三三禁手" in all_text
+          and "a15：自吃" in all_text,
+          all_text.replace(chr(10), " / "))
+
+    # exports live in their own folder by default
+    default_dir = g._default_save_dir()
+    check("default export folder is a sub-folder",
+          os.path.basename(default_dir) == "导出"
+          and os.path.dirname(default_dir) == os.path.dirname(
+              os.path.abspath(__file__)),
+          default_dir)
+    saved_dir = g.save_dir_var.get()
+    g.save_dir_var.set(default_dir)
+    os.rmdir(default_dir) if os.path.isdir(default_dir) and not os.listdir(default_dir) else None
+    created = g._save_dir()
+    check("the export folder is created on demand",
+          os.path.isdir(created) and created == default_dir, created)
+    g.save_dir_var.set(saved_dir)
     shutil.rmtree(tmp_dir, ignore_errors=True)
 
     # torus off: back to n grid and n canvas
