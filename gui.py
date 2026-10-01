@@ -679,11 +679,16 @@ class GameGUI:
     # Move-code export / import
     # ------------------------------------------------------------------
     def _default_save_dir(self):
-        """Directory holding board_dump.txt and the coordinate file."""
+        """Folder holding board_dump.txt and the coordinate file.
+
+        Exports live in their own sub-folder so the program directory stays
+        clean; the folder can be changed in the 选择模式 window.
+        """
         try:
-            return os.path.dirname(os.path.abspath(__file__))
+            base = os.path.dirname(os.path.abspath(__file__))
         except Exception:
-            return os.getcwd()
+            base = os.getcwd()
+        return os.path.join(base, "导出")
 
     def _save_dir(self):
         directory = os.path.expanduser(self.save_dir_var.get().strip())
@@ -840,6 +845,9 @@ class GameGUI:
             except Exception as exc:
                 messagebox.showerror("导入坐标", str(exc), parent=dialog)
                 return
+            errors = list(info.get("errors") or [])
+            if errors and not self._confirm_illegal_import(errors, dialog):
+                return          # keep the current position untouched
             dialog.destroy()
             self._apply_imported_board(board, info)
 
@@ -852,6 +860,23 @@ class GameGUI:
         tk.Button(buttons, text="导入", command=do_import).pack(
             side=tk.RIGHT, padx=6)
         text.focus_set()
+
+    # Chinese names for the foul types reported by rules.is_black_legal_move.
+    FOUL_NAMES = {"overline": "长连禁手", "four_four": "四四禁手",
+                  "three_three": "三三禁手", "self_capture": "自吃（无气）",
+                  "occupied": "位置已占"}
+
+    def _confirm_illegal_import(self, errors, parent):
+        """List the rejected moves and ask before importing without them."""
+        lines = []
+        for token, ftype in errors[:12]:
+            lines.append("%s：%s" % (token, self.FOUL_NAMES.get(ftype, ftype)))
+        if len(errors) > 12:
+            lines.append("…共 %d 个" % len(errors))
+        return messagebox.askyesno(
+            "导入坐标",
+            "以下着法不合规则，不会落子：\n" + "\n".join(lines)
+            + "\n\n仍然导入（跳过这些着法）？", parent=parent)
 
     def _apply_imported_board(self, board, info):
         """Replace the current position with an imported one."""
@@ -904,9 +929,6 @@ class GameGUI:
         self.update_mode_label()
         self._maybe_refresh_engine_labels()
         errors = list(info.get("errors") or [])
-        if errors:
-            messagebox.showwarning("导入坐标",
-                                   "以下落子被跳过: " + " ".join(errors))
         note = f"已导入 {len(self.board.history)} 手"
         if self.pass_records:
             note += f"，Pass {len(self.pass_records)} 次"

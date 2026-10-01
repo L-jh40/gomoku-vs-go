@@ -25,6 +25,7 @@ from __future__ import annotations
 import sys
 
 from board import HybridBoard, BLACK, WHITE, EMPTY, OBSTACLE
+import rules
 
 MARKERS = {
     "five_point": "solid-circle",
@@ -185,11 +186,14 @@ def board_to_text(board, pass_records=None, moves=None,
 
 
 def board_from_code(text: str, size: int = 15, first: int = BLACK,
-                    torus: bool = False, obstacles=None):
+                    torus: bool = False, obstacles=None,
+                    check_rules: bool = True):
     """Replay a move-code string and return (board, side_to_move).
 
-    Moves that the engine refuses are skipped and listed on
-    board.import_errors so callers can report them.
+    Illegal moves (forbidden / self-capture / occupied) are NOT played when
+    check_rules is on; they are collected as (token, foul_type) tuples on
+    board.import_errors so callers can report them.  The turn still passes,
+    so the remaining moves keep their colour.
     """
     board = HybridBoard(int(size))
     board.torus = bool(torus)
@@ -202,13 +206,21 @@ def board_from_code(text: str, size: int = 15, first: int = BLACK,
         if coord is None:
             color = WHITE if color == BLACK else BLACK
             continue
+        x, y = coord
         if color == BLACK:
-            ok, _captured = board.play_black(coord[0], coord[1],
-                                             check_rules=False)
+            if check_rules:
+                legal, ftype = rules.is_black_legal_move(board, x, y)
+                if not legal:
+                    board.import_errors.append((token, ftype))
+                    color = WHITE if color == BLACK else BLACK
+                    continue
+            ok, _captured = board.play_black(x, y, check_rules=False)
+            fail_type = "occupied" if not ok else None
         else:
-            ok, _captured = board.play_white(coord[0], coord[1])
+            ok, _captured = board.play_white(x, y)
+            fail_type = "occupied" if not ok else None
         if not ok:
-            board.import_errors.append(token)
+            board.import_errors.append((token, fail_type))
         color = WHITE if color == BLACK else BLACK
     board.turn = color
     for cell in (obstacles or []):
@@ -218,7 +230,8 @@ def board_from_code(text: str, size: int = 15, first: int = BLACK,
     return board, color
 
 
-def parse_dump(text: str, torus=None, size=None, first=None):
+def parse_dump(text: str, torus=None, size=None, first=None,
+               check_rules: bool = True):
     """Parse dump text or a bare code line.
 
     Returns (board, named_points, info).  Header values win; torus/size/
@@ -273,7 +286,8 @@ def parse_dump(text: str, torus=None, size=None, first=None):
     if moves_line:
         board, _side = board_from_code(moves_line, size=size_value,
                                        first=first_value, torus=torus_flag,
-                                       obstacles=obstacles)
+                                       obstacles=obstacles,
+                                       check_rules=check_rules)
         info = {"size": size_value, "torus": torus_flag,
                 "first": first_value, "obstacles": obstacles,
                 "no_liberty": no_liberty,
@@ -325,11 +339,12 @@ def _finish_dump(board, named, info, header):
     return board, named, info
 
 
-def load_board(path, torus=None):
+def load_board(path, torus=None, check_rules=True):
     """Parse a dump file into a HybridBoard.  Returns (board, named_points)."""
     with open(path, "r", encoding="utf-8") as f:
         text = f.read()
-    board, named, _info = parse_dump(text, torus=torus)
+    board, named, _info = parse_dump(text, torus=torus,
+                                     check_rules=check_rules)
     return board, named
 
 
@@ -382,11 +397,18 @@ def main(argv):
         if "--size" in argv:
             fallback_size = int(argv[argv.index("--size") + 1])
         first = WHITE if "--white-first" in argv else None
-        board, named, info = parse_dump(text, size=fallback_size, first=first)
+        board, named, info = parse_dump(text, size=fallback_size, first=first,
+                                        check_rules="--loose" not in argv)
     else:
         path = argv[0]
         torus = True if "--torus" in argv else None
-        board, named = load_board(path, torus=torus)
+        board, _named, info = parse_dump(
+            open(path, "r", encoding="utf-8").read(), torus=torus,
+            check_rules="--loose" not in argv)
+        named = _named
+
+    for token, ftype in info.get("errors") or []:
+        print("skipped illegal move: %s (%s)" % (token, ftype))
 
     analyse(board, named)
 
