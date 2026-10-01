@@ -175,10 +175,12 @@ def load_board(path, torus=None):
                 continue
             if line.startswith("#"):
                 body = line.lstrip("#").strip()
-                for token in body.replace(",", " ").split():
+                for token in body.split():
                     if "=" in token and ":" not in token:
                         key, value = token.split("=", 1)
                         header[key.strip().lower()] = value.strip()
+                if body.lower().startswith("obstacles"):
+                    header["obstacles"] = body.split("=", 1)[1].strip()
                 continue
             if line.lower().startswith("moves:"):
                 moves_line = line.split(":", 1)[1].strip()
