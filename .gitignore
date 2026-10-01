@@ -5,3 +5,7 @@ venv/
 .env
 .idea/
 .vscode/
+
+# 导出/导入的本地数据（棋盘 dump、坐标文件）
+导出/
+board_dump.txt

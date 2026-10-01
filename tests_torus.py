@@ -464,6 +464,16 @@ def test_gui_torus():
           accepted is True and "h8：三三禁手" in all_text
           and "a15：自吃" in all_text,
           all_text.replace(chr(10), " / "))
+    # applying a code list with a rejected move keeps the board consistent
+    g.new_game()
+    root.update()
+    g._apply_imported_board(b_ill, info_ill)
+    note_after_import = g.thinking_label.cget("text")
+    root.update()
+    check("imported illegal list leaves the board consistent",
+          g.board.grid[7, 7] == EMPTY and g.board.grid[7, 4] == BLACK
+          and "跳过 1 手" in note_after_import,
+          note_after_import)
 
     # exports live in their own folder by default
     default_dir = g._default_save_dir()
@@ -478,6 +488,20 @@ def test_gui_torus():
     created = g._save_dir()
     check("the export folder is created on demand",
           os.path.isdir(created) and created == default_dir, created)
+    # both export files are written into that folder
+    g.new_game()
+    root.update()
+    g.try_play_black(7, 7)
+    g.export_board()
+    codes_in_folder = os.path.join(default_dir, "粘贴板.md")
+    dump_in_folder = os.path.join(default_dir, "board_dump.txt")
+    check("G writes both files into the export folder",
+          os.path.exists(codes_in_folder) and os.path.exists(dump_in_folder),
+          str(sorted(os.listdir(default_dir))))
+    check("the exported code line is the played move",
+          open(codes_in_folder, encoding="utf-8").read().strip() == "h8")
+    os.remove(codes_in_folder)
+    os.remove(dump_in_folder)
     g.save_dir_var.set(saved_dir)
     shutil.rmtree(tmp_dir, ignore_errors=True)
 
