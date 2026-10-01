@@ -11,8 +11,9 @@ Export format (produced by the GUI "导出棋盘(复制)" / G key):
     moves: a15 b14 p0 c13 ...
     <size rows of 0/1/2>   (2 = white, obstacle or no-liberty point)
 
-The GUI appends the bare coordinate line to 粘贴板.md, so several positions
-can be kept in one file (one line each) and re-imported later.
+The GUI writes board_dump.txt and appends the bare coordinate line to
+粘贴板.md inside its export folder (程序目录/导出 by default), so several
+positions can be kept in one file (one line each) and re-imported later.
 
 Usage:
     python board_tools.py board_dump.txt

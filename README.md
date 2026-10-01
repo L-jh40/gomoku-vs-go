@@ -47,10 +47,12 @@ Dependencies: Python 3.9+ with `numpy` and `tkinter`.
 ## Move-code export / import
 
 Press **G** (or 导出棋盘(复制)) to copy the full board text, write
-`board_dump.txt` and append one coordinate-only line to the
-coordinate file (default `粘贴板.md`; directory and file name are
+`导出/board_dump.txt` and append one coordinate-only line to the
+coordinate file (default `导出/粘贴板.md`; folder and file name are
 editable in the 选择模式 window).  Press **I** (or 导入坐标) to paste codes or load
-a file and replay it.
+a file and replay it: illegal moves (forbidden / self-capture / occupied) are
+**never played** - they are listed for confirmation and skipped (the import is
+cancelled if you answer No).
 
 - code: letter = column (a..), number = row counted from the bottom (1..size)
   so the centre of 15x15 is `h8`; a pass is `p0`
