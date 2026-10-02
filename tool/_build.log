@@ -9,3 +9,73 @@ dataprep.cpp
 gomocup.cpp
 opengen.cpp
 selfplay.cpp
+tuning.cpp
+hash.cpp
+iohelper.cpp
+platform.cpp
+utils.cpp
+version.cpp
+dbclient.cpp
+dbtypes.cpp
+dbutils.cpp
+yxdbstorage.cpp
+eval.cpp
+evaluator.cpp
+mix10nnue.cpp
+C:\Users\lin\Downloads\rapfi-250615\rapfi-250615\Rapfi\eval\mix10nnue.cpp(200): error C2338: static assertion failed: 'Failed to find a supported instruction set'
+C:\Users\lin\Downloads\rapfi-250615\rapfi-250615\Rapfi\eval\mix10nnue.cpp(200): note: 模板实例化上下文(最早的实例化上下文)为
+C:\Users\lin\Downloads\rapfi-250615\rapfi-250615\Rapfi\eval\mix10nnue.cpp(648): note: 查看对正在编译的函数 模板 实例化“void `anonymous-namespace'::linearBlock<false,false,128,64,64>(int8_t [],const int8_t [],const Evaluation::mix10::FCWeight<64,64> &)”的引用
+mix9svqnnue.cpp
+board.cpp
+movegen.cpp
+pattern.cpp
+hashtable.cpp
+movepick.cpp
+opening.cpp
+searchcommon.cpp
+searchoutput.cpp
+searchthread.cpp
+timecontrol.cpp
+history.cpp
+search.cpp
+node.cpp
+search.cpp
+dataset.cpp
+datawriter.cpp
+optimizer.cpp
+tuner.cpp
+xxhash.c
+external\lz4\src\xxhash.c(117): fatal error C1083: 无法打开包括文件: “xxhash.h”: No such file or directory
+benchmark.obj : error LNK2019: 无法解析的外部符号 XXH64_createState，函数 "public: __cdecl Hash::XXHasher::XXHasher(unsigned __int64)" (??0XXHasher@Hash@@QEAA@_K@Z) 中引用了该符号
+datawriter.obj : error LNK2001: 无法解析的外部符号 XXH64_createState
+benchmark.obj : error LNK2019: 无法解析的外部符号 XXH64_freeState，函数 "public: __cdecl Hash::XXHasher::~XXHasher(void)" (??1XXHasher@Hash@@QEAA@XZ) 中引用了该符号
+datawriter.obj : error LNK2001: 无法解析的外部符号 XXH64_freeState
+benchmark.obj : error LNK2019: 无法解析的外部符号 XXH64_reset，函数 "public: __cdecl Hash::XXHasher::XXHasher(unsigned __int64)" (??0XXHasher@Hash@@QEAA@_K@Z) 中引用了该符号
+datawriter.obj : error LNK2001: 无法解析的外部符号 XXH64_reset
+benchmark.obj : error LNK2019: 无法解析的外部符号 XXH64_update，函数 "public: class Hash::XXHasher & __cdecl Hash::XXHasher::operator<<<enum Value>(enum Value const &)" (??$?6W4Value@@@XXHasher@Hash@@QEAAAEAV01@AEBW4Value@@@Z) 中引用了该符号
+datawriter.obj : error LNK2001: 无法解析的外部符号 XXH64_update
+benchmark.obj : error LNK2019: 无法解析的外部符号 XXH64_digest，函数 "public: __cdecl Hash::XXHasher::operator unsigned __int64(void)const " (??BXXHasher@Hash@@QEBA_KXZ) 中引用了该符号
+datawriter.obj : error LNK2001: 无法解析的外部符号 XXH64_digest
+config.obj : error LNK2019: 无法解析的外部符号 "public: __cdecl Evaluation::mix10::Evaluator::Evaluator(int,enum Rule,int,class std::filesystem::path,class std::filesystem::path)" (??0Evaluator@mix10@Evaluation@@QEAA@HW4Rule@@HVpath@filesystem@std@@1@Z)，函数 "class std::unique_ptr<class Evaluation::mix10::Evaluator,struct std::default_delete<class Evaluation::mix10::Evaluator> > __cdecl std::make_unique<class Evaluation::mix10::Evaluator,int &,enum Rule &,int &,class std::filesystem::path &,class std::filesystem::path &,0>(int &,enum Rule &,int &,class std::filesystem::path &,class std::filesystem::path &)" (??$make_unique@VEvaluator@mix10@Evaluation@@AEAHAEAW4Rule@@AEAHAEAVpath@filesystem@std@@AEAV567@$0A@@std@@YA?AV?$unique_ptr@VEvaluator@mix10@Evaluation@@U?$default_delete@VEvaluator@mix10@Evaluation@@@std@@@0@AEAHAEAW4Rule@@0AEAVpath@filesystem@0@2@Z) 中引用了该符号
+config.obj : error LNK2001: 无法解析的外部符号 "public: virtual void __cdecl Search::AB::ABSearchData::clearData(struct Search::SearchThread &)" (?clearData@ABSearchData@AB@Search@@UEAAXAEAUSearchThread@3@@Z)
+config.obj : error LNK2001: 无法解析的外部符号 "public: virtual void __cdecl Search::AB::ABSearcher::setMemoryLimit(unsigned __int64)" (?setMemoryLimit@ABSearcher@AB@Search@@UEAAX_K@Z)
+config.obj : error LNK2001: 无法解析的外部符号 "public: virtual unsigned __int64 __cdecl Search::AB::ABSearcher::getMemoryLimit(void)const " (?getMemoryLimit@ABSearcher@AB@Search@@UEBA_KXZ)
+config.obj : error LNK2001: 无法解析的外部符号 "public: virtual void __cdecl Search::AB::ABSearcher::clear(class Search::ThreadPool &,bool)" (?clear@ABSearcher@AB@Search@@UEAAXAEAVThreadPool@3@_N@Z)
+config.obj : error LNK2001: 无法解析的外部符号 "public: virtual void __cdecl Search::AB::ABSearcher::searchMain(struct Search::MainSearchThread &)" (?searchMain@ABSearcher@AB@Search@@UEAAXAEAUMainSearchThread@3@@Z)
+config.obj : error LNK2001: 无法解析的外部符号 "public: virtual void __cdecl Search::AB::ABSearcher::search(struct Search::SearchThread &)" (?search@ABSearcher@AB@Search@@UEAAXAEAUSearchThread@3@@Z)
+config.obj : error LNK2001: 无法解析的外部符号 "public: virtual bool __cdecl Search::AB::ABSearcher::checkTimeupCondition(void)" (?checkTimeupCondition@ABSearcher@AB@Search@@UEAA_NXZ)
+iohelper.obj : error LNK2019: 无法解析的外部符号 LZ4F_isError，函数 "public: __cdecl lz4_stream::basic_istream<4096,4096>::basic_istream<4096,4096>(class std::basic_istream<char,struct std::char_traits<char> > &)" (??0?$basic_istream@$0BAAA@$0BAAA@@lz4_stream@@QEAA@AEAV?$basic_istream@DU?$char_traits@D@std@@@std@@@Z) 中引用了该符号
+iohelper.obj : error LNK2019: 无法解析的外部符号 LZ4F_getErrorName，函数 "public: __cdecl lz4_stream::basic_istream<4096,4096>::basic_istream<4096,4096>(class std::basic_istream<char,struct std::char_traits<char> > &)" (??0?$basic_istream@$0BAAA@$0BAAA@@lz4_stream@@QEAA@AEAV?$basic_istream@DU?$char_traits@D@std@@@std@@@Z) 中引用了该符号
+iohelper.obj : error LNK2019: 无法解析的外部符号 LZ4F_createCompressionContext，函数 "public: __cdecl lz4_stream::basic_ostream<4096>::compression_context::compression_context(void)" (??0compression_context@?$basic_ostream@$0BAAA@@lz4_stream@@QEAA@XZ) 中引用了该符号
+iohelper.obj : error LNK2019: 无法解析的外部符号 LZ4F_freeCompressionContext，函数 "public: __cdecl lz4_stream::basic_ostream<4096>::compression_context::~compression_context(void)" (??1compression_context@?$basic_ostream@$0BAAA@@lz4_stream@@QEAA@XZ) 中引用了该符号
+iohelper.obj : error LNK2019: 无法解析的外部符号 LZ4F_compressBegin，函数 "public: __cdecl lz4_stream::basic_ostream<4096>::output_buffer::output_buffer(class std::basic_ostream<char,struct std::char_traits<char> > &,struct LZ4F_preferences_t)" (??0output_buffer@?$basic_ostream@$0BAAA@@lz4_stream@@QEAA@AEAV?$basic_ostream@DU?$char_traits@D@std@@@std@@ULZ4F_preferences_t@@@Z) 中引用了该符号
+iohelper.obj : error LNK2019: 无法解析的外部符号 LZ4F_compressBound，函数 "public: __cdecl lz4_stream::basic_ostream<4096>::output_buffer::output_buffer(class std::basic_ostream<char,struct std::char_traits<char> > &,struct LZ4F_preferences_t)" (??0output_buffer@?$basic_ostream@$0BAAA@@lz4_stream@@QEAA@AEAV?$basic_ostream@DU?$char_traits@D@std@@@std@@ULZ4F_preferences_t@@@Z) 中引用了该符号
+iohelper.obj : error LNK2019: 无法解析的外部符号 LZ4F_compressUpdate，函数 "private: void __cdecl lz4_stream::basic_ostream<4096>::output_buffer::compress_and_write(void)" (?compress_and_write@output_buffer@?$basic_ostream@$0BAAA@@lz4_stream@@AEAAXXZ) 中引用了该符号
+iohelper.obj : error LNK2019: 无法解析的外部符号 LZ4F_compressEnd，函数 "public: void __cdecl lz4_stream::basic_ostream<4096>::output_buffer::close(void)" (?close@output_buffer@?$basic_ostream@$0BAAA@@lz4_stream@@QEAAXXZ) 中引用了该符号
+iohelper.obj : error LNK2019: 无法解析的外部符号 LZ4F_createDecompressionContext，函数 "public: __cdecl lz4_stream::basic_istream<4096,4096>::basic_istream<4096,4096>(class std::basic_istream<char,struct std::char_traits<char> > &)" (??0?$basic_istream@$0BAAA@$0BAAA@@lz4_stream@@QEAA@AEAV?$basic_istream@DU?$char_traits@D@std@@@std@@@Z) 中引用了该符号
+iohelper.obj : error LNK2019: 无法解析的外部符号 LZ4F_freeDecompressionContext，函数 "public: __cdecl lz4_stream::basic_istream<4096,4096>::decompression_context::~decompression_context(void)" (??1decompression_context@?$basic_istream@$0BAAA@$0BAAA@@lz4_stream@@QEAA@XZ) 中引用了该符号
+iohelper.obj : error LNK2019: 无法解析的外部符号 LZ4F_decompress，函数 "public: virtual int __cdecl lz4_stream::basic_istream<4096,4096>::input_buffer::underflow(void)" (?underflow@input_buffer@?$basic_istream@$0BAAA@$0BAAA@@lz4_stream@@UEAAHXZ) 中引用了该符号
+platform.obj : error LNK2019: 无法解析的外部符号 __imp_OpenProcessToken，函数 "void * __cdecl MemAlloc::alignedLargePageAlloc(unsigned __int64)" (?alignedLargePageAlloc@MemAlloc@@YAPEAX_K@Z) 中引用了该符号
+platform.obj : error LNK2019: 无法解析的外部符号 __imp_AdjustTokenPrivileges，函数 "void * __cdecl MemAlloc::alignedLargePageAlloc(unsigned __int64)" (?alignedLargePageAlloc@MemAlloc@@YAPEAX_K@Z) 中引用了该符号
+platform.obj : error LNK2019: 无法解析的外部符号 __imp_LookupPrivilegeValueA，函数 "void * __cdecl MemAlloc::alignedLargePageAlloc(unsigned __int64)" (?alignedLargePageAlloc@MemAlloc@@YAPEAX_K@Z) 中引用了该符号
+C:\Users\lin\Desktop\gomoku-vs-go\gomoku-vs-go2\tool\rapfi_build\rapfi_cli.exe : fatal error LNK1120: 27 个无法解析的外部命令
