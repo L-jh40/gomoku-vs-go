@@ -197,16 +197,19 @@ def main() -> int:
             expect_set = {board_tools.code_to_coord(c, board.size)
                           for c in expect} - {None}
 
+            # Python 参考（rules.py）与 Rapfi 的已知差异只做信息报告，
+            # 不算失败——期望行才是权威（来自 Rapfi）。
             if expect_set != py_set:
-                failures.append(
-                    "%s 案例自洽失败: forbid 期望 %s vs Python 参考 %s"
-                    % (cid, sorted(expect_set), sorted(py_set)))
+                print("  [note] %s rules.py 与 Rapfi 差异: py %s vs 期望 %s"
+                      % (cid, sorted(py_set - expect_set),
+                         sorted(expect_set - py_set)), flush=True)
 
             eng_set = engine_forbidden(eng, board, cid)
-            if eng_set != py_set:
+            # 硬性条件：引擎（Rapfi 语义）必须与 forbid 期望一致。
+            if eng_set != expect_set:
                 failures.append(
-                    "%s 引擎不一致: 引擎 %s vs Python %s"
-                    % (cid, sorted(eng_set), sorted(py_set)))
+                    "%s 引擎不一致: 引擎 %s vs 期望 %s"
+                    % (cid, sorted(eng_set), sorted(expect_set)))
 
             group_results.setdefault(case["group"], []).append((cid, eng_set))
             slow_all.extend(eng.slow)
