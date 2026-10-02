@@ -1,0 +1,79 @@
+﻿PASS - torus: five across wrap detected 
+PASS - non-torus: same shape is not a five 
+PASS - torus: overline across wrap 
+PASS - torus: wrapped liberty allows the move 
+PASS - torus: wrapped liberty counted {(8, 4)}
+PASS - non-torus: same move is self-capture (rejected) 
+PASS - torus: capture via wrapped liberty [(0, 4)]
+PASS - torus: five_point at wrapped completion five_point
+PASS - torus: line_code has no edge blockers (no leading/trailing 2 from edges) 111100000
+PASS - torus: farthest uses cyclic Chebyshev [(0, 4), (4, 0), (4, 8)]
+PASS - torus: unblocked wrapped window detected 
+PASS - non-torus: ordinary five still detected 
+
+TOTAL: 12 FAILED: 0
+PASS - board.torus set by new game 
+PASS - display size = n + 4 19 vs 15
+PASS - canvas size follows display grid (dynamic cell) 618
+PASS - cell size fitted into the window (<= base, >= 50%) 30
+PASS - grid drawn as ring-coloured segments over the extended grid 684
+PASS - corner cell has 4 wrapped copies (2 per axis) [(2, 2), (2, 17), (17, 2), (17, 17)]
+PASS - real stone drawn once (ring copies are faded) 1
+PASS - click on a wrapped copy maps to the actual cell (0, 0)
+PASS - hover stores actual cell and display copy (0, 0) (17, 17)
+PASS - clicking a wrapped copy plays on the actual cell 1
+PASS - ring stones use 50% stone + 50% board background fake=3 real=1
+PASS - ring grid lines fade to white ['#808080', 'black']
+PASS - single #f2f2f2 mirror frame around the real board 1
+PASS - ring background fades towards white ['#f4e1ac']
+PASS - ghost shown on the real cell for ring hover 1
+PASS - board model stays n x n (AI never sees the ring) (15, 15)
+PASS - W moves the displayed board up one row [(2, 2), (2, 17)] -> [(1, 2), (1, 17)]
+PASS - display shift does not change the board 1
+PASS - display_to_actual inverts the shift (1, 0)
+PASS - S restores the original display [(2, 2), (2, 17)]
+PASS - Right arrow shifts the columns [(2, 3), (2, 18)]
+PASS - board export/import round-trips 15
+PASS - white and obstacle rows both export as 2 122
+PASS - obstacles are recorded in the header # obstacles=(6,6)
+PASS - dead (no-liberty) empty points export as 2 2 # no_liberty=(0,0)
+PASS - G appends one coordinate line to ճ����.md 'h8 i8 p0 g9' / �Ѹ��ƣ�����׷�ӵ� board_dump.txt / ճ����.md��3 �֣�
+PASS - G writes the dump into the chosen directory C:\Users\lin\Desktop\gomoku-vs-go\gomoku-vs-go2\_tmp_export
+PASS - the code line replays to the same position moves
+PASS - pass records are rebuilt from the code line [2]
+PASS - imported board matches the exported position [2] �ѵ��� 3 �֣�Pass 1 ��
+PASS - forbid flags are read back from the dump header (True, True, False)
+PASS - importing a dump syncs the forbid check boxes 0
+PASS - bare codes carry no forbid settings None
+FAIL - forbidden move in a code list is rejected, not played [] 1
+FAIL - the legal moves after the rejected one still land 2
+PASS - no-liberty move is rejected instead of vanishing [('a15', 'self_capture')] 0
+PASS - rejected import is cancelled by default (No) 
+PASS - the dialog names every foul and coordinate �����ŷ����Ϲ��򣬲������ӣ� / h8���������� /  / ��Ȼ���루������Щ�ŷ����� / �����ŷ����Ϲ��򣬲������ӣ� / a15���Գԣ������� /  / ��Ȼ���루������Щ�ŷ�����
+FAIL - imported illegal list leaves the board consistent �ѵ��� 10 ��
+PASS - default export folder is a sub-folder C:\Users\lin\Desktop\gomoku-vs-go\gomoku-vs-go2\����
+PASS - the export folder is created on demand C:\Users\lin\Desktop\gomoku-vs-go\gomoku-vs-go2\_tmp_export\����\_tmp_test
+PASS - G writes both files into the export folder ['board_dump.txt', 'ճ����.md']
+PASS - the exported code line is the played move 'h8\n'
+PASS - torus off restores normal display 15 498
+PASS - hint off: no mirrored ring 15 pad=0
+PASS - hint 4 cells: display n + 8 23 pad=4
+PASS - 4-cell ring fills all wrapped cells 304
+PASS - tiny window: cell shrinks to 50% floor 15
+PASS - tiny window: readout moves beside the board ����ʱ�� / AI | 0:00 / ���� | 0:00 / ����ʱ�� / AI | 0:00 / ���� | 0:00 / �׳Ժ� 0��
+
+TOTAL: 49 FAILED: 3
+python : Traceback (most recent call last):
+所在位置 行:1 字符: 129
++ ... m.Text.UTF8Encoding]::new($false); python tests_torus.py *>&1 | Out-F ...
++                                        ~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Traceback (most recent call last)::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  File "C:\Users\lin\Desktop\gomoku-vs-go\gomoku-vs-go2\tests_torus.py", line 852, in <module>
+    test_gui_torus()
+    ~~~~~~~~~~~~~~^^
+  File "C:\Users\lin\Desktop\gomoku-vs-go\gomoku-vs-go2\tests_torus.py", line 561, in test_gui_torus
+    assert not fails
+           ^^^^^^^^^
+AssertionError

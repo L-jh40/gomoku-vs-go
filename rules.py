@@ -420,20 +420,348 @@ def _black_one_liberty_liberties(board):
     return out
 
 
-def is_black_legal_move(board, x: int, y: int, _stack: set | None = None):
-    """Return (ok, foul_type).  The board is never mutated.
+# ----------------------------------------------------------------------
+# Exact Rapfi checkForbiddenPoint (tools/rapfi source/Rapfi/game/board.cpp)
+#
+# Same algorithm as cpp/src/forbidden.cpp, so the Python path (GUI blue
+# crosses, human move legality, board_tools) and the C++ engine agree:
+#   1. pattern4(black) != FORBID  -> legal
+#   2. any direction overline, or two fours -> forbidden
+#   3. place the stone and count "true threes": for every direction whose
+#      line pattern is F3/F3S walk outwards (through the contiguous black
+#      stones, at most 4 cells) to the FIRST empty cell and test
+#        a) pattern4 == B_FLEX4 (the point makes an open four), or
+#        b) that direction's pattern == F5 (the point wins), or
+#        c) pattern4 == FORBID and pattern == F4 and that point is itself
+#           NOT forbidden (recursion).
+#      Rapfi counts AT MOST ONE true three per direction (a successful first
+#      side jumps straight to the next direction), so two threes on one line
+#      are a single three - this is Rapfi's semantics, not the rule book's.
+#
+# The two documented project extensions live in _rapfi_cell_flag: an empty
+# no-liberty point and an obstacle block exactly like a white stone, and the
+# torus topology wraps the 11-cell window and the extension walk.
+# ----------------------------------------------------------------------
+_RAPFI_LINE_LEN = 11
+_RAPFI_LINE_MID = 5
+_RAPFI_SELF, _RAPFI_OPPO, _RAPFI_EMPT = 0, 1, 2
+_RAPFI_MAX_FIND = 4
+_RAPFI_MAX_DEPTH = 64
 
-    A position is forbidden exactly when Black's move, while not winning,
-    forms two genuine open threes (three-three) or two fours (four-four),
-    and White cannot erase the shape by capturing a one-liberty group.
-    Counting is per shape set, so two threes/fours on the same line - one on
-    each side of the new stone - are counted separately.
+# Rapfi Pat enum (same numeric order as cpp/src/pattern_table.h).
+(_PAT_DEAD, _PAT_OL, _PAT_B1, _PAT_F1, _PAT_B2, _PAT_F2, _PAT_F2A, _PAT_F2B,
+ _PAT_B3, _PAT_B3S, _PAT_F3, _PAT_F3S, _PAT_B4, _PAT_B4S, _PAT_F4,
+ _PAT_F5) = range(16)
+# Rapfi Pattern4 enum.
+(_P4_NONE, _P4_FORBID, _P4_L_FLEX2, _P4_K_BLOCK3, _P4_J_FLEX2_2X,
+ _P4_I_BLOCK3_PLUS, _P4_H_FLEX3, _P4_G_FLEX3_PLUS, _P4_F_FLEX3_2X,
+ _P4_E_BLOCK4, _P4_D_BLOCK4_PLUS, _P4_C_BLOCK4_FLEX3, _P4_B_FLEX4,
+ _P4_A_FIVE) = range(14)
+
+_RAPFI_PATTERN_MEMO: dict = {}
+_RAPFI_PATTERN_MEMO_LIMIT = 500000
+_NO_LIBERTY_CACHE: dict = {}
+_NO_LIBERTY_CACHE_LIMIT = 8192
+
+
+def _rapfi_count_line(line):
+    real = full = 1
+    inc = 1
+    start = end = _RAPFI_LINE_MID
+    for i in range(_RAPFI_LINE_MID - 1, -1, -1):
+        v = line[i]
+        if v == _RAPFI_SELF:
+            real += inc
+        elif v == _RAPFI_OPPO:
+            break
+        else:
+            inc = 0
+        full += 1
+        start = i
+    inc = 1
+    for i in range(_RAPFI_LINE_MID + 1, _RAPFI_LINE_LEN):
+        v = line[i]
+        if v == _RAPFI_SELF:
+            real += inc
+        elif v == _RAPFI_OPPO:
+            break
+        else:
+            inc = 0
+        full += 1
+        end = i
+    return real, full, start, end
+
+
+def _rapfi_shift(line, i):
+    mid = _RAPFI_LINE_MID
+    return tuple(line[j + i - mid] if 0 <= j + i - mid < _RAPFI_LINE_LEN
+                 else _RAPFI_OPPO for j in range(_RAPFI_LINE_LEN))
+
+
+def _rapfi_pattern(line):
+    """Rapfi getPattern<RENJU, BLACK> for one 11-cell line (memoised)."""
+    got = _RAPFI_PATTERN_MEMO.get(line)
+    if got is not None:
+        return got
+    real, full, start, end = _rapfi_count_line(line)
+    if real >= 6:
+        p = _PAT_OL                       # overline (black rules only)
+    elif real >= 5:
+        p = _PAT_F5
+    elif full < 5:
+        p = _PAT_DEAD
+    else:
+        cnt = [0] * 16
+        f5_idx = [0, 0]
+        for i in range(start, end + 1):
+            if line[i] != _RAPFI_EMPT:
+                continue
+            shifted = list(_rapfi_shift(line, i))
+            shifted[_RAPFI_LINE_MID] = _RAPFI_SELF
+            sp = _rapfi_pattern(tuple(shifted))
+            if sp == _PAT_F5 and cnt[_PAT_F5] < 2:
+                f5_idx[cnt[_PAT_F5]] = i
+            cnt[sp] += 1
+        if cnt[_PAT_F5] >= 2:
+            p = _PAT_F4
+            # Rapfi's renju "dirty fix": two five points on one line closer
+            # than 5 (an in-line double four) are encoded as an overline.
+            if f5_idx[1] - f5_idx[0] < 5:
+                p = _PAT_OL
+        elif cnt[_PAT_F5] == 1:
+            blocked = list(line)
+            blocked[f5_idx[0]] = _RAPFI_OPPO
+            p = (_PAT_B4S if _rapfi_pattern(tuple(blocked)) >= _PAT_B3
+                 else _PAT_B4)
+        elif cnt[_PAT_F4] >= 2:
+            p = _PAT_F3S
+        elif cnt[_PAT_F4]:
+            p = _PAT_F3
+        elif cnt[_PAT_B4S]:
+            p = _PAT_B3S
+        elif cnt[_PAT_B4]:
+            p = _PAT_B3
+        elif cnt[_PAT_F3S] + cnt[_PAT_F3] >= 4:
+            p = _PAT_F2B
+        elif cnt[_PAT_F3S] + cnt[_PAT_F3] >= 3:
+            p = _PAT_F2A
+        elif cnt[_PAT_F3S] + cnt[_PAT_F3]:
+            p = _PAT_F2
+        elif cnt[_PAT_B3] + cnt[_PAT_B3S]:
+            p = _PAT_B2
+        elif cnt[_PAT_F2] + cnt[_PAT_F2A] + cnt[_PAT_F2B]:
+            p = _PAT_F1
+        elif cnt[_PAT_B2]:
+            p = _PAT_B1
+        else:
+            p = _PAT_DEAD
+    if len(_RAPFI_PATTERN_MEMO) > _RAPFI_PATTERN_MEMO_LIMIT:
+        _RAPFI_PATTERN_MEMO.clear()
+    _RAPFI_PATTERN_MEMO[line] = p
+    return p
+
+
+def _rapfi_combine4(p1, p2, p3, p4):
+    """Rapfi getPattern4<Forbid=true> (chaining fours/threes folded in)."""
+    n = [0] * 16
+    for p in (p1, p2, p3, p4):
+        n[p] += 1
+    n[_PAT_B4] += n[_PAT_B4S]
+    n[_PAT_B3] += n[_PAT_B3S]
+    if n[_PAT_F5] >= 1:
+        return _P4_A_FIVE
+    if n[_PAT_OL] >= 1:
+        return _P4_FORBID
+    if n[_PAT_F4] + n[_PAT_B4] >= 2:
+        return _P4_FORBID
+    if n[_PAT_F3] + n[_PAT_F3S] >= 2:
+        return _P4_FORBID
+    if n[_PAT_B4] >= 2:
+        return _P4_B_FLEX4
+    if n[_PAT_F4] >= 1:
+        return _P4_B_FLEX4
+    return _P4_NONE
+
+
+def _rapfi_no_liberty(board):
+    """Empty points where a black stone would have no liberty (cached)."""
+    key = (board.size, bool(getattr(board, "torus", False)),
+           board.grid.tobytes())
+    got = _NO_LIBERTY_CACHE.get(key)
+    if got is None:
+        got = frozenset(board.get_no_liberty_positions())
+        if len(_NO_LIBERTY_CACHE) > _NO_LIBERTY_CACHE_LIMIT:
+            _NO_LIBERTY_CACHE.clear()
+        _NO_LIBERTY_CACHE[key] = got
+    return got
+
+
+def _rapfi_cell_flag(board, x, y, noli):
+    """Black's view of one cell: white / obstacle / off-board / no-liberty
+    empty all block (OPPO), black is SELF, any other empty is EMPT."""
+    if not board.in_bounds(x, y):
+        return _RAPFI_OPPO
+    v = int(board.grid[x, y])
+    if v == BLACK:
+        return _RAPFI_SELF
+    if v == WHITE or v == OBSTACLE:
+        return _RAPFI_OPPO
+    return _RAPFI_OPPO if (x, y) in noli else _RAPFI_EMPT
+
+
+def _rapfi_dir_pattern(board, x, y, dx, dy, noli, cache):
+    key = (x, y, dx, dy)
+    got = cache.get(key)
+    if got is not None:
+        return got
+    line = [_RAPFI_EMPT] * _RAPFI_LINE_LEN
+    line[_RAPFI_LINE_MID] = _RAPFI_SELF
+    for i in range(-_RAPFI_LINE_MID, _RAPFI_LINE_MID + 1):
+        if i == 0:
+            continue
+        cell = board.step_from(x, y, dx, dy, i)
+        line[i + _RAPFI_LINE_MID] = (
+            _RAPFI_OPPO if cell is None
+            else _rapfi_cell_flag(board, cell[0], cell[1], noli))
+    p = _rapfi_pattern(tuple(line))
+    cache[key] = p
+    return p
+
+
+def _rapfi_pattern4(board, x, y, noli, cache):
+    return _rapfi_combine4(*[_rapfi_dir_pattern(board, x, y, dx, dy, noli,
+                                                cache)
+                             for dx, dy in DIRECTIONS])
+
+
+def _rapfi_count_true_threes(board, x, y, dirs, depth):
+    """Rapfi's third step: at most one true three per direction."""
+    board.grid[x, y] = BLACK
+    try:
+        noli = _rapfi_no_liberty(board)
+        threes = 0
+        for d, (dx, dy) in enumerate(DIRECTIONS):
+            if dirs[d] not in (_PAT_F3, _PAT_F3S):
+                continue
+            counted = False
+            for sign in (-1, 1):
+                if counted:
+                    break
+                for step in range(1, _RAPFI_MAX_FIND + 1):
+                    cell = board.step_from(x, y, sign * dx, sign * dy, step)
+                    if cell is None:
+                        break
+                    cx, cy = cell
+                    v = int(board.grid[cx, cy])
+                    if v == EMPTY:
+                        cache: dict = {}
+                        p4 = _rapfi_pattern4(board, cx, cy, noli, cache)
+                        pc = _rapfi_dir_pattern(board, cx, cy, dx, dy, noli,
+                                                cache)
+                        if (p4 == _P4_B_FLEX4 or pc == _PAT_F5 or
+                                (p4 == _P4_FORBID and pc == _PAT_F4 and
+                                 not _rapfi_is_forbidden(board, cx, cy,
+                                                         depth + 1))):
+                            counted = True
+                        break
+                    if v != BLACK:
+                        break
+            if counted:
+                threes += 1
+                if threes >= 2:
+                    break
+        return threes
+    finally:
+        board.grid[x, y] = EMPTY
+
+
+def _rapfi_is_forbidden(board, x, y, depth=0):
+    """Exact Rapfi checkForbiddenPoint for Black (no GUI rule switches)."""
+    if not board.is_empty(x, y) or depth >= _RAPFI_MAX_DEPTH:
+        return False
+    noli = _rapfi_no_liberty(board)
+    cache: dict = {}
+    dirs = [_rapfi_dir_pattern(board, x, y, dx, dy, noli, cache)
+            for dx, dy in DIRECTIONS]
+    if _rapfi_combine4(*dirs) != _P4_FORBID:
+        return False
+    fours = 0
+    for p in dirs:
+        if p == _PAT_OL:
+            return True
+        if p in (_PAT_B4, _PAT_B4S, _PAT_F4):
+            fours += 1
+            if fours >= 2:
+                return True
+    return _rapfi_count_true_threes(board, x, y, dirs, depth) >= 2
+
+
+def _rapfi_verdict(board, x, y):
+    """(fours, overline, true_threes) for the stone at (x, y).
+
+    Rapfi encodes an in-line double four as the overline pattern (the "dirty
+    fix"), which is also why the per-direction contiguous run is measured:
+    a real overline (6+ in a row) reports overline, the dirty fix reports
+    two fours, so the GUI can still label the foul as four-four.
+    """
+    noli = _rapfi_no_liberty(board)
+    cache: dict = {}
+    dirs = [_rapfi_dir_pattern(board, x, y, dx, dy, noli, cache)
+            for dx, dy in DIRECTIONS]
+    if _rapfi_combine4(*dirs) != _P4_FORBID:
+        return 0, False, 0
+
+    board.grid[x, y] = BLACK
+    try:
+        runs = []
+        for dx, dy in DIRECTIONS:
+            run = 1
+            for sign in (-1, 1):
+                for step in range(1, board.size):
+                    cell = board.step_from(x, y, sign * dx, sign * dy, step)
+                    if cell is None or int(board.grid[cell]) != BLACK:
+                        break
+                    run += 1
+                    if run >= 6:
+                        break
+                if run >= 6:
+                    break
+            runs.append(run)
+    finally:
+        board.grid[x, y] = EMPTY
+
+    overline = False
+    fours = 0
+    for d, p in enumerate(dirs):
+        if p == _PAT_OL:
+            if runs[d] >= 6:
+                overline = True
+            else:
+                fours += 2          # two fours on one line (Rapfi's OL fix)
+        elif p in (_PAT_B4, _PAT_B4S, _PAT_F4):
+            fours += 1
+    if overline or fours >= 2:
+        return fours, overline, 0
+
+    threes = 0
+    if dirs.count(_PAT_F3) + dirs.count(_PAT_F3S) >= 2:
+        threes = _rapfi_count_true_threes(board, x, y, dirs, 0)
+    return fours, overline, threes
+
+
+def is_black_legal_move(board, x: int, y: int, _stack: set | None = None):
+    """Return (ok, foul_type).  The board is never mutated on return.
+
+    Exact Rapfi checkForbiddenPoint semantics (see the port above): overline,
+    two fours (including an in-line double four) and two genuine open threes
+    are forbidden, an exact five wins, and a no-liberty point is the Go
+    self-capture rule.  Obstacles and no-liberty empty points block exactly
+    like white stones.
     """
     if not board.in_bounds(x, y) or not board.is_empty(x, y):
         return False, "occupied"
 
     top_level = _stack is None
-    stack = _stack or set()
     cache_key = None
     if top_level:
         cache_key = _legal_cache_key(board, x, y)
@@ -448,35 +776,33 @@ def is_black_legal_move(board, x: int, y: int, _stack: set | None = None):
             _LEGAL_CACHE[cache_key] = result
         return result
 
+    forbid_overline = bool(getattr(board, "_forbid_overline", True))
     forbid44 = bool(getattr(board, "_forbid_44", True))
     forbid33 = bool(getattr(board, "_forbid_33", True))
 
+    if board.would_self_capture(x, y):
+        return finish((False, "self_capture"))
+
     board.grid[x, y] = BLACK
     try:
-        _stones, liberties = board.get_group(x, y)
-        if len(liberties) == 0:
-            return finish((False, "self_capture"))
-
         run = board.black_run_length(x, y)
-        if run == 5:
-            return finish((True, None))
-        if getattr(board, "_forbid_overline", True) and run >= 6:
-            return finish((False, "overline"))
-
-        if not (forbid44 or forbid33):
-            return finish((True, None))
-
-        fours, threes = _count_foul_shapes(board, x, y, stack)
-        four_foul = forbid44 and fours >= 2
-        three_foul = forbid33 and threes >= 2
-        if not (four_foul or three_foul):
-            return finish((True, None))
-
-        if four_foul:
-            return finish((False, "four_four"))
-        return finish((False, "three_three"))
     finally:
         board.grid[x, y] = EMPTY
+    if run == 5:
+        return finish((True, None))
+    if run >= 6 and forbid_overline:
+        return finish((False, "overline"))
+    if not (forbid_overline or forbid44 or forbid33):
+        return finish((True, None))
+
+    fours, overline, threes = _rapfi_verdict(board, x, y)
+    if overline and forbid_overline:
+        return finish((False, "overline"))
+    if fours >= 2 and forbid44:
+        return finish((False, "four_four"))
+    if threes >= 2 and forbid33:
+        return finish((False, "three_three"))
+    return finish((True, None))
 
 
 def _ordered_along(board, cells, dx, dy):
