@@ -43,20 +43,17 @@ def engine_check(board):
     except Exception as exc:
         return "error: %s" % exc
     result = set()
-    started = False
+    # The engine prints only the illegal points (no command echo), then
+    # "end"; everything after checkforbidden is numeric pairs.
     for raw in out.stdout.splitlines():
         s = raw.strip()
-        if s == "checkforbidden":
-            started = True
-            continue
-        if started:
-            if s == "end":
-                break
-            parts = s.split()
-            if len(parts) == 2 and all(p.lstrip("-").isdigit() for p in parts):
-                x, y = int(parts[0]), int(parts[1])
-                if 0 <= x < board.size and 0 <= y < board.size:
-                    result.add(bt.coord_to_code(x, y, board.size))
+        if s == "end":
+            break
+        parts = s.split()
+        if len(parts) == 2 and all(p.isdigit() for p in parts):
+            x, y = int(parts[0]), int(parts[1])
+            if 0 <= x < board.size and 0 <= y < board.size:
+                result.add(bt.coord_to_code(x, y, board.size))
     return result
 
 print()
