@@ -10,6 +10,7 @@ int main() {
     b.make_move(6, 7, BLACK);
     b.make_move(7, 7, BLACK);
     b.make_move(8, 7, BLACK);
+    b.set_turn(BLACK);
     printf("turn=%d\n", b.turn());
 
     const int idx57 = Board::index(5, 7);
