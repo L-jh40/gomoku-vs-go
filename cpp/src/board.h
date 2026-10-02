@@ -236,9 +236,9 @@ private:
     void refresh_patterns(const uint16_t* centers, int nc);
     void refresh_patterns_full();
     // undo 用：按中心集合重算 self_cap_ / dead_ 数组（territory_ 由历史
-    // 还原），触碰集合写入 tlist 并返回数量（供棋型刷新使用）。
+    // 还原），无气翻转格写入 flips 并返回翻转数（供棋型刷新使用）。
     int  post_move_cell_flags(const uint16_t* centers, int nc,
-                              uint16_t* tlist);
+                              uint16_t* tlist, uint16_t* flips);
 };
 
 }  // namespace gvg
