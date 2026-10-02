@@ -67,6 +67,7 @@
 
 #include "eval.h"
 #include "forbidden.h"
+#include "pattern_table.h"
 #include "search.h"
 
 namespace gvg {
@@ -84,7 +85,6 @@ constexpr int ATTACK_RADIUS   = 4;  // 攻击候选：已有黑子切比雪夫�
 constexpr int THREE_MIN_BLACK = 2;  // 三防御超集：窗内黑子数下限
 constexpr long long DEFAULT_NODES = 300000;
 
-using Pt    = std::pair<int, int>;
 using Clock = std::chrono::steady_clock;
 
 double now_sec() {
@@ -601,13 +601,626 @@ bool prove_white_node(Board& b, int cx, int cy, int budget, ProveCtx* ctx,
     return true;
 }
 
-}  // namespace
+// ===========================================================================
+// 3. 第一部分：威胁候选点（阻挡点）—— 查表规则的增量棋型实现
+// ===========================================================================
+// 记号（用户规格原文）：0 = 空，1 = 黑棋，2 = 阻挡（白子 / 障碍 / 无气空点；棋型层
+// 由 Board::build_pattern_window 统一映射，代码层面完全一致）。
+//
+// 查表规则（用户规格）：
+//   10111   → 1 个阻挡点（那个 0：黑成五的唯一完成点）
+//   011112  → 1 个阻挡点（唯一的成五点）
+//   0011102 → 3 个阻挡点（三个 0 都是有效应对）
+//   0011100 → 2 个阻挡点（只有紧邻 111 的两个 0）
+// 统一实现（不写字符串匹配，全部走 Board 的增量棋型缓存 classify_point）：
+//   * 威胁线 ⟺ 线上存在空点 e 使 classify_point(e,BLACK,d) ∈ {PP_FIVE,PP_FLEX4,PP_B4}
+//     （黑棋在该线一步能成五或成四）。
+//   * p 是该线的阻挡点 ⟺ 白棋落 p（真实 make_move，含提子）后，该线上不存在空点 q
+//     使 classify_point(q,BLACK,d) ∈ {PP_FIVE,PP_FLEX4}（黑棋无法在该线成五/活四）。
+//   逐条复现上表：10111 / 011112 只剩“成五点”；0011100 只剩紧邻两点（远端 0 挡不住
+//   另一端）；0011102 三个 0 全部有效（一端被 2 堵死时远端 0 足以把四降级为冲四）。
+
+// 收集一条线（从线上第一个盘内格开始）的全部盘内格 idx。
+int collect_line_cells(const Board& b, int d, int sx, int sy, int* out) {
+    const int dx = DX4[d], dy = DY4[d];
+    int n = 0;
+    for (int cx = sx, cy = sy; b.in_bounds(cx, cy); cx += dx, cy += dy) {
+        if (n >= MAX_BOARD) break;
+        out[n++] = cell_index(cx, cy);
+    }
+    return n;
+}
+
+// 空点 e 在方向 d 上的“黑棋落子后”线型（直接读增量棋型缓存）。
+PointPattern point_pattern_d(const Board& b, int idx, int d) {
+    return classify_point(b, cell_x(idx), cell_y(idx), BLACK, DX4[d], DY4[d]);
+}
+
+// 线的威胁等级：存在空点一步成五 → FIVE；一步成活四 → OPEN_FOUR；一步成冲四 →
+// RUSH_FOUR；否则 NONE（活二 / 眠三 一类不构成“一步成四/五”的强制威胁）。
+AtkType line_threat_rank(const Board& b, const int* cells, int n, int d) {
+    AtkType r = AtkType::NONE;
+    for (int i = 0; i < n; ++i) {
+        const int c = cells[i];
+        if (!b.is_empty(cell_x(c), cell_y(c))) continue;
+        const PointPattern p = point_pattern_d(b, c, d);
+        if (p == PP_FIVE) return AtkType::FIVE;
+        if (p == PP_FLEX4) r = AtkType::OPEN_FOUR;
+        else if (p == PP_B4 && r == AtkType::NONE) r = AtkType::RUSH_FOUR;
+    }
+    return r;
+}
+
+// 白棋刚落 p 之后：该线上是否仍有黑棋“一步成五 / 成活四”的点。
+bool line_still_winning(const Board& b, const int* cells, int n, int d) {
+    for (int i = 0; i < n; ++i) {
+        const int c = cells[i];
+        if (!b.is_empty(cell_x(c), cell_y(c))) continue;
+        const PointPattern p = point_pattern_d(b, c, d);
+        if (p == PP_FIVE || p == PP_FLEX4) return true;
+    }
+    return false;
+}
+
+// 该线的全部阻挡点（枚举线上空点，真实 make_move(WHITE) 后用棋型缓存复判）。
+std::vector<Pt> line_blockers(Board& b, const int* cells, int n, int d) {
+    std::vector<Pt> out;
+    for (int i = 0; i < n; ++i) {
+        const int c = cells[i];
+        const int x = cell_x(c), y = cell_y(c);
+        if (!b.is_empty(x, y)) continue;
+        if (!b.make_move(x, y, WHITE)) continue;      // 白棋落子（含提子）
+        const bool still = line_still_winning(b, cells, n, d);
+        b.undo_move();
+        if (!still) out.push_back(Pt(x, y));
+    }
+    return out;
+}
+
+// 全盘威胁线：4 方向 × 每条线，rank != NONE 的线连同其阻挡点与线上黑子。
+std::vector<ThreatLine> collect_threat_lines(Board& b) {
+    std::vector<ThreatLine> out;
+    const int n = b.size();
+    int cells[MAX_BOARD];
+    for (int d = 0; d < 4; ++d) {
+        const int dx = DX4[d], dy = DY4[d];
+        for (int sx = 0; sx < n; ++sx) {
+            for (int sy = 0; sy < n; ++sy) {
+                if (b.in_bounds(sx - dx, sy - dy)) continue;   // 只从线的起点扫
+                const int len = collect_line_cells(b, d, sx, sy, cells);
+                const AtkType rank = line_threat_rank(b, cells, len, d);
+                if (rank == AtkType::NONE) continue;
+                ThreatLine tl;
+                tl.dx = dx;
+                tl.dy = dy;
+                tl.rank = static_cast<int>(rank);
+                tl.cells = len;
+                for (int i = 0; i < len; ++i) {
+                    const uint8_t v = b.at(cell_x(cells[i]), cell_y(cells[i]));
+                    if (v == BLACK) tl.black.push_back(Pt(cell_x(cells[i]), cell_y(cells[i])));
+                }
+                tl.blockers = line_blockers(b, cells, len, d);
+                out.push_back(tl);
+            }
+        }
+    }
+    return out;
+}
+
+// 经过 (px,py) 的 4 条线中，仍有强制威胁的线（含其阻挡点）。供白棋应对集使用。
+std::vector<ThreatLine> threat_lines_through(Board& b, int px, int py) {
+    std::vector<ThreatLine> out;
+    int cells[MAX_BOARD];
+    for (int d = 0; d < 4; ++d) {
+        const int dx = DX4[d], dy = DY4[d];
+        // 回退到该线起点
+        int sx = px, sy = py;
+        while (b.in_bounds(sx - dx, sy - dy)) { sx -= dx; sy -= dy; }
+        const int len = collect_line_cells(b, d, sx, sy, cells);
+        const AtkType rank = line_threat_rank(b, cells, len, d);
+        if (rank == AtkType::NONE) continue;
+        ThreatLine tl;
+        tl.dx = dx;
+        tl.dy = dy;
+        tl.rank = static_cast<int>(rank);
+        tl.cells = len;
+        for (int i = 0; i < len; ++i) {
+            const uint8_t v = b.at(cell_x(cells[i]), cell_y(cells[i]));
+            if (v == BLACK) tl.black.push_back(Pt(cell_x(cells[i]), cell_y(cells[i])));
+        }
+        tl.blockers = line_blockers(b, cells, len, d);
+        out.push_back(tl);
+    }
+    return out;
+}
+
+// 双威胁必须阻挡点：黑棋在方向 a 落子成活四（PP_FLEX4）、在方向 b != a 落子成活三
+// （PP_FLEX3）→ 黑做四三必胜，该点白棋必须先占（“必须阻挡点”）。
+std::vector<Pt> double_threat_points(Board& b) {
+    std::vector<Pt> out;
+    const int n = b.size();
+    for (int x = 0; x < n; ++x) {
+        for (int y = 0; y < n; ++y) {
+            if (!b.is_empty(x, y)) continue;
+            const int idx = cell_index(x, y);
+            int flex4 = 0, flex3 = 0;
+            for (int d = 0; d < 4; ++d) {
+                const PointPattern p = point_pattern_d(b, idx, d);
+                if (p == PP_FLEX4) ++flex4;
+                else if (p == PP_FLEX3) ++flex3;
+            }
+            if (flex4 >= 1 && flex3 >= 1) out.push_back(Pt(x, y));
+        }
+    }
+    return out;
+}
+
+// 黑棋是否可能在 2 手内连五（用于“2 手内吃子点”的有效性校验）：
+// 盘上存在一步成五的点，或存在一步成活四的点（活四无法同时封堵两端）。
+bool black_five_within_two(Board& b) {
+    const int n = b.size();
+    for (int x = 0; x < n; ++x) {
+        for (int y = 0; y < n; ++y) {
+            if (!b.is_empty(x, y)) continue;
+            const int idx = cell_index(x, y);
+            for (int d = 0; d < 4; ++d) {
+                const PointPattern p = point_pattern_d(b, idx, d);
+                if (p == PP_FIVE || p == PP_FLEX4) return true;
+            }
+        }
+    }
+    return false;
+}
+
+// 吃子点：mask 覆盖的黑棋块中，气 == 1 的唯一气点（白棋 1 手直接提）；
+// 气 == 2 的两个气点（白棋落子后该块变 1 气，下一步可提；且落子后黑棋 2 步内
+// 不能连五，否则该吃子点无效）。
+std::vector<Pt> capture_points_from_mask(Board& b, const uint8_t* mask) {
+    std::vector<Pt> out;
+    GroupTable gt;
+    build_groups(b, mask, &gt);
+    for (int g = 0; g < gt.ngroups; ++g) {
+        if (!gt.has_window[g]) continue;              // 与威胁无关的块不计
+        const int nl = gt.lib_count[g];
+        if (nl == 1) {
+            const int lib = gt.libs[gt.lib_begin[g]];
+            out.push_back(Pt(cell_x(lib), cell_y(lib)));
+        } else if (nl == 2) {
+            for (int q = gt.lib_begin[g]; q < gt.lib_begin[g] + nl; ++q) {
+                const int lib = gt.libs[q];
+                const int x = cell_x(lib), y = cell_y(lib);
+                if (!b.is_empty(x, y)) continue;
+                if (!b.make_move(x, y, WHITE)) continue;
+                const bool dangerous = black_five_within_two(b);
+                b.undo_move();
+                if (!dangerous) out.push_back(Pt(x, y));
+            }
+        }
+    }
+    return out;
+}
+
+// 把若干线的黑子标记进 mask。
+void mark_line_black(const Board& b, const std::vector<ThreatLine>& lines,
+                     uint8_t* mask) {
+    for (size_t i = 0; i < lines.size(); ++i)
+        for (size_t k = 0; k < lines[i].black.size(); ++k) {
+            const Pt& p = lines[i].black[k];
+            mask[cell_index(p.first, p.second)] = 1;
+        }
+    (void)b;
+}
+
+// 禁手消失（多重禁手）说明：阻挡点本身可能是黑棋禁手（白棋占之合法）。返回
+//   0 = 该点不是黑棋禁手（或非空点）；
+//   1 = 真禁手（长连 / 四四 / 三三，Rapfi check_forbidden 复判为准）；
+//   2 = 假禁手（组合表预筛 FORBID 但精判非禁手：三的延伸点本身是禁手点，去掉它后
+//       三无法延伸成活四/五）。白棋占该点后此禁手消失，黑棋其余禁手仍阻挡黑棋。
+// 本报告不影响候选集：白棋落禁手点合法。
+struct ForbiddenNote {
+    int  kind = 0;        // 0 非禁手 / 1 真禁手 / 2 假禁手
+    int  threes = 0;      // 真三数
+    int  fours = 0;       // 四数
+    bool overline = false;
+};
+ForbiddenNote blocking_point_forbidden_note(Board& b, int x, int y) {
+    ForbiddenNote note;
+    if (!b.in_bounds(x, y) || !b.is_empty(x, y)) return note;
+    const uint8_t p4 = b.cached_pattern4_black(cell_index(x, y));
+    if (p4 != FORBID) return note;                     // O(1) 预筛：非禁手
+    const ForbiddenProbe probe = probe_forbidden(b, x, y);
+    note.threes = probe.threes;
+    note.fours = probe.fours;
+    for (int d = 0; d < 4; ++d)
+        if (probe.dir[d] == OL) note.overline = true;
+    note.kind = check_forbidden(b, x, y) ? 1 : 2;
+    return note;
+}
 
 // ===========================================================================
-// 2.9 主入口：逐候选标注
+// 4. 第二部分：三层 VCT（全应对 / 智能应对 / 混合判定）
 // ===========================================================================
+// 全应对 VCT：黑棋只走“能形成活三 / 眠四”的棋；白棋在**全部阻挡点**应对（外加吃子
+// 点）。可靠（威胁空间内完备的应对集 ⇒ 胜即真胜）但不完备（黑方手受限）。
+// 智能应对 VCT：白棋只在威胁候选点内落子，并按 2.2 的选点规则挑一个应手。
+struct LayerCtx {
+    VctParams params;
+    long long nodes = 0;
+    long long node_limit = 300000;
+    double    deadline = 0.0;
+    bool      timeout = false;
+};
+
+bool layer_budget_exceeded(LayerCtx* c) {
+    ++c->nodes;
+    if (c->node_limit > 0 && c->nodes > c->node_limit) { c->timeout = true; return true; }
+    if (c->deadline > 0.0 && now_sec() > c->deadline) { c->timeout = true; return true; }
+    return false;
+}
+
+// 黑方威胁手（按参数预算）：四类手受 vcf 约束、三类手受 vct 约束。
+void layer_attacks(Board& b, int steps_left, const VctParams& p,
+                   std::vector<AttackCand>* out) {
+    const bool allow_three = (steps_left <= p.vct && steps_left >= 1);
+    gen_attack_candidates(b, steps_left, allow_three, out);
+    if (steps_left > p.vcf) {                 // 超出 VCF 预算：不再展开四类手
+        size_t w = 0;
+        for (size_t i = 0; i < out->size(); ++i)
+            if ((*out)[i].rank == static_cast<int>(AtkType::OPEN_THREE))
+                (*out)[w++] = (*out)[i];
+        out->resize(w);
+    }
+}
+
+// 全盘黑棋“眠三 / 活二”点数（智能应对的比较规则用）。
+void count_black_sleep3_open2(Board& b, int* sleep3, int* open2) {
+    *sleep3 = 0;
+    *open2 = 0;
+    const int n = b.size();
+    for (int x = 0; x < n; ++x) {
+        for (int y = 0; y < n; ++y) {
+            if (!b.is_empty(x, y)) continue;
+            const int idx = cell_index(x, y);
+            bool s3 = false, o2 = false;
+            for (int d = 0; d < 4; ++d) {
+                const PointPattern p = point_pattern_d(b, idx, d);
+                if (p == PP_B3) s3 = true;
+                else if (p == PP_FLEX2) o2 = true;
+            }
+            if (s3) ++*sleep3;
+            else if (o2) ++*open2;
+        }
+    }
+}
+
+// 智能应对选点（2.2）：1) 能吃子且吃后原有威胁不残留眠三 → 吃子；
+// 2) 否则比较各阻挡点，取“白棋落子后黑棋眠三最少、其次活二最少”的一个
+//    （挡成死三优先；`010110` 走中间 / `01110` 挡成死三都被这条比较规则覆盖）。
+std::vector<Pt> smart_responses(Board& b, const std::vector<Pt>& blockers,
+                                const std::vector<Pt>& captures) {
+    for (size_t i = 0; i < captures.size(); ++i) {
+        const int x = captures[i].first, y = captures[i].second;
+        if (!b.is_empty(x, y)) continue;
+        if (!b.make_move(x, y, WHITE)) continue;
+        int s3 = 0, o2 = 0;
+        count_black_sleep3_open2(b, &s3, &o2);
+        b.undo_move();
+        if (s3 == 0) {
+            std::vector<Pt> one;
+            one.push_back(captures[i]);
+            return one;                                  // 吃子且不残留眠三
+        }
+    }
+    int best = -1, best_s3 = 0, best_o2 = 0;
+    for (size_t i = 0; i < blockers.size(); ++i) {
+        const int x = blockers[i].first, y = blockers[i].second;
+        if (!b.is_empty(x, y)) continue;
+        if (!b.make_move(x, y, WHITE)) continue;
+        int s3 = 0, o2 = 0;
+        count_black_sleep3_open2(b, &s3, &o2);
+        b.undo_move();
+        if (best < 0 || s3 < best_s3 || (s3 == best_s3 && o2 < best_o2)) {
+            best = static_cast<int>(i);
+            best_s3 = s3;
+            best_o2 = o2;
+        }
+    }
+    std::vector<Pt> one;
+    if (best >= 0) one.push_back(blockers[static_cast<size_t>(best)]);
+    return one;
+}
+
+// 白棋对“黑棋刚在 (bx,by) 落下一手威胁”的全部应对：该手各威胁线的阻挡点 ∪ 吃子点。
+std::vector<Pt> layer_responses(Board& b, int bx, int by, bool smart,
+                                LayerCtx* ctx) {
+    const std::vector<ThreatLine> lines = threat_lines_through(b, bx, by);
+    std::vector<Pt> blockers;
+    uint8_t mask[MAX_CELLS];
+    std::memset(mask, 0, sizeof(mask));
+    mark_line_black(b, lines, mask);
+    for (size_t i = 0; i < lines.size(); ++i)
+        for (size_t k = 0; k < lines[i].blockers.size(); ++k) {
+            const Pt& p = lines[i].blockers[k];
+            blockers.push_back(p);
+        }
+    std::vector<Pt> captures = capture_points_from_mask(b, mask);
+    if (smart) return smart_responses(b, blockers, captures);
+
+    PointSet set;
+    for (size_t i = 0; i < blockers.size(); ++i)
+        set.add(b, cell_index(blockers[i].first, blockers[i].second));
+    for (size_t i = 0; i < captures.size(); ++i)
+        set.add(b, cell_index(captures[i].first, captures[i].second));
+    std::vector<Pt> out;
+    set.finalize(&out);
+    (void)ctx;
+    return out;
+}
+
+// 层 1/2 共用 DFS：黑方 OR 节点（威胁手） × 白方应手（全应对 / 智能应对）。
+// 成功时把本轮的 DefenseSet 填到 sets 的最前面（sets = 该路线的逐轮应对集）。
+bool layer_dfs(Board& b, int steps_left, bool smart, LayerCtx* ctx,
+               std::vector<DefenseSet>* sets) {
+    if (layer_budget_exceeded(ctx)) return false;
+    if (steps_left <= 0) return false;
+
+    std::vector<AttackCand> cands;
+    cands.reserve(32);
+    layer_attacks(b, steps_left, ctx->params, &cands);
+    for (size_t ci = 0; ci < cands.size(); ++ci) {
+        const AttackCand c = cands[ci];
+        if (!b.make_move(c.x, c.y, BLACK)) continue;
+        if (b.last_move_was_five()) {
+            b.undo_move();
+            return true;                     // 成五：1 手证明成功
+        }
+        std::vector<Pt> defs = layer_responses(b, c.x, c.y, smart, ctx);
+        if (!defs.empty()) {
+            bool all_ok = true;
+            for (size_t wi = 0; wi < defs.size(); ++wi) {
+                if (!b.make_move(defs[wi].first, defs[wi].second, WHITE)) continue;
+                const bool sub = layer_dfs(b, steps_left - 1, smart, ctx, sets);
+                b.undo_move();
+                if (ctx->timeout) { b.undo_move(); return false; }
+                if (!sub) { all_ok = false; break; }
+            }
+            if (all_ok) {
+                DefenseSet ds;
+                ds.points = defs;
+                ds.bx = c.x;
+                ds.by = c.y;
+                ds.rank = c.rank;
+                if (sets) sets->insert(sets->begin(), ds);
+                b.undo_move();
+                return true;
+            }
+        }
+        b.undo_move();
+    }
+    return false;
+}
+
+// 顶层：迭代加深（m = 黑方攻击手数），收集所有成功路线的首轮应对集。
+VctOutcome layer_run(Board& b, const VctParams& params, double time_sec, bool smart) {
+    VctOutcome out;
+    LayerCtx ctx;
+    ctx.params = params;
+    ctx.deadline = (time_sec > 0.0) ? now_sec() + time_sec : 0.0;
+    const int max_m = std::max(1, std::min(params.vct, params.vcf));
+    for (int m = 1; m <= max_m; ++m) {
+        std::vector<AttackCand> cands;
+        cands.reserve(32);
+        layer_attacks(b, m, params, &cands);
+        bool any = false;
+        for (size_t ci = 0; ci < cands.size(); ++ci) {
+            if (layer_budget_exceeded(&ctx)) break;
+            const AttackCand c = cands[ci];
+            if (!b.make_move(c.x, c.y, BLACK)) continue;
+            bool win = false;
+            std::vector<DefenseSet> route_sets;
+            if (b.last_move_was_five()) {
+                win = true;
+            } else {
+                std::vector<Pt> defs = layer_responses(b, c.x, c.y, smart, &ctx);
+                if (!defs.empty()) {
+                    win = true;
+                    for (size_t wi = 0; wi < defs.size(); ++wi) {
+                        if (!b.make_move(defs[wi].first, defs[wi].second, WHITE))
+                            continue;
+                        std::vector<DefenseSet> child;
+                        const bool sub = layer_dfs(b, m - 1, smart, &ctx, &child);
+                        b.undo_move();
+                        if (ctx.timeout) { win = false; break; }
+                        if (!sub) { win = false; break; }
+                        route_sets = child;
+                    }
+                    if (win) {
+                        DefenseSet ds;
+                        ds.points = defs;
+                        ds.bx = c.x;
+                        ds.by = c.y;
+                        ds.rank = c.rank;
+                        route_sets.insert(route_sets.begin(), ds);
+                    }
+                }
+            }
+            b.undo_move();
+            if (!win) continue;
+            any = true;
+            if (!route_sets.empty()) {
+                out.first_sets.push_back(route_sets.front());
+                VctRoute route;
+                route.black_moves.push_back(Pt(c.x, c.y));
+                route.sets = route_sets;
+                out.routes.push_back(route);
+            }
+        }
+        if (any) {
+            out.win = true;
+            out.steps = m;
+            break;
+        }
+        if (ctx.timeout) break;
+    }
+    out.timeout = ctx.timeout;
+    return out;
+}
+
+}  // namespace
+
+// 混合判定（第二部分 2.3）的防御点交集：把各条成功路线的首轮应手集合取交集
+// （“每种可靠 VCT 的防御点位集合”）。交集为空时返回空表，调用方按规格退回到
+// “按最大步数标注 W/L”。
+std::vector<Pt> mixed_defense_intersection(Board& b, const VctOutcome& all_resp) {
+    PointSet set;
+    bool first = true;
+    std::vector<int> keep;
+    for (size_t i = 0; i < all_resp.first_sets.size(); ++i) {
+        const DefenseSet& ds = all_resp.first_sets[i];
+        if (first) {
+            for (size_t k = 0; k < ds.points.size(); ++k)
+                set.add(b, cell_index(ds.points[k].first, ds.points[k].second));
+            first = false;
+        } else {
+            keep.clear();
+            for (size_t k = 0; k < ds.points.size(); ++k) {
+                const int idx = cell_index(ds.points[k].first, ds.points[k].second);
+                if (set.mark[idx]) keep.push_back(idx);
+            }
+            std::memset(set.mark, 0, sizeof(set.mark));
+            set.idx.clear();
+            for (size_t k = 0; k < keep.size(); ++k) set.add(b, keep[k]);
+        }
+    }
+    std::vector<Pt> out;
+    set.finalize(&out);
+    return out;
+}
+
+// 三层 VCT 对外包装。
+VctOutcome vct_all_response(Board& b, const VctParams& p, double time_sec) {
+#ifndef NDEBUG
+    const uint64_t h0 = b.hash();
+#endif
+    VctOutcome out = layer_run(b, p, time_sec, /*smart=*/false);
+#ifndef NDEBUG
+    assert(b.hash() == h0);
+#endif
+    return out;
+}
+
+VctOutcome vct_smart_response(Board& b, const VctParams& p, double time_sec) {
+#ifndef NDEBUG
+    const uint64_t h0 = b.hash();
+#endif
+    VctOutcome out = layer_run(b, p, time_sec, /*smart=*/true);
+#ifndef NDEBUG
+    assert(b.hash() == h0);
+#endif
+    return out;
+}
+
+// ===========================================================================
+// 3.6 白棋威胁候选点（交集框架）
+// ===========================================================================
+WhiteCandidateReport white_threat_candidates(Board& b) {
+    WhiteCandidateReport rep;
+    rep.lines = collect_threat_lines(b);
+    rep.threat_lines = static_cast<int>(rep.lines.size());
+    // “强制威胁”= 盘上存在黑棋一手成活四（或成五）的线（用户规格的实心圆 / 三角形
+    // 一档：五连、活四、四三）。只有纯冲四 / 眠三（大圆圈 / 小圆圈一档）时白棋不被
+    // 强迫，候选集退化为“不受约束”（全盘空点，legal:everywhere）。
+    bool forced = false;
+    for (size_t i = 0; i < rep.lines.size(); ++i)
+        if (rep.lines[i].rank >= static_cast<int>(AtkType::OPEN_FOUR)) forced = true;
+    if (!forced) {
+        rep.unconstrained = true;              // 无强制威胁 → 全盘空点都是候选点
+        const int n = b.size();
+        for (int x = 0; x < n; ++x)
+            for (int y = 0; y < n; ++y)
+                if (b.is_empty(x, y)) rep.candidates.push_back(Pt(x, y));
+        return rep;
+    }
+
+    // 交集：逐线取阻挡点集合的交（“对所有威胁的候选集合取交集”）。
+    std::vector<int> inter;
+    for (size_t i = 0; i < rep.lines.size(); ++i) {
+        std::vector<int> cur;
+        for (size_t k = 0; k < rep.lines[i].blockers.size(); ++k) {
+            const Pt& p = rep.lines[i].blockers[k];
+            cur.push_back(cell_index(p.first, p.second));
+        }
+        std::sort(cur.begin(), cur.end());
+        cur.erase(std::unique(cur.begin(), cur.end()), cur.end());
+        if (i == 0) {
+            inter = cur;
+        } else {
+            std::vector<int> next;
+            for (size_t k = 0; k < inter.size(); ++k)
+                if (std::binary_search(cur.begin(), cur.end(), inter[k]))
+                    next.push_back(inter[k]);
+            inter.swap(next);
+        }
+    }
+    rep.intersect_size = static_cast<int>(inter.size());
+    rep.intersect_empty = inter.empty();
+
+    // 双威胁必须阻挡点：黑做四三必胜，白棋必须先占；交集里也裁到它（若可交）。
+    rep.must_block = double_threat_points(b);
+    if (!rep.must_block.empty() && !inter.empty()) {
+        std::vector<int> mb;
+        for (size_t k = 0; k < rep.must_block.size(); ++k)
+            mb.push_back(cell_index(rep.must_block[k].first,
+                                    rep.must_block[k].second));
+        std::sort(mb.begin(), mb.end());
+        std::vector<int> next;
+        for (size_t k = 0; k < inter.size(); ++k)
+            if (std::binary_search(mb.begin(), mb.end(), inter[k]))
+                next.push_back(inter[k]);
+        if (!next.empty()) inter.swap(next);
+    }
+
+    // 交集为空 → 按规格回退到“所有威胁候选集合的并集”。
+    PointSet pool;
+    if (!inter.empty()) {
+        for (size_t k = 0; k < inter.size(); ++k) pool.add(b, inter[k]);
+    } else {
+        for (size_t i = 0; i < rep.lines.size(); ++i)
+            for (size_t k = 0; k < rep.lines[i].blockers.size(); ++k)
+                pool.add(b, cell_index(rep.lines[i].blockers[k].first,
+                                       rep.lines[i].blockers[k].second));
+    }
+    // 必须阻挡点与吃子点都并入候选集（都要被白棋考虑）。
+    for (size_t k = 0; k < rep.must_block.size(); ++k)
+        pool.add(b, cell_index(rep.must_block[k].first, rep.must_block[k].second));
+
+    uint8_t mask[MAX_CELLS];
+    std::memset(mask, 0, sizeof(mask));
+    mark_line_black(b, rep.lines, mask);
+    rep.captures = capture_points_from_mask(b, mask);
+    for (size_t k = 0; k < rep.captures.size(); ++k)
+        pool.add(b, cell_index(rep.captures[k].first, rep.captures[k].second));
+
+    pool.finalize(&rep.candidates);
+    return rep;
+}
+
+// ===========================================================================
+// 5. 主入口：逐候选标注
+// ===========================================================================
+// 白方候选的健全步数：迭代加深（与第 6 步一致），返回首个证明成功的黑方攻击手数 m。
+int sound_lose_steps(Board& b, int max_steps, ProveCtx* ctx, ProveTT* tt) {
+    for (int m = 1; m <= max_steps; ++m) {
+        const bool win = prove_black_dfs(b, m, true, ctx, tt);
+        if (ctx->timeout) return 0;
+        if (win) return m;
+    }
+    return 0;
+}
+
 AnalysisResult analyse(Board& b, int color, int max_steps, int winmode,
-                       double time_limit_sec, long long node_limit) {
+                       double time_limit_sec, long long node_limit,
+                       const VctParams& params) {
     AnalysisResult res;
     res.paths_found = 0;
     res.nodes = 0;
@@ -621,6 +1234,184 @@ AnalysisResult analyse(Board& b, int color, int max_steps, int winmode,
     ctx.deadline = (time_limit_sec > 0.0) ? now_sec() + time_limit_sec : 0.0;
     ProveTT tt;
 
+    if (color == WHITE) {
+        // ---- 白棋威胁候选点：阻挡点交集（无交集回退并集），再取标注最好的一档 ----
+        const WhiteCandidateReport rep = white_threat_candidates(b);
+        std::vector<Pt> pool = rep.candidates;
+
+        if (rep.unconstrained) {
+            // 盘面无强迫威胁（没有“黑棋一手成活四/成五”的线）：候选集**不受约束**=
+            // 全盘空点（legal:everywhere）。逐点仍做健全证明搜索以给出诚实的标注
+            // （L<2m> = 黑方 m 手内被证明必胜；W0 = 该点未被证明会输），但不做
+            // “取最好一档”的收窄——不受约束就是全部空点。
+            std::vector<Pt> all = pool;
+            std::vector<CandidateLabel> labs;
+            labs.reserve(all.size());
+            for (size_t i = 0; i < all.size(); ++i) {
+                const int x = all[i].first, y = all[i].second;
+                if (ctx.timeout) break;          // 预算用尽：剩余点不输出（未见分晓的点不标）
+                if (!b.make_move(x, y, WHITE)) continue;
+                const int m = sound_lose_steps(b, max_steps, &ctx, &tt);
+                b.undo_move();
+                if (ctx.timeout) break;          // 该点未判定：宁可不标
+                CandidateLabel lab;
+                lab.x = x;
+                lab.y = y;
+                lab.tag = (m > 0) ? 'L' : 'W';
+                lab.steps = (m > 0) ? 2 * m : 0;
+                labs.push_back(lab);
+            }
+            std::sort(labs.begin(), labs.end(),
+                      [](const CandidateLabel& a, const CandidateLabel& c) {
+                          if (a.x != c.x) return a.x < c.x;
+                          return a.y < c.y;
+                      });
+            res.labels = labs;
+            res.paths_found = static_cast<int>(labs.size());
+            res.nodes = ctx.nodes;
+            res.timeout = ctx.timeout;
+#ifndef NDEBUG
+            assert(b.hash() == h0);
+#endif
+            return res;
+        }
+
+        struct Row {
+            int x, y, steps;
+            int score;
+            char tag;
+            bool smart_only;
+        };
+        std::vector<Row> rows;
+        rows.reserve(pool.size());
+        for (size_t i = 0; i < pool.size(); ++i) {
+            if (ctx.timeout) break;
+            const int x = pool[i].first, y = pool[i].second;
+            if (!b.make_move(x, y, WHITE)) continue;
+
+            // 1) 健全 AND-OR 证明搜索（第 6 步，含吃子反驳）——权威步数。
+            int m = sound_lose_steps(b, max_steps, &ctx, &tt);
+            bool smart_only = false;
+            if (m == 0 && !ctx.timeout) {
+                // 2) 层 1 全应对 VCT（先跑，可靠但不完备）。
+                const double now = now_sec();
+                double remain = (ctx.deadline > 0.0) ? (ctx.deadline - now) : 0.0;
+                const double slice = (ctx.deadline > 0.0)
+                                         ? std::max(0.05, remain * 0.25)
+                                         : 0.0;
+                VctOutcome l1 = vct_all_response(b, params, slice);
+                if (l1.win) {
+                    m = l1.steps;
+                } else if (!l1.timeout) {
+                    // 3) 层 2 智能应对 VCT（完备但不可靠）→ 混合判定。
+                    const double now2 = now_sec();
+                    double remain2 = (ctx.deadline > 0.0) ? (ctx.deadline - now2) : 0.0;
+                    const double slice2 = (ctx.deadline > 0.0)
+                                              ? std::max(0.05, remain2 * 0.25)
+                                              : 0.0;
+                    VctOutcome l2 = vct_smart_response(b, params, slice2);
+                    if (l2.win) {
+                        // 混合判定（第二部分 2.3）：全应对无必胜、智能应对有必胜 ⇒ 该点判负。
+                        // “可靠 VCT 的防御点位集合”就是 threat_lines_through 给出的各威胁线
+                        // 阻挡点（见 mixed_defense_intersection / Part 1 的交集框架），
+                        // 因此这里只需要用智能应对层的步数兜底标注；交集本身已经体现在
+                        // 候选池里（若无交集则按最大步数这一档输出）。
+                        m = l2.steps;
+                        smart_only = true;
+                    }
+                }
+            }
+            const int score = order_score(b, x, y, WHITE);
+            b.undo_move();
+            if (ctx.timeout) break;      // 该点未判定：不输出（宁可不标，不可错标）
+
+            Row r;
+            r.x = x;
+            r.y = y;
+            r.score = score;
+            r.tag = (m > 0) ? 'L' : 'W';
+            r.steps = (m > 0) ? 2 * m : 0;
+            r.smart_only = smart_only;
+            rows.push_back(r);
+        }
+
+        // 取“最好的一档”：安全（W）优先；否则 L 步数最大者（活得最久）。
+        std::sort(rows.begin(), rows.end(), [](const Row& a, const Row& b2) {
+            const bool aw = (a.tag == 'W'), bw = (b2.tag == 'W');
+            if (aw != bw) return aw;                      // W 优先
+            if (a.steps != b2.steps) return a.steps > b2.steps;
+            if (a.score != b2.score) return a.score > b2.score;
+            if (a.x != b2.x) return a.x < b2.x;
+            return a.y < b2.y;
+        });
+
+        size_t keep = 0;
+        if (!rows.empty()) {
+            while (keep < rows.size() &&
+                   rows[keep].tag == rows[0].tag &&
+                   rows[keep].steps == rows[0].steps)
+                ++keep;
+        }
+        // 收尾（第二部分 2.4）：仍有多个候选点 → minimax 窄深判断，只留最优。
+        if (keep > 1 && !ctx.timeout) {
+            const double now = now_sec();
+            double remain = (ctx.deadline > 0.0) ? (ctx.deadline - now) : 0.0;
+            if (ctx.deadline <= 0.0 || remain > 0.01) {
+                int best_i = -1;
+                int64_t best_v = 0;
+                for (size_t i = 0; i < keep; ++i) {
+                    if (!b.make_move(rows[i].x, rows[i].y, WHITE)) continue;
+                    SearchCtx sc;
+                    sc.winmode = winmode;
+                    sc.has_deadline = true;
+                    sc.deadline = Clock::now() +
+                                  std::chrono::milliseconds(
+                                      static_cast<long long>(
+                                          std::max(0.005, remain * 0.05) * 1000.0));
+                    int64_t v = 0;
+                    try {
+                        v = alphabeta(b, 2, -INF_SCORE, INF_SCORE, 0, sc);
+                    } catch (const SearchAbort&) {
+                        v = 0;
+                    }
+                    b.undo_move();
+                    // v 是“轮到黑方”的视角分：白方取最小。
+                    if (best_i < 0 || v < best_v) { best_i = static_cast<int>(i); best_v = v; }
+                }
+                if (best_i > 0) {
+                    Row chosen = rows[static_cast<size_t>(best_i)];
+                    rows[0] = chosen;
+                    keep = 1;
+                } else if (best_i == 0) {
+                    keep = 1;
+                }
+            }
+        }
+        if (keep == 0) keep = std::min<size_t>(1, rows.size());
+
+        std::sort(rows.begin(), rows.begin() + keep, [](const Row& a, const Row& b2) {
+            if (a.x != b2.x) return a.x < b2.x;
+            return a.y < b2.y;
+        });
+        res.labels.reserve(keep);
+        for (size_t i = 0; i < keep; ++i) {
+            CandidateLabel lab;
+            lab.x = rows[i].x;
+            lab.y = rows[i].y;
+            lab.tag = rows[i].tag;
+            lab.steps = rows[i].steps;
+            res.labels.push_back(lab);
+            ++res.paths_found;
+        }
+        res.nodes = ctx.nodes;
+        res.timeout = ctx.timeout;
+#ifndef NDEBUG
+        assert(b.hash() == h0);
+#endif
+        return res;
+    }
+
+    // ---- 黑方：对 gen_moves(BLACK) 逐候选打 W/L（第 6 步语义不变） ----
     const std::vector<Move> cands = gen_moves(b, color);
     res.labels.reserve(cands.size());
     for (size_t i = 0; i < cands.size(); ++i) {
@@ -656,17 +1447,6 @@ AnalysisResult analyse(Board& b, int color, int max_steps, int winmode,
                     if (win) {
                         lab.tag = 'W';
                         lab.steps = 2 * m - 1;   // 黑第 m 手成五落在总第 2m-1 手
-                        break;
-                    }
-                }
-            } else if (!decided && color == WHITE) {
-                // 白候选 c 已落盘：黑方在 m 手内被证明必胜 ⇒ c 是必败手。
-                for (int m = 1; m <= max_steps; ++m) {
-                    const bool win = prove_black_dfs(b, m, true, &ctx, &tt);
-                    if (ctx.timeout) break;
-                    if (win) {
-                        lab.tag = 'L';
-                        lab.steps = 2 * m;       // 白第 1 手 + 黑第 m 手
                         break;
                     }
                 }

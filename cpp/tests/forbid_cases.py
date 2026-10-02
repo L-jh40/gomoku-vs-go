@@ -1,21 +1,32 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-forbid_cases.py - 禁手用例运行器（导入 导出/粘贴板.md 全部用例并逐一验证）。
+forbid_cases.py - 用例运行器（导入 导出/粘贴板.md 全部用例并逐一验证）。
 
 在仓库根目录运行：
     py -3.14 cpp/tests/forbid_cases.py     （等价于 py cpp/tests/forbid_cases.py）
 
-每个用例块做三层验证：
-  1. 案例自洽：Python 参考实现（board/rules，即 rapfi_plugin 的判定引擎）
-     算出的禁手集合与块内 forbid: 期望一致。
-  2. C++ 引擎一致：同样局面经引擎协议（size/set/checkforbidden）算出的
-     禁手集合与 Python 参考一致。
-  3. 等价组（#group: 注释行）：同组所有块的引擎禁手集合完全一致——
-     验证"白子 / 障碍 / 无气空点在代码层面完全一致"。
+文件里一共三种块（同一份 粘贴板.md 里混排；块与块之间不需要空行）：
 
-计时：每条 set 命令、checkforbidden、pat（禁手原因探测）单独计时，
-任何一步 > 0.2s 记为超时（按要求：若"显示禁手原因"导致超时可取消）。
+  1. 禁手块：代码行 + `forbid:` 行（逗号分隔代码 / None），可带 `setup:` 与 `#group:`。
+  2. 白棋候选点块：代码行 + `legal:` 行。
+       `legal:a,b`    → 候选点恰为 {a, b}
+       `legal:everywhere` → 不被约束：候选集 == 全盘空点集（按引擎语义亦可放宽，
+                            此时只报告实际数量）
+  3. 单点答案块：代码行 + 裸代码行（单点，如 `g8`）→ 候选点恰为该点。
+
+每个块做四层验证：
+  1a. 案例自洽（禁手块）：Python 参考实现（board/rules，即 rapfi_plugin 的判定引擎）
+      算出的禁手集合与块内 forbid: 期望一致。
+  1b. 候选点：用引擎 `candidates w <steps> <max_sec>` 的 cand 输出（只取 x,y 集合，
+      忽略 W/L 标签）与 legal:/裸代码行期望比对，并计时（每个块 ≤ 5 秒）。
+  2. C++ 引擎一致：同样局面经引擎协议（size/set/checkforbidden）算出的禁手集合与
+     Python 参考一致。
+  3. 等价组（#group: 注释行）：同组所有块的引擎禁手集合完全一致——验证"白子 / 障碍 /
+     无气空点在代码层面完全一致"。
+
+计时：每条 set 命令、checkforbidden、pat（禁手原因探测）单独计时，任何一步 > 0.2s
+记为超时；candidates 单块 > 5s 记为超时（任务书第 5 部分的性能要求）。
 """
 from __future__ import annotations
 
@@ -36,7 +47,10 @@ import rules  # noqa: E402
 
 CASE_FILE = os.path.join(REPO_ROOT, "导出", "粘贴板.md")
 ENGINE = os.path.join(CPP_DIR, "build", "engine.exe")
-TIME_BUDGET = 0.2  # 每步落子/查询的时间预算（秒）
+TIME_BUDGET = 0.2        # 每步落子/查询的时间预算（秒）
+CAND_STEPS = 11          # candidates w 的步数参数（与 CLI 缺省一致）
+CAND_SEC = 10.0          # candidates w 的限时参数
+CAND_BUDGET = 5.0        # 单个候选点块的时间预算（任务书第 5 部分：≤ 5 秒）
 
 
 class Engine:
@@ -78,6 +92,12 @@ class Engine:
             self.slow.append((marker, dt))
         return out
 
+    def timed_raw(self, line: str):
+        """计时发一条命令（不限 0.2s 预算），返回 (输出行, 秒)。"""
+        t0 = time.perf_counter()
+        out = self.send(line)
+        return out, time.perf_counter() - t0
+
     def close(self):
         try:
             self.proc.stdin.write("quit\n")
@@ -88,7 +108,12 @@ class Engine:
 
 
 def parse_cases(path: str):
-    """[(group, codes, forbid_expect, setup)]；setup 为 {code: 'o'|'e'}。"""
+    """[(group, codes, forbid_expect, legal_expect, setup)]；setup 为 {code: 'o'|'e'}。
+
+    legal_expect 为空表示“该块没有候选点期望”。裸代码行答案（单点）只在前面
+    那条代码行还没有 forbid:/legal: 期望、且该行只有一个坐标记号时才认作答案，
+    免得把普通的单子局面误当成上一条的答案。
+    """
     cases = []
     group = ""
     pending = None
@@ -100,10 +125,18 @@ def parse_cases(path: str):
             continue
         low = line.lower()
         if low.startswith("forbid:"):
-            if pending is not None:
-                pending["forbid"] = line.split(":", 1)[1].strip()
-                cases.append(pending)
-                pending = None
+            if pending is None:
+                raise ValueError("forbid 行前面缺少代码行: " + line)
+            pending["forbid"] = line.split(":", 1)[1].strip()
+            cases.append(pending)
+            pending = None
+            continue
+        if low.startswith("legal:"):
+            if pending is None:
+                raise ValueError("legal 行前面缺少代码行: " + line)
+            pending["legal"] = line.split(":", 1)[1].strip()
+            cases.append(pending)
+            pending = None
             continue
         if low.startswith("setup:"):
             if pending is None:
@@ -115,9 +148,18 @@ def parse_cases(path: str):
                 code, action = item.split("=")
                 pending["setup"][code.strip().lower()] = action.strip().lower()
             continue
+        # 裸代码行答案（单点）：紧跟在代码行之后，且该块还没有期望行。
+        if pending is not None and not pending["forbid"] and not pending["legal"]:
+            tokens = board_tools.split_codes(line, 25)
+            if len(tokens) == 1:
+                pending["legal"] = tokens[0]
+                cases.append(pending)
+                pending = None
+                continue
         if pending is not None:
             cases.append(pending)
-        pending = {"group": group, "codes": line, "forbid": "", "setup": {}}
+        pending = {"group": group, "codes": line, "forbid": "", "legal": "",
+                   "setup": {}}
     if pending is not None:
         cases.append(pending)
     return cases
@@ -155,8 +197,23 @@ def python_forbidden(board):
     return out
 
 
-def engine_forbidden(eng: Engine, board, case_id: str):
-    """引擎协议重摆局面 + checkforbidden + pat 计时。"""
+def empty_points(board):
+    return {(x, y) for x in range(board.size) for y in range(board.size)
+            if board.is_empty(x, y)}
+
+
+def expected_legal(board, value: str):
+    """(期望候选点集合, 是否为 everywhere)。"""
+    text = str(value or "").strip()
+    if text.lower() in ("everywhere", "any", "all", "全部", "任意"):
+        return empty_points(board), True
+    coords = {board_tools.code_to_coord(c, board.size)
+              for c in board_tools.split_codes(text, board.size)}
+    return coords - {None}, False
+
+
+def engine_setup(eng: Engine, board):
+    """把局面写进引擎（size + 全部 set）。"""
     eng.send("size %d" % board.size)
     eng.send("clear")
     for x in range(board.size):
@@ -166,6 +223,11 @@ def engine_forbidden(eng: Engine, board, case_id: str):
                 continue
             tag = {1: "b", 2: "w", 3: "o"}[v]
             eng.send("set %d %d %s" % (x, y, tag))
+
+
+def engine_forbidden(eng: Engine, board, case_id: str):
+    """引擎协议重摆局面 + checkforbidden + pat 计时。"""
+    engine_setup(eng, board)
     rows = eng.timed("checkforbidden", "%s checkforbidden" % case_id)
     got = set()
     for row in rows:
@@ -180,6 +242,31 @@ def engine_forbidden(eng: Engine, board, case_id: str):
     return got
 
 
+def engine_candidates(eng: Engine, board):
+    """candidates w 的候选点集合（只取 cand 行的 x,y）+ 耗时（秒）。"""
+    engine_setup(eng, board)
+    rows, dt = eng.timed_raw("candidates w %d %g" % (CAND_STEPS, CAND_SEC))
+    got = set()
+    timed_out = False
+    for row in rows:
+        if row in ("end", ""):
+            continue
+        if row == "timeout":
+            timed_out = True
+            continue
+        if row.startswith("error"):
+            raise RuntimeError("engine reported: %s" % row)
+        parts = row.split()
+        if len(parts) == 4 and parts[0] == "cand":
+            got.add((int(parts[1]), int(parts[2])))
+    return got, dt, timed_out
+
+
+def codes_of(board, pts):
+    return sorted(board_tools.coord_to_code(x, y, board.size)
+                  for (x, y) in pts)
+
+
 def main() -> int:
     cases = parse_cases(CASE_FILE)
     print("[cases] 导入 %d 个用例块" % len(cases), flush=True)
@@ -187,38 +274,75 @@ def main() -> int:
     failures = []
     group_results: dict[str, list] = {}
     slow_all = []
+    cand_checked = 0
+    cand_slow = []
     try:
         for i, case in enumerate(cases):
             cid = "%s#%d" % (case["group"] or "case", i + 1)
             board = build_board(case)
+            has_forbid = bool(case["forbid"].strip())
+            has_legal = bool(case["legal"].strip())
+            if has_forbid:
+                py_set = python_forbidden(board)
+                expect = board_tools.forbidden_list(case["forbid"])
+                expect_set = {board_tools.code_to_coord(c, board.size)
+                              for c in expect} - {None}
 
-            py_set = python_forbidden(board)
-            expect = board_tools.forbidden_list(case["forbid"])
-            expect_set = {board_tools.code_to_coord(c, board.size)
-                          for c in expect} - {None}
+                # rules.py 现在是 Rapfi checkForbiddenPoint 的同一算法移植
+                # （只额外支持障碍/无气阻挡与环面），所以这里只做信息报告：
+                # 真正的不一致只可能来自用例块自身（代码行与 forbid: 行不匹配），
+                # 引擎一致性检查（下面）才是硬性失败。
+                if expect_set != py_set:
+                    print("  [note] %s rules.py 与 Rapfi 差异: py %s vs 期望 %s"
+                          % (cid, sorted(py_set - expect_set),
+                             sorted(expect_set - py_set)), flush=True)
 
-            # rules.py 现在是 Rapfi checkForbiddenPoint 的同一算法移植
-            # （只额外支持障碍/无气阻挡与环面），所以这里只做信息报告：
-            # 真正的不一致只可能来自用例块自身（代码行与 forbid: 行不匹配），
-            # 引擎一致性检查（下面）才是硬性失败。
-            if expect_set != py_set:
-                print("  [note] %s rules.py 与 Rapfi 差异: py %s vs 期望 %s"
-                      % (cid, sorted(py_set - expect_set),
-                         sorted(expect_set - py_set)), flush=True)
+                eng_set = engine_forbidden(eng, board, cid)
+                # 硬性条件：引擎（Rapfi 语义）必须与 forbid 期望一致。
+                if eng_set != expect_set:
+                    failures.append(
+                        "%s 引擎不一致: 引擎 %s vs 期望 %s"
+                        % (cid, sorted(eng_set), sorted(expect_set)))
+                group_results.setdefault(case["group"], []).append((cid, eng_set))
+                slow_all.extend(eng.slow)
+                eng.slow = []
+                print("  [%s] 禁手 %d 个%s" % (cid, len(eng_set),
+                      "  (setup: %s)" % case["setup"] if case["setup"] else ""),
+                      flush=True)
 
-            eng_set = engine_forbidden(eng, board, cid)
-            # 硬性条件：引擎（Rapfi 语义）必须与 forbid 期望一致。
-            if eng_set != expect_set:
-                failures.append(
-                    "%s 引擎不一致: 引擎 %s vs 期望 %s"
-                    % (cid, sorted(eng_set), sorted(expect_set)))
+            if has_legal:
+                cand_checked += 1
+                got, dt, timed_out = engine_candidates(eng, board)
+                want, everywhere = expected_legal(board, case["legal"])
+                ok = (got == want)
+                if everywhere:
+                    # 不被约束：按规格断言“候选集 == 全盘空点集（或其超集）”。
+                    # 引擎语义若给出更小的受限集合，这里按失败处理并报告实际数量。
+                    if not ok:
+                        failures.append(
+                            "%s everywhere 候选集应等于全盘空点集(%d)，实际 %d 个: %s"
+                            % (cid, len(want), len(got), codes_of(board, got - want)[:12]))
+                elif not ok:
+                    failures.append(
+                        "%s 候选点不一致: 引擎 %s vs 期望 %s（多出 %s，缺少 %s）"
+                        % (cid, codes_of(board, got), codes_of(board, want),
+                           codes_of(board, got - want), codes_of(board, want - got)))
+                if dt > CAND_BUDGET:
+                    cand_slow.append((cid, dt))
+                    failures.append("%s candidates 用时 %.2fs > %.1fs"
+                                    % (cid, dt, CAND_BUDGET))
+                if timed_out:
+                    failures.append("%s candidates 触限流（输出 timeout）" % cid)
+                print("  [%s] 候选点 %d 个%s  用时 %.2fs%s"
+                      % (cid, len(got),
+                         "  (everywhere: 全盘 %d 空点)" % len(want)
+                         if everywhere else "",
+                         dt, "  期望=%s" % codes_of(board, want)
+                         if not everywhere else ""), flush=True)
 
-            group_results.setdefault(case["group"], []).append((cid, eng_set))
-            slow_all.extend(eng.slow)
-            eng.slow = []
-            print("  [%s] 禁手 %d 个%s" % (cid, len(eng_set),
-                  "  (setup: %s)" % case["setup"] if case["setup"] else ""),
-                  flush=True)
+            if not has_forbid and not has_legal:
+                print("  [note] %s 既无 forbid: 也无 legal: 期望，跳过" % cid,
+                      flush=True)
 
         # 等价组：同组禁手集合必须一致（含 setup 变体与组内其它块）。
         for group, results in group_results.items():
@@ -239,7 +363,11 @@ def main() -> int:
         for marker, dt in slow_all:
             print("    %.3fs  %s" % (dt, marker))
     else:
-        print("[timing] 全部步骤 ≤ %.2fs" % TIME_BUDGET)
+        print("[timing] 禁手/摆子步骤全部 ≤ %.2fs" % TIME_BUDGET)
+    if cand_slow:
+        print("[timing] 超过 %.1fs 的候选点块：" % CAND_BUDGET)
+        for cid, dt in cand_slow:
+            print("    %.3fs  %s" % (dt, cid))
 
     if failures:
         print("=" * 70)
@@ -247,8 +375,8 @@ def main() -> int:
             print("[FAIL]", f)
         print("失败=%d" % len(failures))
         return 1
-    print("禁手用例=%d  等价组=%d  全部通过 PASS"
-          % (len(cases), sum(1 for g in group_results if g)))
+    print("用例块=%d  候选点块=%d  等价组=%d  全部通过 PASS"
+          % (len(cases), cand_checked, sum(1 for g in group_results if g)))
     return 0
 
 

@@ -235,6 +235,12 @@ class GameGUI:
         self.engine_labels = {}
         # Job counter that discards stale candidate results.
         self.engine_candidates_job = 0
+        # (x, y) set of black's forbidden / no-liberty points as reported by
+        # the engine's checkforbidden (Rapfi semantics); drawn as the blue
+        # crosses in engine mode.
+        self.engine_forbidden = set()
+        # Job counter that discards stale forbidden-point results.
+        self.engine_forbidden_job = 0
         # Latest engine search progress: {"move": (x, y) | None, "depth": d}
         self._engine_info = {"move": None, "depth": 0}
         # Engine threads must never touch Tk directly (after() from a
@@ -411,6 +417,8 @@ class GameGUI:
     def _on_engine_toggle(self):
         """C++ engine check box changed: drop the engine's annotations."""
         self.engine_labels = {}
+        self._clear_engine_forbidden()
+        self._maybe_refresh_engine_forbidden()
         self.draw_board()
 
     def _on_depth_change(self):
@@ -921,6 +929,7 @@ class GameGUI:
         self.current = self.board.turn
         self.display_shift = [0, 0]
         self.engine_labels = {}
+        self._clear_engine_forbidden()
         if size_changed:
             self._select_board_size_var(self.size)
             self._apply_canvas_size()
@@ -928,6 +937,7 @@ class GameGUI:
         self.update_info()
         self.update_mode_label()
         self._maybe_refresh_engine_labels()
+        self._maybe_refresh_engine_forbidden()
         errors = list(info.get("errors") or [])
         note = f"已导入 {len(self.board.history)} 手"
         if self.pass_records:
@@ -1331,8 +1341,13 @@ class GameGUI:
                     fill=paint("white", fake), outline=paint("gray", fake),
                     stipple="gray50")
 
-        # Blue crosses: forbidden / no-liberty points (cached).
-        blue_crosses = self.board.get_blue_cross_positions()
+        # Blue crosses: forbidden / no-liberty points (cached).  With the C++
+        # engine on, the engine's checkforbidden (Rapfi semantics) decides;
+        # otherwise the Python rules.py set is used unchanged.
+        if self.engine_var.get():
+            blue_crosses = self.engine_forbidden
+        else:
+            blue_crosses = self.board.get_blue_cross_positions()
         for x, y in blue_crosses:
             if not self.board.is_empty(x, y):
                 continue
@@ -1664,6 +1679,7 @@ class GameGUI:
         self.draw_board()
         self.update_info()
         self._maybe_refresh_engine_labels()
+        self._maybe_refresh_engine_forbidden()
         self.root.after(300, self.maybe_play_ai)
 
     def try_play_white(self, x, y):
@@ -1697,6 +1713,7 @@ class GameGUI:
         self.draw_board()
         self.update_info()
         self._maybe_refresh_engine_labels()
+        self._maybe_refresh_engine_forbidden()
         self.root.after(300, self.maybe_play_ai)
 
     def human_pass(self):
@@ -1731,6 +1748,7 @@ class GameGUI:
         self.draw_board()
         self.update_info()
         self._maybe_refresh_engine_labels()
+        self._maybe_refresh_engine_forbidden()
         self.root.after(300, self.maybe_play_ai)
 
     # ------------------------------------------------------------------
@@ -1872,6 +1890,13 @@ class GameGUI:
                         self.engine_labels = (
                             {(x, y): (tag, k) for (x, y, tag, k) in labels}
                             if labels else {})
+                        self.draw_board()
+                elif kind == "forbidden":
+                    # Engine checkforbidden reply (Rapfi semantics) for the
+                    # blue crosses; a failed job reports None (= no crosses).
+                    epoch, points = payload
+                    if epoch == self.engine_forbidden_job:
+                        self.engine_forbidden = set(points) if points else set()
                         self.draw_board()
         except queue_mod.Empty:
             pass
@@ -2283,6 +2308,7 @@ class GameGUI:
         self.draw_board()
         self.update_info()
         self._maybe_refresh_engine_labels()
+        self._maybe_refresh_engine_forbidden()
         self.root.after(300, self.maybe_play_ai)
 
     def _update_engine_progress(self, depth):
@@ -2318,6 +2344,41 @@ class GameGUI:
                 pass
 
             self.engine_ui_queue.put(("labels", epoch, labels))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _clear_engine_forbidden(self):
+        """Drop the engine's forbidden set and invalidate in-flight fetches
+        (the epoch bump keeps an older reply from landing afterwards)."""
+        self.engine_forbidden = set()
+        self.engine_forbidden_job += 1
+
+    def _maybe_refresh_engine_forbidden(self):
+        """Refresh the C++ engine's forbidden points (the blue crosses) in
+        the background - engine mode only, Rapfi semantics.
+
+        Same shape as _maybe_refresh_engine_labels: both jobs run on the one
+        engine client, whose internal lock serialises the command sequences
+        (never lock the client from here).
+        """
+        if not self.engine_var.get():
+            return
+        if self.game_over or self.ai_thinking or self.replay_mode:
+            return
+        if not os.path.exists(engine_client.ENGINE_PATH):
+            return
+        self.engine_forbidden_job += 1
+        epoch = self.engine_forbidden_job
+        board = self.board
+
+        def work():
+            client = self._ensure_engine_client()
+            points = None
+            try:
+                points = client.forbidden_points(board)
+            except engine_client.EngineError:
+                pass
+            self.engine_ui_queue.put(("forbidden", epoch, points))
 
         threading.Thread(target=work, daemon=True).start()
 
@@ -2911,10 +2972,12 @@ class GameGUI:
         self.depth_label.config(text="")
         self._apply_canvas_size()
         self.engine_labels = {}
+        self._clear_engine_forbidden()
         self.draw_board()
         self.update_info()
         self.update_mode_label()
         self._maybe_refresh_engine_labels()
+        self._maybe_refresh_engine_forbidden()
         if self.current == BLACK and self.black_ai_var.get():
             self.root.after(300, self.maybe_play_ai)
         elif self.current == WHITE and self.white_ai_var.get():
@@ -2982,7 +3045,9 @@ class GameGUI:
             if self.previous_game_snapshot is not None:
                 self._restore_previous_game()
                 self.engine_labels = {}
+                self._clear_engine_forbidden()
                 self._maybe_refresh_engine_labels()
+                self._maybe_refresh_engine_forbidden()
                 return
             messagebox.showinfo("悔棋", "没有可悔的棋")
             return
@@ -3013,9 +3078,11 @@ class GameGUI:
                     if self.board.history else None
                 )
                 self.engine_labels = {}
+                self._clear_engine_forbidden()
                 self.draw_board()
                 self.update_info()
                 self._maybe_refresh_engine_labels()
+                self._maybe_refresh_engine_forbidden()
                 self.root.after(300, self.maybe_play_ai)
                 return
             # Reached the resignation point: undo the move that caused the
@@ -3039,10 +3106,12 @@ class GameGUI:
                 if self.board.history else None
             )
             self.engine_labels = {}
+            self._clear_engine_forbidden()
             self.draw_board()
             self.update_info()
             self.update_mode_label()
             self._maybe_refresh_engine_labels()
+            self._maybe_refresh_engine_forbidden()
             self.root.after(300, self.maybe_play_ai)
             return
 
@@ -3062,10 +3131,12 @@ class GameGUI:
             if self.board.history else None
         self.current = self.board.turn
         self.engine_labels = {}
+        self._clear_engine_forbidden()
         self.draw_board()
         self.update_info()
         self.update_mode_label()
         self._maybe_refresh_engine_labels()
+        self._maybe_refresh_engine_forbidden()
         self.root.after(300, self.maybe_play_ai)
 
 

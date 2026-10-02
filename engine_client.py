@@ -6,10 +6,11 @@ cpp/README.md through this class:
     size <n> / set <x> <y> <b|w|o> / play <b|w> <x> <y> -> ok|illegal
     winmode <0|1> / genmove <b|w> [max_depth] [min_sec] [max_sec] [winmode]
     candidates <b|w> [steps=11] [max_sec=10] [winmode=0] / quit
+    checkforbidden -> "x y" lines + end
 
-genmove and candidates are queries: they never change the engine's internal
-board.  Every failure (cannot start, closed pipe, unparsable line) is
-reported as EngineError.
+genmove, candidates and checkforbidden are queries: they never change the
+engine's internal board.  Every failure (cannot start, closed pipe,
+unparsable line) is reported as EngineError.
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ import os
 import subprocess
 import threading
 
-from board import BLACK, OBSTACLE
+from board import BLACK, OBSTACLE, WHITE
 
 # Repository root = the directory holding this file (also the engine's cwd).
 _ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -116,6 +117,47 @@ class EngineClient:
                 reply = self._readline()
                 if reply != "ok":
                     raise EngineError(f"play {x} {y} rejected: {reply!r}")
+
+    def forbidden_points(self, board):
+        """Black's forbidden (and no-liberty) points in `board`, Rapfi
+        semantics, as a list of (x, y).
+
+        The position is re-loaded exactly like reset() (size + one `set` per
+        occupied cell, so the engine holds the board's current snapshot), then
+        `checkforbidden` replies with "x y" lines terminated by "end".
+        """
+        with self._lock:
+            self._ensure()
+            self._send(f"size {board.size}")
+            for x in range(board.size):
+                for y in range(board.size):
+                    value = int(board.grid[x, y])
+                    if value == OBSTACLE:
+                        self._send(f"set {x} {y} o")
+                    elif value == BLACK:
+                        self._send(f"set {x} {y} b")
+                    elif value == WHITE:
+                        self._send(f"set {x} {y} w")
+            self._send("checkforbidden")
+            out = []
+            while True:
+                line = self._readline()
+                parts = line.split()
+                if not parts:
+                    continue
+                head = parts[0]
+                if head == "end":
+                    return out
+                if head == "error":
+                    raise EngineError(f"engine error: {line}")
+                if len(parts) < 2:
+                    raise EngineError(f"bad forbidden line: {line!r}")
+                try:
+                    x = int(parts[0])
+                    y = int(parts[1])
+                except ValueError:
+                    raise EngineError(f"bad forbidden line: {line!r}")
+                out.append((x, y))
 
     # ------------------------------------------------------------------
     # Search / annotation queries
