@@ -68,7 +68,9 @@ python board_tools.py --code-file 粘贴板.md          :: last line of the file
 
 ## External plugin: Rapfi / Yixin → 粘贴板.md
 
-Run `plugins/rapfi_plugin.bat` (or `py -3.14 plugins/rapfi_plugin.py`).
+Lives **outside** the program directory (`../tools/rapfi-plugin/`) so it can never
+interfere with a running game.  Run `tools\rapfi-plugin\rapfi_plugin.bat` or
+`py -3.14 tools\rapfi-plugin\rapfi_plugin.py`.
 Copy the position in Rapfi/Yixin with its own copy function, then press the
 one-click button in the plugin window: it reads the clipboard, chunks the
 coordinate string (spaces are optional - `h8i9j10` works), computes the
@@ -80,9 +82,9 @@ forbid:g9
 ```
 
 (`forbid:None` when there is no forbidden point; a blank line separates
-positions.)  The plugin only uses this project's own modules: it never edits
-gui.py and never reads or writes anything inside the Yixin / Rapfi folder -
-only the system clipboard.
+positions.)  The plugin only uses this project's own modules as a library (it
+finds the program directory by itself) and never edits gui.py and never reads
+or writes anything inside the Yixin / Rapfi folder - only the system clipboard.
 
 Reading such a file back:
 

@@ -19,7 +19,7 @@
 | `engine_client.py` | C++ 引擎子进程封装（GUI"C++引擎"模式走它，协议见 cpp/README.md） |
 | `cpp/` | C++ 引擎（make/undo+Rapfi 禁手+元组评估+alpha-beta+VCF/VCT），见 cpp/README.md |
 | `board_tools.py` | 坐标代码（`a15`/`p0`）与棋盘文本互转、导出/导入、分析 CLI（威胁、蓝叉、禁手地图、AI 着法） |
-| `plugins/rapfi_plugin.py` | 外置插件：读剪贴板里的 Rapfi/Yixin 局面 → 追加代码行 + 禁手行到 `导出/粘贴板.md`（不改 gui.py，也不改 Yixin 目录，`plugins/rapfi_plugin.bat` 可双击） |
+| `../tools/rapfi-plugin/`（在程序目录**之外**） | 外置插件：读剪贴板里的 Rapfi/Yixin 局面 → 追加代码行 + 禁手行到 `导出/粘贴板.md`；不改主程序任何文件、不读写 Yixin 目录，双击 `tools\rapfi-plugin\rapfi_plugin.bat` 运行 |
 | `tests_torus.py` | 环面/禁手/GUI/坐标读取 自动化测试（`python tests_torus.py`） |
 | `tests_text.py` | text.md 局面的自动化测试 |
 | `AI_ALGORITHM.md` | 算法逻辑说明 |
@@ -261,10 +261,10 @@ moves: a15 b15 p0 f10 ...
 - Rapfi / Yixin 复制出来的局面没有分隔符，`board_tools.split_codes(text, size)` 自己切块：字母 + 1~2 位数字贪心（`h8i9j10`→ h8/i9/j10，`a15b14`→ a15/b14，9 路时两位数超界自动退回一位），支持大写、`,;|/` 等分隔符、多余的 `1.h8` 手数（忽略）、`moves:`/`board=` 前缀、`p0/pass` Pass；无法成坐标的碎片（孤立字母、纯数字）直接丢弃
 - `board_from_code` / `parse_dump` / GUI 的导入弹窗 / CLI 全部走这个分块器，所以有空格、无空格都能读
 
-### 外置插件 plugins/rapfi_plugin.py
+### 外置插件 tools/rapfi-plugin/rapfi_plugin.py（在程序目录之外）
 - 用途：在 Rapfi / Yixin 里用它自带的复制功能复制局面，然后在插件窗口点一次按钮：读剪贴板 → 自动分块 → 算禁手 → 追加两行到 `导出/粘贴板.md`
 - 选项：棋盘尺寸、先行（黑/白）、「外部局面」（默认开：直接摆子，不做吃子/自吃判定，因为外部局面可能含本程序的 Go 规则不允许的形状）、「禁手行写成 forbid:」
-- 命令行：`py -3.14 plugins/rapfi_plugin.py --text "h8i9j10"`（打印两行 + 点阵图）、`--clipboard`（读剪贴板）
+- 命令行：`py -3.14 tools\rapfi-plugin\rapfi_plugin.py --text "h8i9j10"`（打印两行 + 点阵图）、`--clipboard`（读剪贴板）；启动时自动向上查找含 `board_tools.py` 的主程序目录，也可用环境变量 `GOMOKU_VS_GO_DIR` 指定
 - 依赖：只用本程序自己的 `board_tools` / `rules` / `board`，**不修改** gui.py，也**不读写** Yixin / Rapfi 目录里的任何文件（只读系统剪贴板）
 - 头部里的禁手开关会随导入一起生效（同步到"选择模式"里的三个禁手复选框）；只导入坐标（没有头部）时保持界面当前设置不变
 - 回放时黑棋每步都过一遍禁手判定（`board_from_code(..., check_rules=True)`，120 手约 12ms）：禁手 / 自吃 / 已占的着法**不落子**，记进 `board.import_errors`（坐标, 类型）并跳过该手（颜色照常轮转），所以不会出现"无气处黑子一闪就消失"或"禁手位置被保存"；CLI 加 `--loose` 可跳过判定
