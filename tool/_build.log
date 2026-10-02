@@ -1,0 +1,11 @@
+config.cpp
+internalConfig.cpp
+main.cpp
+argutils.cpp
+benchmark.cpp
+command.cpp
+database.cpp
+dataprep.cpp
+gomocup.cpp
+opengen.cpp
+selfplay.cpp
