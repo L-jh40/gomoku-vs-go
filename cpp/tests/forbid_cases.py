@@ -53,14 +53,17 @@ class Engine:
         self.proc.stdin.write(line + "\n")
         self.proc.stdin.flush()
         out: list[str] = []
-        n_expect = 1 if line.split(" ", 1)[0] in ("play", "undo", "hash") else 0
+        head = line.split(" ", 1)[0]
+        if head in ("size", "clear", "set", "winmode"):
+            return out                      # 这些命令不产生输出
         while True:
             row = self.proc.stdout.readline()
             if row == "":
                 raise RuntimeError("engine closed")
             row = row.rstrip("\n")
             out.append(row)
-            if row == "end" or (n_expect and len(out) >= n_expect):
+            if row == "end" or head in ("play", "undo", "hash", "pat") \
+                    and len(out) >= 1:
                 break
         dt = time.perf_counter() - t0
         if dt > TIME_BUDGET:
