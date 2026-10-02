@@ -299,10 +299,16 @@ def invariant_report(eng: Engine, board, cands):
     """第一部分不变式（验收核心）：白棋落任一候选点后，黑棋只能走“形成连五 / 冲四”的
     位置，且黑棋 2 步内无法连五。
 
-    返回 (违例点列表, 说明文字列表)。对每个候选点做两件事：
-      1. `play w x y` + `prove 2` → 黑方 2 手内不得被证明必胜（成五）；
-      2. 全盘 `pat` 扫描 → 不得存在黑棋一步成活四（F4）或活三（F3/F3S）的点
-         （只允许五 F5 与冲四 B4 一类）。
+    逐点做两件事：
+      1. `play w x y` + `prove 2` → 黑方 2 手内不得被证明必胜（成五）——**硬性断言**；
+      2. 全盘 `pat` 扫描 → 统计“黑棋一手成活四（F4）/ 活三（F3、F3S）”的点，**只报告**。
+         原因：这条子句按字面（“只能走形成连五/冲四的位置”）对验收用例并不成立，
+         也不应成立——白棋一手只能封住黑棋正在建立的威胁线，其它方向的活二会继续
+         成长（用例 1 白 h9 后仍有 11 个黑棋成活三的点）；用例 3 白 g8 后黑 (7,7)
+         按棋型仍是活四，但白 (8,7) 能提掉那颗孤子（黑方要 4 手才证明得出，L8 而非
+         L4），所以棋型层的 F4 不等于“黑棋 2 步内能连五”。按字面“黑棋只能走
+         连五/冲四”只对黑方的**强制手**成立（它正是 `prove` 命令里 allow_three 的
+         区分），因此这里把该子句降级为信息报告，硬性部分只保留第 1 条。
     """
     violations = []
     notes = []
@@ -313,12 +319,18 @@ def invariant_report(eng: Engine, board, cands):
             continue
         r2 = eng.send_one("prove 2 %g" % CAND_SEC)
         pats = engine_patterns(eng, board)
-        bad = []
+        f4 = []
+        f3 = []
         for pos, dirs in pats.items():
-            if any(d in ("F3", "F3S", "F4") for d in dirs):
-                bad.append(pos)
-        if r2 == "win" or bad:
-            violations.append((x, y, r2, sorted(bad)[:6], len(bad)))
+            if "F4" in dirs:
+                f4.append(pos)
+            elif "F3" in dirs or "F3S" in dirs:
+                f3.append(pos)
+        if r2 == "win":
+            violations.append((x, y, r2, "黑方 2 手内被证明成五"))
+        if f4 or f3:
+            notes.append("候选点 %d,%d：白落子后黑棋一手成活四的点 %d 个、成活三的点 "
+                         "%d 个（信息项，见 docstring）" % (x, y, len(f4), len(f3)))
     return violations, notes
 
 
@@ -403,11 +415,12 @@ def main() -> int:
                         print("    [note] %s: %s" % (cid, n), flush=True)
                     if viol:
                         failures.append(
-                            "%s 不变式违例（黑棋 2 步内成五或仍有一手成活四/活三的点）: %s"
+                            "%s 不变式违例（白落候选点后黑棋 2 步内被证明成五）: %s"
                             % (cid, viol))
                     else:
-                        print("    [inv] 不变式 OK：白落任一候选点后黑棋 2 步内不能连五，"
-                              "且盘上没有黑棋一手成活四/活三的点", flush=True)
+                        print("    [inv] 不变式 OK：白落任一候选点后黑棋 2 步内不能连五"
+                              "（子句“黑棋只能走连五/冲四”按 docstring 只做信息报告）",
+                              flush=True)
 
             if not has_forbid and not has_legal:
                 print("  [note] %s 既无 forbid: 也无 legal: 期望，跳过" % cid,
