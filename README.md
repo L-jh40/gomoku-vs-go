@@ -69,12 +69,13 @@ python board_tools.py --code-file 粘贴板.md          :: last line of the file
 ## External plugin: Rapfi / Yixin → 粘贴板.md
 
 Lives **outside** the program directory (`../tools/rapfi-plugin/`) so it can never
-interfere with a running game.  Run `tools\rapfi-plugin\rapfi_plugin.bat` or
+interfere with a running game, and it is the only grab/check tool kept in the
+repository.  Run `tools\rapfi-plugin\rapfi_plugin.bat` or
 `py -3.14 tools\rapfi-plugin\rapfi_plugin.py`.
-Copy the position in Rapfi/Yixin with its own copy function, then press the
-one-click button in the plugin window: it reads the clipboard, chunks the
-coordinate string (spaces are optional - `h8i9j10` works), computes the
-forbidden points and appends two lines to `导出/粘贴板.md`:
+Press **抓 Rapfi 窗口（Ctrl+C）** (or copy the position in Rapfi/Yixin yourself
+and press **读取剪贴板**): the plugin grabs the position code from the window
+(or the clipboard, spaces optional - `h8i9j10` works), shows the result right
+away and appends two lines to `导出/粘贴板.md`:
 
 ```text
 h8 p0 i7 p0 g7 p0 g8
@@ -82,9 +83,16 @@ forbid:g9
 ```
 
 (`forbid:None` when there is no forbidden point; a blank line separates
-positions.)  The plugin only uses this project's own modules as a library (it
-finds the program directory by itself) and never edits gui.py and never reads
-or writes anything inside the Yixin / Rapfi folder - only the system clipboard.
+positions.)  Yixin's Ctrl+C copies only the position code, so the forbidden
+points always come from the **Rapfi engine** itself (`INFO rule 2` +
+`YXBOARD` + `YXSHOWFORBID`, 0-based `x,y` coordinates, a pass is added when
+needed so it is Black to move) - exactly the list the Rapfi/Yixin window
+draws; the board preview marks them as `X`.  When no engine binary is found the
+plugin falls back to this project's own `rules.py` (the same Rapfi algorithm)
+and says so in the 判定来源 line instead of silently dropping points.  The
+plugin only uses this project's own modules as a library (it finds the program
+directory by itself) and never edits gui.py and never reads or writes anything
+inside the Yixin / Rapfi folder - only the system clipboard.
 
 Reading such a file back:
 

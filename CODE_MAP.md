@@ -23,10 +23,9 @@
 | `engine_client.py` | C++ 引擎子进程封装（GUI"C++引擎"模式走它，协议见 cpp/README.md） |
 | `cpp/` | C++ 引擎（make/undo+Rapfi 禁手+元组评估+alpha-beta+VCF/VCT），见 cpp/README.md |
 | `board_tools.py` | 坐标代码（`a15`/`p0`）与棋盘文本互转、导出/导入、分析 CLI（威胁、蓝叉、禁手地图、AI 着法） |
-| `../tools/rapfi-plugin/`（在程序目录**之外**） | 外置插件：读剪贴板里的 Rapfi/Yixin 局面 → 追加代码行 + 禁手行到 `导出/粘贴板.md`；不改主程序任何文件、不读写 Yixin 目录，双击 `tools\rapfi-plugin\rapfi_plugin.bat` 运行 |
+| `../tools/rapfi-plugin/rapfi_plugin.py`（在程序目录**之外**） | 唯一的 Rapfi 外置插件：**直接从 Rapfi/Yixin 窗口抓局面**（Ctrl+C）或读剪贴板 → **禁手默认问 Rapfi 引擎**（`INFO rule 2` + `YXBOARD` + `YXSHOWFORBID`，与窗口显示一致）→ 追加代码行 + 禁手行到 `导出/粘贴板.md`，预览点阵把禁手画成 X；不改主程序任何文件、不读写 Yixin 目录，双击 `tools\rapfi-plugin\rapfi_plugin.bat` 运行 |
 | `tests_torus.py` | 环面/禁手/GUI/坐标读取 自动化测试（`python tests_torus.py`） |
 | `tests_text.py` | text.md 局面的自动化测试 |
-| `plugins/rapfi_plugin.py` | Rapfi/Yixin 局面 → 导出/粘贴板.md 用例采集（判定走 Python rules） |
 | `AI_ALGORITHM.md` | 算法逻辑说明 |
 | `README.md` | 使用说明 |
 | `CODE_MAP.md` | 本文档 |
@@ -143,7 +142,7 @@
 - 保存目录/坐标文件：默认目录是程序目录下的 `导出/` 文件夹（自动创建，导出文件不会散在程序目录里），在"选择模式"窗口里可改"保存目录"（浏览）与"坐标文件"名（默认 `粘贴板.md`，可"打开"），立即生效
 - 导出棋盘(复制)（G 键）：复制完整棋盘文本到剪贴板、写 `导出/board_dump.txt`，并把**只含坐标**的一行追加到坐标文件（无落子记录时不追加）
 - 导入坐标（I 键/按钮）：弹窗内粘贴坐标或整份导出文本，也可"从文件读取…"（默认读坐标文件最后一行），选先行后回放；不合规则的着法**不会落子**，先列出（坐标+禁手类型）让用户确认是否跳过继续，选"否"则完全放弃导入、棋盘不变
-- `导出/rapfi_grab.py`（+ `rapfi_grab.bat`，双击即用）：外置抓取插件——找到标题含 `Yixin` 的窗口发 Ctrl+C（即 Yixin 的 putposclipboard）取当前局面代码，禁手默认问 Rapfi 引擎（`INFO rule 2` + `yxshowforbid`，与窗口显示一致），再把"坐标一行 + forbid: 一行"追加到同目录 `粘贴板.md` 最后面；只用主程序的库，主程序不会 import 它（该目录在 .gitignore 里，属于本地数据）
+- 抓取/判定 Rapfi 局面用程序目录**之外**的 `../tools/rapfi-plugin/rapfi_plugin.py`（见第 8 节）；程序目录里不再保留抓取脚本的副本
 
 ### 功能函数
 
@@ -278,10 +277,12 @@ moves: a15 b15 p0 f10 ...
 - Rapfi / Yixin 复制出来的局面没有分隔符，`board_tools.split_codes(text, size)` 自己切块：字母 + 1~2 位数字贪心（`h8i9j10`→ h8/i9/j10，`a15b14`→ a15/b14，9 路时两位数超界自动退回一位），支持大写、`,;|/` 等分隔符、多余的 `1.h8` 手数（忽略）、`moves:`/`board=` 前缀、`p0/pass` Pass；无法成坐标的碎片（孤立字母、纯数字）直接丢弃
 - `board_from_code` / `parse_dump` / GUI 的导入弹窗 / CLI 全部走这个分块器，所以有空格、无空格都能读
 
-### 外置插件 tools/rapfi-plugin/rapfi_plugin.py（在程序目录之外）
-- 用途：在 Rapfi / Yixin 里用它自带的复制功能复制局面，然后在插件窗口点一次按钮：读剪贴板 → 自动分块 → 算禁手 → 追加两行到 `导出/粘贴板.md`
-- 选项：棋盘尺寸、先行（黑/白）、「外部局面」（默认开：直接摆子，不做吃子/自吃判定，因为外部局面可能含本程序的 Go 规则不允许的形状）、「禁手行写成 forbid:」
-- 命令行：`py -3.14 tools\rapfi-plugin\rapfi_plugin.py --text "h8i9j10"`（打印两行 + 点阵图）、`--clipboard`（读剪贴板）；启动时自动向上查找含 `board_tools.py` 的主程序目录，也可用环境变量 `GOMOKU_VS_GO_DIR` 指定
+### 外置插件 tools/rapfi-plugin/rapfi_plugin.py（在程序目录之外，全仓库唯一的抓取插件）
+- 抓局面：点【抓 Rapfi 窗口（Ctrl+C）】给标题含关键字的窗口（默认 `Yixin`）发 Ctrl+C（= Yixin 的 putposclipboard），从剪贴板读局面代码；也可【读取剪贴板】或手工粘贴。**抓到/读到局面后自动显示判定结果**（不用再点【解析预览】）
+- 判禁手：默认问 Rapfi 引擎 `tools/rapfi/yixin-gui/engine.exe`：`INFO rule 2` + `START <size>` + `YXBOARD` + 每子一行 `x,y,颜色` + `DONE` + `YXSHOWFORBID`（**0 基坐标、不加不减**；先喂黑子再喂白子并补 pass 保证轮到黑棋，否则引擎只回 `FORBID .`）。用 `YXBOARD` 而不是 `BOARD`，避免引擎顺手搜索几十秒。引擎不可用时回退到本程序 `rules.py`（同一 Rapfi 算法移植），预览里写明**判定来源**，且绝不把已有禁手点抹成 `forbid:None`
+- 预览点阵把禁手点画成 **X**（`1`=黑 `2`=白 `.`=空 `#`=障碍）
+- 选项：棋盘尺寸、先行（黑/白）、「外部局面」（默认开：直接摆子，不做吃子/自吃判定）、「禁手行写成 forbid:」、「禁手问 Rapfi 引擎」、窗口关键字
+- 命令行：`--text "h8i9j10"` / `--clipboard` / `--grab [--force]` / `--append [--out 文件]` / `--engine 路径` / `--no-engine` / `--window 关键字`；启动时自动向上查找含 `board_tools.py` 的主程序目录，也可用环境变量 `GOMOKU_VS_GO_DIR` 指定，引擎可用 `RAPFI_ENGINE` 指定
 - 依赖：只用本程序自己的 `board_tools` / `rules` / `board`，**不修改** gui.py，也**不读写** Yixin / Rapfi 目录里的任何文件（只读系统剪贴板）
 - 头部里的禁手开关会随导入一起生效（同步到"选择模式"里的三个禁手复选框）；只导入坐标（没有头部）时保持界面当前设置不变
 - 回放时黑棋每步都过一遍禁手判定（`board_from_code(..., check_rules=True)`，120 手约 12ms）：禁手 / 自吃 / 已占的着法**不落子**，记进 `board.import_errors`（坐标, 类型）并跳过该手（颜色照常轮转），所以不会出现"无气处黑子一闪就消失"或"禁手位置被保存"；CLI 加 `--loose` 可跳过判定
