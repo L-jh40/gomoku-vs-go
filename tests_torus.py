@@ -475,7 +475,8 @@ def test_gui_torus():
           and "跳过 1 手" in note_after_import,
           note_after_import)
 
-    # exports live in their own folder by default
+    # exports live in their own folder by default (never write into the
+    # real folder here: only check the path, then use a scratch sub-folder)
     default_dir = g._default_save_dir()
     check("default export folder is a sub-folder",
           os.path.basename(default_dir) == "导出"
@@ -483,25 +484,24 @@ def test_gui_torus():
               os.path.abspath(__file__)),
           default_dir)
     saved_dir = g.save_dir_var.get()
-    g.save_dir_var.set(default_dir)
-    os.rmdir(default_dir) if os.path.isdir(default_dir) and not os.listdir(default_dir) else None
+    scratch = os.path.join(tmp_dir, "导出", "_tmp_test")
+    g.save_dir_var.set(scratch)
     created = g._save_dir()
     check("the export folder is created on demand",
-          os.path.isdir(created) and created == default_dir, created)
+          os.path.isdir(created) and created == scratch, created)
     # both export files are written into that folder
     g.new_game()
     root.update()
     g.try_play_black(7, 7)
     g.export_board()
-    codes_in_folder = os.path.join(default_dir, "粘贴板.md")
-    dump_in_folder = os.path.join(default_dir, "board_dump.txt")
+    codes_in_folder = os.path.join(scratch, "粘贴板.md")
+    dump_in_folder = os.path.join(scratch, "board_dump.txt")
     check("G writes both files into the export folder",
           os.path.exists(codes_in_folder) and os.path.exists(dump_in_folder),
-          str(sorted(os.listdir(default_dir))))
+          str(sorted(os.listdir(scratch))))
     check("the exported code line is the played move",
-          open(codes_in_folder, encoding="utf-8").read().strip() == "h8")
-    os.remove(codes_in_folder)
-    os.remove(dump_in_folder)
+          open(codes_in_folder, encoding="utf-8").read().strip() == "h8",
+          repr(open(codes_in_folder, encoding="utf-8").read()))
     g.save_dir_var.set(saved_dir)
     shutil.rmtree(tmp_dir, ignore_errors=True)
 
@@ -724,8 +724,132 @@ def test_forbidden():
           (7, 6) in incremental, str(sorted(incremental)))
     assert all(cond for _name, cond in results)
 
+
+def test_rapfi_reader():
+    """Rapfi/Yixin codes without spaces and the external plugin helpers."""
+    import board_tools as bt
+    ok = []
+    def check(name, cond, detail=""):
+        ok.append((name, bool(cond)))
+        print(("PASS" if cond else "FAIL"), "-", name, detail)
+
+    # --- auto chunking: with and without separators ---
+    check("spaced codes split",
+          bt.split_codes("h8 i9 p0") == ["h8", "i9", "p0"],
+          str(bt.split_codes("h8 i9 p0")))
+    check("Rapfi codes without spaces split",
+          bt.split_codes("h8i9j10") == ["h8", "i9", "j10"],
+          str(bt.split_codes("h8i9j10")))
+    check("uppercase / commas / semicolons split",
+          bt.split_codes("H8,I9;J10") == ["h8", "i9", "j10"],
+          str(bt.split_codes("H8,I9;J10")))
+    check("two-digit rows split",
+          bt.split_codes("a15b14") == ["a15", "b14"],
+          str(bt.split_codes("a15b14")))
+    check("move numbers are dropped",
+          bt.split_codes("1.h8 2.i9") == ["h8", "i9"],
+          str(bt.split_codes("1.h8 2.i9")))
+    check("pass in a spaceless list",
+          bt.split_codes("h8i9p0j10") == ["h8", "i9", "p0", "j10"],
+          str(bt.split_codes("h8i9p0j10")))
+    check("a leading moves: label is ignored",
+          bt.split_codes("moves: h8i9") == ["h8", "i9"],
+          str(bt.split_codes("moves: h8i9")))
+    check("9x9: a two-digit chunk falls back to one digit",
+          bt.split_codes("e5f6", size=9) == ["e5", "f6"],
+          str(bt.split_codes("e5f6", size=9)))
+
+    # --- the same position with and without spaces ---
+    spaced = "e8 o15 f8 o14 j8 o13 k8 o12"
+    b1, _s1 = bt.board_from_code(spaced, size=15, first=bt.BLACK,
+                                 gomoku=True)
+    b2, _s2 = bt.board_from_code("e8o15f8o14j8o13k8o12", size=15,
+                                 first=bt.BLACK, gomoku=True)
+    check("spaceless and spaced codes give the same board",
+          b1.grid.tobytes() == b2.grid.tobytes(),
+          str(b1.grid.tobytes() == b2.grid.tobytes()))
+    check("external (gomoku) mode keeps every stone",
+          len(b2.history) == 8 and b2.grid[7, 4] == bt.BLACK,
+          "%d stones" % len(b2.history))
+    # a fouled position must be readable (the Go layer would refuse it)
+    b3, _s3 = bt.board_from_code(spaced + " h8", size=15, first=bt.BLACK,
+                                 gomoku=False)
+    check("Go rules refuse the three-three stone (reference)",
+          b3.grid[7, 7] == bt.EMPTY and b3.import_errors,
+          str(b3.import_errors))
+    b4, _s4 = bt.board_from_code(spaced + " h8", size=15, first=bt.BLACK,
+                                 gomoku=True)
+    check("gomoku mode accepts it (external position)",
+          b4.grid[7, 7] == bt.BLACK, str(b4.grid[7, 7]))
+
+    # --- the two output lines ---
+    block, board, info, fouls = bt.position_block(spaced, size=15,
+                                                  gomoku=True)
+    lines = block.split(chr(10))
+    check("block is code line + forbid line (粘贴板.md format)",
+          lines[0] == spaced and lines[1] == "forbid:h8",
+          repr(lines[:2]))
+    check("the forbidden point and type are reported",
+          fouls == [("h8", "three_three")], str(fouls))
+    _b_ok, _s_ok = bt.board_from_code("h8 i9", size=15, first=bt.BLACK,
+                                      gomoku=True)
+    check("no forbidden point -> empty list",
+          bt.forbidden_codes(_b_ok) == [], str(bt.forbidden_codes(_b_ok)))
+    bare, _bd, _info, _f = bt.position_block(spaced, size=15, gomoku=True,
+                                             forbidden_label=False)
+    check("the forbidden label can be turned off",
+          bare.split(chr(10))[1] == "h8", repr(bare))
+    none_block, _nb, _ni, _nf = bt.position_block("h8 i9", size=15,
+                                                  gomoku=True)
+    check("no forbidden point is written as forbid:None",
+          none_block.split(chr(10))[1] == "forbid:None", repr(none_block))
+    check("forbid values are parsed",
+          bt.forbidden_list("j10,h9,h8") == ["j10", "h9", "h8"]
+          and bt.forbidden_list("forbid:None") == []
+          and bt.forbidden_list("") == [],
+          str(bt.forbidden_list("j10,h9,h8")))
+    check("a forbid: line is not read as a move line",
+          bt.parse_dump("h8 i9" + chr(10) + "forbid:g9")[0].history.__len__()
+          == 2,
+          "2 stones")
+
+    # --- reading the file back ---
+    import os as _os
+    import shutil as _shutil
+    tmp_dir = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)),
+                            "_tmp_rapfi")
+    _shutil.rmtree(tmp_dir, ignore_errors=True)
+    _os.makedirs(tmp_dir)
+    path = _os.path.join(tmp_dir, "粘贴板.md")
+    open(path, "w", encoding="utf-8").write("#basic" + chr(10))
+    bt.append_position(path, block)
+    bt.append_position(path, bt.position_block("h8i9", gomoku=True)[0])
+    text = open(path, encoding="utf-8").read()
+    check("each position is appended on its own lines + blank line",
+          text == ("#basic" + chr(10)
+                   + "e8 o15 f8 o14 j8 o13 k8 o12" + chr(10) + "forbid:h8"
+                   + chr(10) + chr(10) + "h8 i9" + chr(10) + "forbid:None"
+                   + chr(10) + chr(10)),
+          repr(text))
+    check("the last code line is found (forbid lines skipped)",
+          bt.codes_from_text(text) == "h8 i9", bt.codes_from_text(text))
+    check("the last forbid line is found",
+          bt.forbidden_from_text(text) == "None",
+          repr(bt.forbidden_from_text(text)))
+    pairs = bt.blocks_from_text(text)
+    check("file pairs are readable (code, forbid)",
+          pairs == [(spaced, "h8"), ("h8 i9", "None")], str(pairs))
+    _shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    fails = [x for x in ok if not x[1]]
+    print()
+    print("TOTAL:", len(ok), "FAILED:", len(fails))
+    assert not fails
+
+
 if __name__ == "__main__":
     test_rules_torus()
     test_gui_torus()
     test_forbidden()
+    test_rapfi_reader()
     print("All torus checks passed.")

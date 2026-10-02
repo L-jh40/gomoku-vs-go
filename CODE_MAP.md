@@ -19,7 +19,8 @@
 | `engine_client.py` | C++ 引擎子进程封装（GUI"C++引擎"模式走它，协议见 cpp/README.md） |
 | `cpp/` | C++ 引擎（make/undo+Rapfi 禁手+元组评估+alpha-beta+VCF/VCT），见 cpp/README.md |
 | `board_tools.py` | 坐标代码（`a15`/`p0`）与棋盘文本互转、导出/导入、分析 CLI（威胁、蓝叉、禁手地图、AI 着法） |
-| `tests_torus.py` | 环面/禁手/GUI 自动化测试（`python tests_torus.py`） |
+| `plugins/rapfi_plugin.py` | 外置插件：读剪贴板里的 Rapfi/Yixin 局面 → 追加代码行 + 禁手行到 `导出/粘贴板.md`（不改 gui.py，也不改 Yixin 目录，`plugins/rapfi_plugin.bat` 可双击） |
+| `tests_torus.py` | 环面/禁手/GUI/坐标读取 自动化测试（`python tests_torus.py`） |
 | `tests_text.py` | text.md 局面的自动化测试 |
 | `AI_ALGORITHM.md` | 算法逻辑说明 |
 | `README.md` | 使用说明 |
@@ -251,6 +252,20 @@ moves: a15 b15 p0 f10 ...
 
 - 点阵：`1`=黑子，`2`=白子 / 障碍 / 无气（黑落子即自吃）位置，`0`=空点；障碍写在 `# obstacles=`、无气空点写在 `# no_liberty=` 头部，导入时据此还原（无气点仍是空点，不会被读成白子）
 - 无气判定：`board.get_no_liberty_positions()` 扫描**全部**空点（不限于 relevant 点），四周被黑/障碍填满且整块无气才算；导出时约 0.6ms（15 路稠密盘），不在 AI 热路径上
+
+### 禁手行格式（粘贴板.md）
+- 每个局面两行：第一行坐标（空格分隔，Pass 写 `p0`），第二行 `forbid:h8,i7`（逗号分隔，无禁手写 `forbid:None`），两组之间空一行；`#basic`/`#multiple` 这类以 `#` 开头的行是分组标题，会被读取器跳过
+- 读取接口：`codes_from_text`（最后一行的代码，自动跳过 `forbid:` 行）、`forbidden_from_text`（最后一条 `forbid:` 值）、`forbidden_list`（`"h8,i7"` → 列表）、`blocks_from_text`（整份文件 → [(代码行, forbid 值)]）
+
+### 无空格坐标自动分块
+- Rapfi / Yixin 复制出来的局面没有分隔符，`board_tools.split_codes(text, size)` 自己切块：字母 + 1~2 位数字贪心（`h8i9j10`→ h8/i9/j10，`a15b14`→ a15/b14，9 路时两位数超界自动退回一位），支持大写、`,;|/` 等分隔符、多余的 `1.h8` 手数（忽略）、`moves:`/`board=` 前缀、`p0/pass` Pass；无法成坐标的碎片（孤立字母、纯数字）直接丢弃
+- `board_from_code` / `parse_dump` / GUI 的导入弹窗 / CLI 全部走这个分块器，所以有空格、无空格都能读
+
+### 外置插件 plugins/rapfi_plugin.py
+- 用途：在 Rapfi / Yixin 里用它自带的复制功能复制局面，然后在插件窗口点一次按钮：读剪贴板 → 自动分块 → 算禁手 → 追加两行到 `导出/粘贴板.md`
+- 选项：棋盘尺寸、先行（黑/白）、「外部局面」（默认开：直接摆子，不做吃子/自吃判定，因为外部局面可能含本程序的 Go 规则不允许的形状）、「禁手行写成 forbid:」
+- 命令行：`py -3.14 plugins/rapfi_plugin.py --text "h8i9j10"`（打印两行 + 点阵图）、`--clipboard`（读剪贴板）
+- 依赖：只用本程序自己的 `board_tools` / `rules` / `board`，**不修改** gui.py，也**不读写** Yixin / Rapfi 目录里的任何文件（只读系统剪贴板）
 - 头部里的禁手开关会随导入一起生效（同步到"选择模式"里的三个禁手复选框）；只导入坐标（没有头部）时保持界面当前设置不变
 - 回放时黑棋每步都过一遍禁手判定（`board_from_code(..., check_rules=True)`，120 手约 12ms）：禁手 / 自吃 / 已占的着法**不落子**，记进 `board.import_errors`（坐标, 类型）并跳过该手（颜色照常轮转），所以不会出现"无气处黑子一闪就消失"或"禁手位置被保存"；CLI 加 `--loose` 可跳过判定
 - 坐标文件（默认 `粘贴板.md`）每次导出追加一行纯坐标，方便以后按行读取测试；`board_tools.codes_from_text` 会自动跳过头部与点阵行，取最后一行坐标

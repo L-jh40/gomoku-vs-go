@@ -66,6 +66,34 @@ python board_tools.py --code "h8 h7 g7 p0" --size 15
 python board_tools.py --code-file 粘贴板.md          :: last line of the file
 ```
 
+## External plugin: Rapfi / Yixin → 粘贴板.md
+
+Run `plugins/rapfi_plugin.bat` (or `py -3.14 plugins/rapfi_plugin.py`).
+Copy the position in Rapfi/Yixin with its own copy function, then press the
+one-click button in the plugin window: it reads the clipboard, chunks the
+coordinate string (spaces are optional - `h8i9j10` works), computes the
+forbidden points and appends two lines to `导出/粘贴板.md`:
+
+```text
+h8 p0 i7 p0 g7 p0 g8
+forbid:g9
+```
+
+(`forbid:None` when there is no forbidden point; a blank line separates
+positions.)  The plugin only uses this project's own modules: it never edits
+gui.py and never reads or writes anything inside the Yixin / Rapfi folder -
+only the system clipboard.
+
+Reading such a file back:
+
+```python
+import board_tools as bt
+bt.codes_from_text(text)      # last coordinate line (forbid: lines skipped)
+bt.forbidden_from_text(text)  # last forbid: value
+bt.blocks_from_text(text)     # [(codes_line, forbid_value), ...]
+bt.split_codes("h8i9j10")     # ['h8', 'i9', 'j10']
+```
+
 ## Board injection helper
 
 Tests can inject a pattern and use AI functions without a GUI:

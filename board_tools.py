@@ -19,7 +19,9 @@ Usage:
     python board_tools.py board_dump.txt
     python board_tools.py board_dump.txt --ai black --depth 2
     python board_tools.py --code "h8 h7 g7 p0" --size 15
+    python board_tools.py --code "h8i9j10" --size 15      (no spaces: ok)
     python board_tools.py --code-file 粘贴板.md
+    python board_tools.py board_dump.txt --gomoku          (external position)
 """
 from __future__ import annotations
 
@@ -45,7 +47,8 @@ ROW_CHARS = set("0123456789Xx")
 PASS_WORDS = ("p0", "pass", "p")
 CODE_LABELS = ("moves:", "moves=", "move:", "code:", "code=",
                "board:", "board=", "局面:", "坐标:", "着法:")
-FORBIDDEN_LABELS = ("forbidden:", "forbidden=", "禁手:", "禁手=")
+FORBIDDEN_LABELS = ("forbid:", "forbid=", "forbidden:", "forbidden=",
+                    "禁手:", "禁手=", "禁手：")
 
 
 def split_codes(text: str, size: int = 15) -> list:
@@ -161,6 +164,71 @@ def codes_line(codes) -> str:
     return " ".join(codes)
 
 
+def forbidden_codes(board):
+    """[(code, foul_type)] for every empty point where Black is forbidden.
+
+    Only Renju fouls (three-three / four-four / overline) count here; a
+    no-liberty point is reported as a self-capture but is not a Renju
+    forbidden move, so it is left out (see get_no_liberty_positions).
+    """
+    out = []
+    for x in range(board.size):
+        for y in range(board.size):
+            if not board.is_empty(x, y):
+                continue
+            ok, ftype = rules.is_black_legal_move(board, x, y)
+            if not ok and ftype in ("three_three", "four_four",
+                                    "overline"):
+                out.append((coord_to_code(x, y, board.size), ftype))
+    out.sort()
+    return out
+
+
+def position_lines(board, moves=None, forbidden_label=True):
+    """The two lines the Rapfi plugin writes: code + forbidden points.
+
+    Returns (moves_line, forbidden_line, fouls) where fouls is the list of
+    (code, foul_type) pairs behind the forbidden line.
+    """
+    if moves is None:
+        moves = moves_from_board(board)
+    elif isinstance(moves, str):
+        moves = split_codes(moves, board.size)
+    moves_line = codes_line(moves)
+    fouls = forbidden_codes(board)
+    codes = ",".join(code for code, _ftype in fouls)
+    if forbidden_label:
+        # Same format as the hand-written 粘贴板.md: "forbid:h8,i7" /
+        # "forbid:None".
+        forbidden_line = "forbid:" + (codes if codes else "None")
+    else:
+        forbidden_line = codes
+    return moves_line, forbidden_line, fouls
+
+
+def position_block(text, size: int = 15, first: int = BLACK,
+                   gomoku: bool = True, forbidden_label: bool = True):
+    """Parse a code/dump and build the block for 粘贴板.md.
+
+    Returns (block, board, info, fouls).  The block is the move-code line
+    followed by the forbidden-position line; when the input is a board
+    diagram (no move order) the full dump rows are used instead of a code
+    line, so nothing is lost.
+    """
+    board, _named, info = parse_dump(text, size=size, first=first,
+                                     gomoku=gomoku)
+    moves = split_codes(info.get("moves") or "", board.size)
+    moves_line, forbidden_line, fouls = position_lines(
+        board, moves, forbidden_label=forbidden_label)
+    if info.get("source") == "rows" or not moves_line:
+        block = board_to_text(board, moves=moves)
+        if forbidden_line:
+            block += chr(10) + forbidden_line
+    else:
+        block = moves_line + chr(10) + forbidden_line
+    return block, board, info, fouls
+
+
 def pass_records_from_codes(codes) -> list:
     """Rebuild the GUI pass list (stones played before each pass)."""
     out = []
@@ -206,8 +274,23 @@ def codes_from_text(text: str) -> str:
     return candidate
 
 
+def forbidden_list(value) -> list:
+    """Codes of a "forbid:" value, e.g. "h8,i7" -> ["h8", "i7"].
+
+    "None" / "none" / "-" / an empty value means "no forbidden point".
+    A full line ("forbid:h8,i7") or a bare list are both accepted.
+    """
+    text = str(value or "").strip()
+    low = text.lower()
+    if any(low.startswith(l) for l in FORBIDDEN_LABELS):
+        text = _line_value(text, FORBIDDEN_LABELS)
+    if text.strip().lower() in ("", "none", "-", "null", "无"):
+        return []
+    return [x for x in split_codes(text, 25) if x]
+
+
 def forbidden_from_text(text: str) -> str:
-    """Last "forbidden:" line of a file written by the Rapfi plugin."""
+    """Last "forbid:" line of a file written by the Rapfi plugin."""
     out = ""
     for raw in text.splitlines():
         line = raw.strip()
@@ -217,16 +300,49 @@ def forbidden_from_text(text: str) -> str:
     return out
 
 
+def blocks_from_text(text: str) -> list:
+    """[(codes_line, forbid_value)] pairs of a 粘贴板.md style file.
+
+    A code line followed by a "forbid:" line forms one position; a code
+    line without one gets "" as its forbid value (e.g. the GUI appends
+    bare code lines).
+    """
+    out = []
+    pending = None
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        lower = line.lower()
+        if any(lower.startswith(l) for l in FORBIDDEN_LABELS):
+            if pending is not None:
+                out.append((pending, _line_value(line, FORBIDDEN_LABELS)))
+                pending = None
+            continue
+        if any(lower.startswith(l) for l in CODE_LABELS):
+            line = _line_value(line, CODE_LABELS)
+        stripped = line.replace(" ", "")
+        if stripped and all(ch in ROW_CHARS for ch in stripped):
+            continue  # board row of a dump
+        if pending is not None:
+            out.append((pending, ""))
+        pending = line
+    if pending is not None:
+        out.append((pending, ""))
+    return out
+
+
 def codes_from_file(path: str) -> str:
     with open(path, "r", encoding="utf-8") as f:
         return codes_from_text(f.read())
 
 
-def append_position(path: str, block: str) -> str:
+def append_position(path: str, block: str, blank_line: bool = True) -> str:
     """Append one block (one position) on its own lines and return path.
 
     A newline is added in front when the file does not end with one, so
-    every block keeps its own line and can be read back line by line.
+    every block keeps its own line and can be read back line by line;
+    blank_line adds the empty separator line used by 粘贴板.md.
     """
     prefix = ""
     if os.path.exists(path):
@@ -234,8 +350,9 @@ def append_position(path: str, block: str) -> str:
             old = f.read()
         if old and not old.endswith("\n"):
             prefix = "\n"
+    tail = "\n\n" if blank_line else "\n"
     with open(path, "a", encoding="utf-8") as f:
-        f.write(prefix + block.rstrip("\n") + "\n")
+        f.write(prefix + block.rstrip("\n") + tail)
     return path
 
 
@@ -354,7 +471,7 @@ def board_from_code(text: str, size: int = 15, first: int = BLACK,
 
 
 def parse_dump(text: str, torus=None, size=None, first=None,
-               check_rules: bool = True):
+               check_rules: bool = True, gomoku: bool = False):
     """Parse dump text or a bare code line.
 
     Returns (board, named_points, info).  Header values win; torus/size/
@@ -377,7 +494,11 @@ def parse_dump(text: str, torus=None, size=None, first=None,
             if body.lower().startswith("obstacles"):
                 header["obstacles"] = body.split("=", 1)[1].strip()
             continue
-        if line.lower().startswith("moves:"):
+        lower = line.lower()
+        if any(lower.startswith(l) for l in FORBIDDEN_LABELS):
+            header["forbid_line"] = _line_value(line, FORBIDDEN_LABELS)
+            continue
+        if lower.startswith("moves:") or lower.startswith("moves="):
             moves_line = line.split(":", 1)[1].strip()
             continue
         stripped = line.replace(" ", "")
@@ -410,10 +531,11 @@ def parse_dump(text: str, torus=None, size=None, first=None,
         board, _side = board_from_code(moves_line, size=size_value,
                                        first=first_value, torus=torus_flag,
                                        obstacles=obstacles,
-                                       check_rules=check_rules)
+                                       check_rules=check_rules,
+                                       gomoku=gomoku)
         info = {"size": size_value, "torus": torus_flag,
                 "first": first_value, "obstacles": obstacles,
-                "no_liberty": no_liberty,
+                "no_liberty": no_liberty, "gomoku": bool(gomoku),
                 "moves": moves_line, "source": "moves",
                 "errors": list(getattr(board, "import_errors", []))}
         return _finish_dump(board, named, info, header)
@@ -439,7 +561,7 @@ def parse_dump(text: str, torus=None, size=None, first=None,
             board.grid[cell] = OBSTACLE
     info = {"size": board.size, "torus": torus_flag,
             "first": first_value, "obstacles": obstacles,
-            "no_liberty": no_liberty,
+            "no_liberty": no_liberty, "gomoku": bool(gomoku),
             "moves": "", "source": "rows", "errors": []}
     return _finish_dump(board, named, info, header)
 
@@ -462,12 +584,12 @@ def _finish_dump(board, named, info, header):
     return board, named, info
 
 
-def load_board(path, torus=None, check_rules=True):
+def load_board(path, torus=None, check_rules=True, gomoku=False):
     """Parse a dump file into a HybridBoard.  Returns (board, named_points)."""
     with open(path, "r", encoding="utf-8") as f:
         text = f.read()
     board, named, _info = parse_dump(text, torus=torus,
-                                     check_rules=check_rules)
+                                     check_rules=check_rules, gomoku=gomoku)
     return board, named
 
 
@@ -511,6 +633,7 @@ def main(argv):
     if not argv:
         print(__doc__)
         return 1
+    gomoku = "--gomoku" in argv or "--external" in argv
     if argv[0] in ("--code", "--code-file"):
         if argv[0] == "--code":
             text = argv[1] if len(argv) > 1 else ""
@@ -521,19 +644,25 @@ def main(argv):
             fallback_size = int(argv[argv.index("--size") + 1])
         first = WHITE if "--white-first" in argv else None
         board, named, info = parse_dump(text, size=fallback_size, first=first,
-                                        check_rules="--loose" not in argv)
+                                        check_rules="--loose" not in argv,
+                                        gomoku=gomoku)
     else:
         path = argv[0]
         torus = True if "--torus" in argv else None
         board, _named, info = parse_dump(
             open(path, "r", encoding="utf-8").read(), torus=torus,
-            check_rules="--loose" not in argv)
+            check_rules="--loose" not in argv, gomoku=gomoku)
         named = _named
 
     for token, ftype in info.get("errors") or []:
         print("skipped illegal move: %s (%s)" % (token, ftype))
 
     analyse(board, named)
+
+    moves_line, forbidden_line, fouls = position_lines(board, info.get("moves"))
+    print()
+    print("code line:      " + moves_line)
+    print("forbidden line: " + forbidden_line)
 
     if "--ai" in argv:
         idx = argv.index("--ai")
