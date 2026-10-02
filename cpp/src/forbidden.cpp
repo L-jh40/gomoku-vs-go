@@ -6,8 +6,12 @@
 //   2. 任一方向 OL → 长连禁手；B4/F4 累计 ≥2 方向 → 四四禁手。
 //      落子后恰好成五（F5）合法且获胜——phase-1 组合表已把 F5 排在 FORBID 之前。
 //   3. 三三：临时落子（真实 make_move，保证棋型缓存一致，判定后 undo），
-//      对每个 F3/F3S 方向向两侧各最多 4 格（MaxFindDist）找延伸点，遇到第一个
-//      空点即判定。延伸点满足以下任一即计入一个“真三”：
+//      对每个 F3/F3S 方向先向负方向、再向正方向找延伸点（穿过连续黑子后的
+//      第一个空点，最多 4 格 MaxFindDist），遇到第一个空点即判定。**每个方向
+//      最多贡献 1 个“真三”**：负方向判定成功就直接跳到下一个方向、不再看
+//      正方向；负方向失败（空点不合格 / 被阻挡 / 4 格内全是黑子）才看正方向
+//      —— 这是 Rapfi 源码里 goto next_direction 的语义。延伸点满足以下任一
+//      即计入一个“真三”：
 //        a) pattern4[BLACK] == B_FLEX4（可延伸成活四）；
 //        b) pattern(BLACK, dir) == F5（直接成五）；
 //        c) pattern4[BLACK] == FORBID 且 pattern(BLACK, dir) == F4 且
@@ -44,7 +48,12 @@ int count_true_threes(Board& b, int x, int y, const uint8_t p[4], int depth) {
         const uint8_t q = p[d];
         if (q != F3 && q != F3S) continue;
 
-        for (int sgn = -1; sgn <= 1 && threes < 2; sgn += 2) {
+        // Rapfi 的扫描次序：先向负方向找穿过连续黑子后的第一个空点；该点
+        // 判定成功就计 1 个真三并直接跳到下一个方向（不再看正方向），失败
+        // 才继续向正方向找。因此**每个方向最多计 1 个真三**。
+        bool counted = false;
+        for (int pass = 0; pass < 2 && !counted; ++pass) {
+            const int sgn = (pass == 0) ? -1 : 1;
             int cx = x, cy = y;
             for (int i = 0; i < MaxFindDist; ++i) {
                 cx += sgn * FDX[d];
@@ -59,7 +68,10 @@ int count_true_threes(Board& b, int x, int y, const uint8_t p[4], int depth) {
                     bool ok = (p4c == B_FLEX4) || (pc == F5) ||
                               (p4c == FORBID && pc == F4 &&
                                !check_forbidden_impl(b, cx, cy, depth + 1));
-                    if (ok) ++threes;
+                    if (ok) {
+                        ++threes;
+                        counted = true;
+                    }
                     break;
                 } else if (v != BLACK) {
                     break;  // 白 / 障碍 / 无气空点阻挡（统一状态）
