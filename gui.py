@@ -2311,7 +2311,9 @@ class GameGUI:
             client = self._ensure_engine_client()
             labels = None
             try:
-                labels = client.candidates(color, 11, 10, winmode)
+                # 响应优先：自动刷新的 W/L 标注最多占引擎 2 秒，避免下一步
+                # AI 落子（同一引擎进程串行）被深证明搜索拖慢。
+                labels = client.candidates(color, 11, 2, winmode)
             except engine_client.EngineError:
                 pass
 
