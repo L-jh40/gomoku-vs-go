@@ -1,4 +1,4 @@
-@echo off
+@echo on
 rem 构建 Rapfi CLI（只读 Rapfi 源码，所有产物输出到本仓库 tool\rapfi_build）
 call "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\VC\Auxiliary\Build\vcvars64.bat" >nul 2>&1
 set RAPFI=C:\Users\lin\Downloads\rapfi-250615\rapfi-250615\Rapfi
