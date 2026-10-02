@@ -681,6 +681,10 @@ void Board::eval_update_after_move(int pos, int color, HistoryEntry& h,
         dead_[ci] = static_cast<uint8_t>(nd);
     }
 
+    // (4b) Rapfi 棋型缓存：触碰集合覆盖了落子点 / 提子 / 无气变化格及其
+    //      线邻域，以其为圆心刷新半径 5 内所有格的棋型缓存。
+    refresh_patterns(tlist, tn);
+
     // (5) 风险：受影响棋块的贡献差量（同一坐标区域上取落子前后）。
     const int risk_after = risk_of_cells(riskCells, rn);
     risk_ += risk_after - risk_before;
@@ -944,10 +948,14 @@ bool Board::undo_move() {
     {
         uint16_t centers[1 + MAX_CELLS];
         int nc = 0;
-        centers[nc++] = h.pos;
+        centers[nc++] = static_cast<uint16_t>(h.pos);
         for (int i = 0; i < h.cap_count; ++i)
             centers[nc++] = captured_pool_[h.cap_begin + i];
         refresh_lines(centers, nc, false);
+        // 逐格缓存（self_cap_ / dead_）与棋型缓存增量重算——不再整盘重建。
+        uint16_t tlist[MAX_CELLS];
+        const int tn = post_move_cell_flags(centers, nc, tlist);
+        refresh_patterns(tlist, tn);
     }
     territory_ = h.old_territory;
     risk_      = h.old_risk;
@@ -955,7 +963,6 @@ bool Board::undo_move() {
     white_count_    = h.old_white_count;
     obstacle_count_ = h.old_obstacle_count;
     alive_windows_  = h.old_alive_windows;
-    rebuild_cell_caches();
     return true;
 }
 
