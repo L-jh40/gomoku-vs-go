@@ -267,6 +267,56 @@ def codes_of(board, pts):
                   for (x, y) in pts)
 
 
+# 引擎 pat 命令输出的方向线型（Pat 枚举值 -> 名称）。
+PAT_NAMES = {0: "DEAD", 1: "OL", 2: "B1", 3: "F1", 4: "B2", 5: "F2", 6: "F2A",
+             7: "F2B", 8: "B3", 9: "F3", 10: "F3S", 11: "B4", 12: "F4",
+             13: "F5"}
+
+
+def engine_patterns(eng: Engine, board):
+    """全盘空点的四方向线型（走引擎 pat 命令，每次 4 个方向）。"""
+    out = {}
+    for x in range(board.size):
+        for y in range(board.size):
+            if not board.is_empty(x, y):
+                continue
+            row = eng.send("pat %d %d" % (x, y))
+            if not row:
+                continue
+            vals = [int(v) for v in row[0].split()[:4]]
+            out[(x, y)] = [PAT_NAMES.get(v, "?") for v in vals]
+    return out
+
+
+def invariant_report(eng: Engine, board, cands):
+    """第一部分不变式（验收核心）：白棋落任一候选点后，黑棋只能走“形成连五 / 冲四”的
+    位置，且黑棋 2 步内无法连五。
+
+    返回 (违例点列表, 说明文字列表)。对每个候选点做两件事：
+      1. `play w x y` + `prove 2` → 黑方 2 手内不得被证明必胜（成五）；
+      2. 全盘 `pat` 扫描 → 不得存在黑棋一步成活四（F4）或活三（F3/F3S）的点
+         （只允许五 F5 与冲四 B4 一类）。
+    """
+    violations = []
+    notes = []
+    for (x, y) in sorted(cands):
+        engine_setup(eng, board)
+        eng.send("play w %d %d" % (x, y))
+        if eng.readline() != "ok":
+            notes.append("候选点 %d,%d 白棋落子 illegal" % (x, y))
+            continue
+        eng.send("prove 2 %g" % CAND_SEC)
+        r2 = eng.readline()
+        pats = engine_patterns(eng, board)
+        bad = []
+        for pos, dirs in pats.items():
+            if any(d in ("F3", "F3S", "F4") for d in dirs):
+                bad.append(pos)
+        if r2 == "win" or bad:
+            violations.append((x, y, r2, sorted(bad)[:6], len(bad)))
+    return violations, notes
+
+
 def main() -> int:
     cases = parse_cases(CASE_FILE)
     print("[cases] 导入 %d 个用例块" % len(cases), flush=True)
