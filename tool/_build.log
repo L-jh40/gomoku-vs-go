@@ -1,0 +1,86 @@
+config.cpp
+internalConfig.cpp
+main.cpp
+正在生成代码...
+config.obj : error LNK2019: 无法解析的外部符号 "__int64 __cdecl now(void)" (?now@@YA_JXZ)，函数 "public: class std::unique_ptr<class Database::DBStorage,struct std::default_delete<class Database::DBStorage> > __cdecl <lambda_135c92fff37c15b642b01a2ec2220fe2>::operator()(class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> >)const " (??R<lambda_135c92fff37c15b642b01a2ec2220fe2>@@QEBA?AV?$unique_ptr@VDBStorage@Database@@U?$default_delete@VDBStorage@Database@@@std@@@std@@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@2@@Z) 中引用了该符号
+config.obj : error LNK2019: 无法解析的外部符号 "class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> > & __cdecl upperInplace(class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> > &)" (?upperInplace@@YAAEAV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEAV12@@Z)，函数 "class std::unique_ptr<class Search::Searcher,struct std::default_delete<class Search::Searcher> > __cdecl Config::createSearcher(class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> >)" (?createSearcher@Config@@YA?AV?$unique_ptr@VSearcher@Search@@U?$default_delete@VSearcher@Search@@@std@@@std@@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@3@@Z) 中引用了该符号
+config.obj : error LNK2019: 无法解析的外部符号 "class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> > __cdecl pathToConsoleString(class std::filesystem::path const &)" (?pathToConsoleString@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBVpath@filesystem@2@@Z)，函数 "public: class std::unique_ptr<class Database::DBStorage,struct std::default_delete<class Database::DBStorage> > __cdecl <lambda_135c92fff37c15b642b01a2ec2220fe2>::operator()(class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> >)const " (??R<lambda_135c92fff37c15b642b01a2ec2220fe2>@@QEBA?AV?$unique_ptr@VDBStorage@Database@@U?$default_delete@VDBStorage@Database@@@std@@@std@@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@2@@Z) 中引用了该符号
+config.obj : error LNK2019: 无法解析的外部符号 "class std::tuple<int,int,int> __cdecl getVersionNumbers(void)" (?getVersionNumbers@@YA?AV?$tuple@HHH@std@@XZ)，函数 "void __cdecl Config::readRequirement(class cpptoml::table const &)" (?readRequirement@Config@@YAXAEBVtable@cpptoml@@@Z) 中引用了该符号
+config.obj : error LNK2019: 无法解析的外部符号 "class std::filesystem::path __cdecl Command::getModelFullPath(class std::filesystem::path)" (?getModelFullPath@Command@@YA?AVpath@filesystem@std@@V234@@Z)，函数 "public: class std::unique_ptr<class Evaluation::Evaluator,struct std::default_delete<class Evaluation::Evaluator> > __cdecl <lambda_6337a71b7942e08a57e6d165aa7d708a>::operator()(int,enum Rule,int)const " (??R<lambda_6337a71b7942e08a57e6d165aa7d708a>@@QEBA?AV?$unique_ptr@VEvaluator@Evaluation@@U?$default_delete@VEvaluator@Evaluation@@@std@@@std@@HW4Rule@@H@Z) 中引用了该符号
+config.obj : error LNK2019: 无法解析的外部符号 "bool __cdecl Command::loadModelFromFile(class std::filesystem::path)" (?loadModelFromFile@Command@@YA_NVpath@filesystem@std@@@Z)，函数 "void __cdecl Config::readModel(class cpptoml::table const &)" (?readModel@Config@@YAXAEBVtable@cpptoml@@@Z) 中引用了该符号
+config.obj : error LNK2019: 无法解析的外部符号 "public: __cdecl SyncOutputStream::SyncOutputStream(class std::basic_ostream<char,struct std::char_traits<char> > &)" (??0SyncOutputStream@@QEAA@AEAV?$basic_ostream@DU?$char_traits@D@std@@@std@@@Z)，函数 "void __cdecl Config::readValueModel<short,-8192,8191,class <lambda_2b494f2df4fbfa68ba2337330d86d4fd> >(class cpptoml::table const &,class <lambda_2b494f2df4fbfa68ba2337330d86d4fd>)" (??$readValueModel@F$0?CAAA@$0BPPP@V<lambda_2b494f2df4fbfa68ba2337330d86d4fd>@@@Config@@YAXAEBVtable@cpptoml@@V<lambda_2b494f2df4fbfa68ba2337330d86d4fd>@@@Z) 中引用了该符号
+main.obj : error LNK2001: 无法解析的外部符号 "public: __cdecl SyncOutputStream::SyncOutputStream(class std::basic_ostream<char,struct std::char_traits<char> > &)" (??0SyncOutputStream@@QEAA@AEAV?$basic_ostream@DU?$char_traits@D@std@@@std@@@Z)
+config.obj : error LNK2019: 无法解析的外部符号 "public: __cdecl SyncOutputStream::~SyncOutputStream(void)" (??1SyncOutputStream@@QEAA@XZ)，函数 "void __cdecl Config::readValueModel<short,-8192,8191,class <lambda_2b494f2df4fbfa68ba2337330d86d4fd> >(class cpptoml::table const &,class <lambda_2b494f2df4fbfa68ba2337330d86d4fd>)" (??$readValueModel@F$0?CAAA@$0BPPP@V<lambda_2b494f2df4fbfa68ba2337330d86d4fd>@@@Config@@YAXAEBVtable@cpptoml@@V<lambda_2b494f2df4fbfa68ba2337330d86d4fd>@@@Z) 中引用了该符号
+main.obj : error LNK2001: 无法解析的外部符号 "public: __cdecl SyncOutputStream::~SyncOutputStream(void)" (??1SyncOutputStream@@QEAA@XZ)
+config.obj : error LNK2019: 无法解析的外部符号 "public: __cdecl Compressor::Compressor(class std::basic_ostream<char,struct std::char_traits<char> > &,enum Compressor::Type)" (??0Compressor@@QEAA@AEAV?$basic_ostream@DU?$char_traits@D@std@@@std@@W4Type@0@@Z)，函数 "void __cdecl Config::exportModel(class std::basic_ostream<char,struct std::char_traits<char> > &)" (?exportModel@Config@@YAXAEAV?$basic_ostream@DU?$char_traits@D@std@@@std@@@Z) 中引用了该符号
+config.obj : error LNK2019: 无法解析的外部符号 "public: __cdecl Compressor::Compressor(class std::basic_istream<char,struct std::char_traits<char> > &,enum Compressor::Type)" (??0Compressor@@QEAA@AEAV?$basic_istream@DU?$char_traits@D@std@@@std@@W4Type@0@@Z)，函数 "bool __cdecl Config::loadModel(class std::basic_istream<char,struct std::char_traits<char> > &)" (?loadModel@Config@@YA_NAEAV?$basic_istream@DU?$char_traits@D@std@@@std@@@Z) 中引用了该符号
+config.obj : error LNK2019: 无法解析的外部符号 "public: __cdecl Compressor::~Compressor(void)" (??1Compressor@@QEAA@XZ)，函数 "void __cdecl Config::exportModel(class std::basic_ostream<char,struct std::char_traits<char> > &)" (?exportModel@Config@@YAXAEAV?$basic_ostream@DU?$char_traits@D@std@@@std@@@Z) 中引用了该符号
+config.obj : error LNK2019: 无法解析的外部符号 "public: class std::basic_ostream<char,struct std::char_traits<char> > * __cdecl Compressor::openOutputStream(class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> >)" (?openOutputStream@Compressor@@QEAAPEAV?$basic_ostream@DU?$char_traits@D@std@@@std@@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@3@@Z)，函数 "void __cdecl Config::exportModel(class std::basic_ostream<char,struct std::char_traits<char> > &)" (?exportModel@Config@@YAXAEAV?$basic_ostream@DU?$char_traits@D@std@@@std@@@Z) 中引用了该符号
+config.obj : error LNK2019: 无法解析的外部符号 "public: class std::basic_istream<char,struct std::char_traits<char> > * __cdecl Compressor::openInputStream(class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> >)" (?openInputStream@Compressor@@QEAAPEAV?$basic_istream@DU?$char_traits@D@std@@@std@@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@3@@Z)，函数 "bool __cdecl Config::loadModel(class std::basic_istream<char,struct std::char_traits<char> > &)" (?loadModel@Config@@YA_NAEAV?$basic_istream@DU?$char_traits@D@std@@@std@@@Z) 中引用了该符号
+config.obj : error LNK2019: 无法解析的外部符号 "public: __cdecl Database::YXDBStorage::YXDBStorage(class std::filesystem::path,bool,bool,int,bool)" (??0YXDBStorage@Database@@QEAA@Vpath@filesystem@std@@_N1H1@Z)，函数 "class std::unique_ptr<class Database::YXDBStorage,struct std::default_delete<class Database::YXDBStorage> > __cdecl std::make_unique<class Database::YXDBStorage,class std::filesystem::path &,bool const &,bool const &,int const &,bool const &,0>(class std::filesystem::path &,bool const &,bool const &,int const &,bool const &)" (??$make_unique@VYXDBStorage@Database@@AEAVpath@filesystem@std@@AEB_NAEB_NAEBHAEB_N$0A@@std@@YA?AV?$unique_ptr@VYXDBStorage@Database@@U?$default_delete@VYXDBStorage@Database@@@std@@@0@AEAVpath@filesystem@0@AEB_N1AEBH1@Z) 中引用了该符号
+config.obj : error LNK2019: 无法解析的外部符号 "public: __cdecl Evaluation::mix10::Evaluator::Evaluator(int,enum Rule,int,class std::filesystem::path,class std::filesystem::path)" (??0Evaluator@mix10@Evaluation@@QEAA@HW4Rule@@HVpath@filesystem@std@@1@Z)，函数 "class std::unique_ptr<class Evaluation::mix10::Evaluator,struct std::default_delete<class Evaluation::mix10::Evaluator> > __cdecl std::make_unique<class Evaluation::mix10::Evaluator,int &,enum Rule &,int &,class std::filesystem::path &,class std::filesystem::path &,0>(int &,enum Rule &,int &,class std::filesystem::path &,class std::filesystem::path &)" (??$make_unique@VEvaluator@mix10@Evaluation@@AEAHAEAW4Rule@@AEAHAEAVpath@filesystem@std@@AEAV567@$0A@@std@@YA?AV?$unique_ptr@VEvaluator@mix10@Evaluation@@U?$default_delete@VEvaluator@mix10@Evaluation@@@std@@@0@AEAHAEAW4Rule@@0AEAVpath@filesystem@0@2@Z) 中引用了该符号
+config.obj : error LNK2019: 无法解析的外部符号 "public: __cdecl Evaluation::mix9svq::Evaluator::Evaluator(int,enum Rule,int,class std::filesystem::path,class std::filesystem::path)" (??0Evaluator@mix9svq@Evaluation@@QEAA@HW4Rule@@HVpath@filesystem@std@@1@Z)，函数 "class std::unique_ptr<class Evaluation::mix9svq::Evaluator,struct std::default_delete<class Evaluation::mix9svq::Evaluator> > __cdecl std::make_unique<class Evaluation::mix9svq::Evaluator,int &,enum Rule &,int &,class std::filesystem::path &,class std::filesystem::path &,0>(int &,enum Rule &,int &,class std::filesystem::path &,class std::filesystem::path &)" (??$make_unique@VEvaluator@mix9svq@Evaluation@@AEAHAEAW4Rule@@AEAHAEAVpath@filesystem@std@@AEAV567@$0A@@std@@YA?AV?$unique_ptr@VEvaluator@mix9svq@Evaluation@@U?$default_delete@VEvaluator@mix9svq@Evaluation@@@std@@@0@AEAHAEAW4Rule@@0AEAVpath@filesystem@0@2@Z) 中引用了该符号
+config.obj : error LNK2019: 无法解析的外部符号 "public: void __cdecl Search::ThreadPool::setupSearcher(class std::unique_ptr<class Search::Searcher,struct std::default_delete<class Search::Searcher> >)" (?setupSearcher@ThreadPool@Search@@QEAAXV?$unique_ptr@VSearcher@Search@@U?$default_delete@VSearcher@Search@@@std@@@std@@@Z)，函数 "void __cdecl Config::readSearch(class cpptoml::table const &)" (?readSearch@Config@@YAXAEBVtable@cpptoml@@@Z) 中引用了该符号
+config.obj : error LNK2019: 无法解析的外部符号 "public: void __cdecl Search::ThreadPool::setupDatabase(class std::unique_ptr<class Database::DBStorage,struct std::default_delete<class Database::DBStorage> >)" (?setupDatabase@ThreadPool@Search@@QEAAXV?$unique_ptr@VDBStorage@Database@@U?$default_delete@VDBStorage@Database@@@std@@@std@@@Z)，函数 "bool __cdecl Config::loadConfig(class std::basic_istream<char,struct std::char_traits<char> > &)" (?loadConfig@Config@@YA_NAEAV?$basic_istream@DU?$char_traits@D@std@@@std@@@Z) 中引用了该符号
+config.obj : error LNK2019: 无法解析的外部符号 "public: void __cdecl Search::ThreadPool::setupEvaluator(class std::function<class std::unique_ptr<class Evaluation::Evaluator,struct std::default_delete<class Evaluation::Evaluator> > __cdecl(int,enum Rule,int)>)" (?setupEvaluator@ThreadPool@Search@@QEAAXV?$function@$$A6A?AV?$unique_ptr@VEvaluator@Evaluation@@U?$default_delete@VEvaluator@Evaluation@@@std@@@std@@HW4Rule@@H@Z@std@@@Z)，函数 "bool __cdecl Config::loadConfig(class std::basic_istream<char,struct std::char_traits<char> > &)" (?loadConfig@Config@@YA_NAEAV?$basic_istream@DU?$char_traits@D@std@@@std@@@Z) 中引用了该符号
+config.obj : error LNK2001: 无法解析的外部符号 "public: virtual void __cdecl Search::AB::ABSearchData::clearData(struct Search::SearchThread &)" (?clearData@ABSearchData@AB@Search@@UEAAXAEAUSearchThread@3@@Z)
+config.obj : error LNK2001: 无法解析的外部符号 "public: virtual void __cdecl Search::AB::ABSearcher::setMemoryLimit(unsigned __int64)" (?setMemoryLimit@ABSearcher@AB@Search@@UEAAX_K@Z)
+config.obj : error LNK2001: 无法解析的外部符号 "public: virtual unsigned __int64 __cdecl Search::AB::ABSearcher::getMemoryLimit(void)const " (?getMemoryLimit@ABSearcher@AB@Search@@UEBA_KXZ)
+config.obj : error LNK2001: 无法解析的外部符号 "public: virtual void __cdecl Search::AB::ABSearcher::clear(class Search::ThreadPool &,bool)" (?clear@ABSearcher@AB@Search@@UEAAXAEAVThreadPool@3@_N@Z)
+config.obj : error LNK2001: 无法解析的外部符号 "public: virtual void __cdecl Search::AB::ABSearcher::searchMain(struct Search::MainSearchThread &)" (?searchMain@ABSearcher@AB@Search@@UEAAXAEAUMainSearchThread@3@@Z)
+config.obj : error LNK2001: 无法解析的外部符号 "public: virtual void __cdecl Search::AB::ABSearcher::search(struct Search::SearchThread &)" (?search@ABSearcher@AB@Search@@UEAAXAEAUSearchThread@3@@Z)
+config.obj : error LNK2001: 无法解析的外部符号 "public: virtual bool __cdecl Search::AB::ABSearcher::checkTimeupCondition(void)" (?checkTimeupCondition@ABSearcher@AB@Search@@UEAA_NXZ)
+config.obj : error LNK2019: 无法解析的外部符号 "public: __cdecl Search::MCTS::Node::~Node(void)" (??1Node@MCTS@Search@@QEAA@XZ)，函数 "public: void __cdecl std::_Tree_val<struct std::_Tree_simple_types<class Search::MCTS::Node> >::_Erase_tree<class std::allocator<struct std::_Tree_node<class Search::MCTS::Node,void *> > >(class std::allocator<struct std::_Tree_node<class Search::MCTS::Node,void *> > &,struct std::_Tree_node<class Search::MCTS::Node,void *> *)" (??$_Erase_tree@V?$allocator@U?$_Tree_node@VNode@MCTS@Search@@PEAX@std@@@std@@@?$_Tree_val@U?$_Tree_simple_types@VNode@MCTS@Search@@@std@@@std@@QEAAXAEAV?$allocator@U?$_Tree_node@VNode@MCTS@Search@@PEAX@std@@@1@PEAU?$_Tree_node@VNode@MCTS@Search@@PEAX@1@@Z) 中引用了该符号
+config.obj : error LNK2019: 无法解析的外部符号 "public: __cdecl Search::MCTS::MCTSSearcher::MCTSSearcher(void)" (??0MCTSSearcher@MCTS@Search@@QEAA@XZ)，函数 "class std::unique_ptr<class Search::MCTS::MCTSSearcher,struct std::default_delete<class Search::MCTS::MCTSSearcher> > __cdecl std::make_unique<class Search::MCTS::MCTSSearcher,0>(void)" (??$make_unique@VMCTSSearcher@MCTS@Search@@$$V$0A@@std@@YA?AV?$unique_ptr@VMCTSSearcher@MCTS@Search@@U?$default_delete@VMCTSSearcher@MCTS@Search@@@std@@@0@XZ) 中引用了该符号
+config.obj : error LNK2019: 无法解析的外部符号 "unsigned short (* PatternConfig::PCODE)[14][14][14]" (?PCODE@PatternConfig@@3PAY2O@O@O@GA)，函数 "void __cdecl Config::readValueModel<short,-8192,8191,class <lambda_2b494f2df4fbfa68ba2337330d86d4fd> >(class cpptoml::table const &,class <lambda_2b494f2df4fbfa68ba2337330d86d4fd>)" (??$readValueModel@F$0?CAAA@$0BPPP@V<lambda_2b494f2df4fbfa68ba2337330d86d4fd>@@@Config@@YAXAEBVtable@cpptoml@@V<lambda_2b494f2df4fbfa68ba2337330d86d4fd>@@@Z) 中引用了该符号
+config.obj : error LNK2019: 无法解析的外部符号 "class Search::ThreadPool Search::Threads" (?Threads@Search@@3VThreadPool@1@A)，函数 "bool __cdecl Config::loadConfig(class std::basic_istream<char,struct std::char_traits<char> > &)" (?loadConfig@Config@@YA_NAEAV?$basic_istream@DU?$char_traits@D@std@@@std@@@Z) 中引用了该符号
+main.obj : error LNK2019: 无法解析的外部符号 "void __cdecl Command::CommandLine::init(int,char * * const)" (?init@CommandLine@Command@@YAXHQEAPEAD@Z)，函数 main 中引用了该符号
+main.obj : error LNK2019: 无法解析的外部符号 "bool __cdecl Command::loadConfig(void)" (?loadConfig@Command@@YA_NXZ)，函数 main 中引用了该符号
+main.obj : error LNK2019: 无法解析的外部符号 "void __cdecl Command::gomocupLoop(void)" (?gomocupLoop@Command@@YAXXZ)，函数 main 中引用了该符号
+config.exe : fatal error LNK1120: 33 个无法解析的外部命令
+argutils.cpp
+benchmark.cpp
+command.cpp
+database.cpp
+dataprep.cpp
+gomocup.cpp
+opengen.cpp
+selfplay.cpp
+tuning.cpp
+hash.cpp
+iohelper.cpp
+platform.cpp
+utils.cpp
+version.cpp
+dbclient.cpp
+dbtypes.cpp
+dbutils.cpp
+yxdbstorage.cpp
+eval.cpp
+evaluator.cpp
+mix10nnue.cpp
+mix9svqnnue.cpp
+onnxevaluator.cpp
+C:\Users\lin\Downloads\rapfi-250615\rapfi-250615\Rapfi\eval\onnxevaluator.cpp(25): fatal error C1083: 无法打开包括文件: “onnxruntime_cxx_api.h”: No such file or directory
+board.cpp
+movegen.cpp
+pattern.cpp
+hashtable.cpp
+movepick.cpp
+opening.cpp
+searchcommon.cpp
+searchoutput.cpp
+searchthread.cpp
+timecontrol.cpp
+history.cpp
+search.cpp
+node.cpp
+search.cpp
+dataset.cpp
+datawriter.cpp
+optimizer.cpp
+tuner.cpp
+lz4_all.c
+xxhash.c
+正在生成代码...
+[build] exit=0
