@@ -340,7 +340,7 @@ void Board::refresh_patterns_full() {
 // territory_ 不在这里动——undo 从 HistoryEntry O(1) 还原全局计数，本函数只
 // 保证逐格数组与还原后的局面一致。触碰集合写入 tlist 返回（供棋型刷新）。
 int Board::post_move_cell_flags(const uint16_t* centers, int nc,
-                                uint16_t* tlist) {
+                                uint16_t* tlist, uint16_t* flips) {
     touch_begin();
     int tn = 0;
     for (int i = 0; i < nc; ++i) {
@@ -389,15 +389,17 @@ int Board::post_move_cell_flags(const uint16_t* centers, int nc,
         }
     }
 
+    int nflips = 0;
     for (int i = 0; i < tn; ++i) {
         const int ci = tlist[i];
-        if (cells_[ci] == EMPTY)
-            self_cap_[ci] = is_dead_empty(ci / MAX_BOARD, ci % MAX_BOARD) ? 1 : 0;
-        else
-            self_cap_[ci] = 0;
+        const uint8_t nv = (cells_[ci] == EMPTY && is_dead_empty(ci / MAX_BOARD, ci % MAX_BOARD)) ? 1 : 0;
+        if (self_cap_[ci] != nv) {
+            self_cap_[ci] = nv;
+            if (nflips < MAX_CELLS) flips[nflips++] = static_cast<uint16_t>(ci);
+        }
         dead_[ci] = dead_cell(ci) ? 1 : 0;
     }
-    return tn;
+    return nflips;
 }
 
 // ===========================================================================
@@ -586,6 +588,7 @@ void Board::eval_update_after_move(int pos, int color, HistoryEntry& h,
     touch_begin();
     uint16_t tlist[MAX_CELLS];
     int tn = 0;
+    uint16_t flip_buf[MAX_CELLS];
 
     // 2a. 经过落子点的所有盘内五连窗；blocked 标志翻转时更新窗内 5 格。
     for (int d = 0; d < 4; ++d) {
@@ -680,13 +683,15 @@ void Board::eval_update_after_move(int pos, int color, HistoryEntry& h,
         }
     }
 
-    // (3) 无气空点标志：只对候选集合重算。
+    // (3) 无气空点标志：只对候选集合重算；翻转格记入翻转表（棋型刷新圆心）。
+    int nflips = 0;
     for (int i = 0; i < tn; ++i) {
         const int ci = tlist[i];
-        if (cells_[ci] == EMPTY)
-            self_cap_[ci] = is_dead_empty(ci / MAX_BOARD, ci % MAX_BOARD) ? 1 : 0;
-        else
-            self_cap_[ci] = 0;
+        const uint8_t nv = (cells_[ci] == EMPTY && is_dead_empty(ci / MAX_BOARD, ci % MAX_BOARD)) ? 1 : 0;
+        if (self_cap_[ci] != nv) {
+            self_cap_[ci] = nv;
+            if (nflips < MAX_CELLS) flip_buf[nflips++] = static_cast<uint16_t>(ci);
+        }
     }
 
     // (4) 死格标志差量 -> territory_。
@@ -697,9 +702,16 @@ void Board::eval_update_after_move(int pos, int color, HistoryEntry& h,
         dead_[ci] = static_cast<uint8_t>(nd);
     }
 
-    // (4b) Rapfi 棋型缓存：触碰集合覆盖了落子点 / 提子 / 无气变化格及其
-    //      线邻域，以其为圆心刷新半径 5 内所有格的棋型缓存。
-    refresh_patterns(tlist, tn);
+    // (4b) Rapfi 棋型缓存：圆心 = 落子点 + 提子 + 无气翻转格（只刷新窗口
+    //      真正包含这些格的 (格,方向) 键）。
+    {
+        uint16_t pcenters[2 * MAX_CELLS + 2];
+        int pn = 0;
+        pcenters[pn++] = static_cast<uint16_t>(pos);
+        for (int i = 0; i < ncap; ++i) pcenters[pn++] = captured[i];
+        for (int i = 0; i < nflips; ++i) pcenters[pn++] = flip_buf[i];
+        refresh_patterns(pcenters, pn);
+    }
 
     // (5) 风险：受影响棋块的贡献差量（同一坐标区域上取落子前后）。
     const int risk_after = risk_of_cells(riskCells, rn);
@@ -970,8 +982,15 @@ bool Board::undo_move() {
         refresh_lines(centers, nc, false);
         // 逐格缓存（self_cap_ / dead_）与棋型缓存增量重算——不再整盘重建。
         uint16_t tlist[MAX_CELLS];
-        const int tn = post_move_cell_flags(centers, nc, tlist);
-        refresh_patterns(tlist, tn);
+        uint16_t flips[MAX_CELLS];
+        const int nf = post_move_cell_flags(centers, nc, tlist, flips);
+        {
+            uint16_t pcenters[2 * MAX_CELLS + 2];
+            int pn = 0;
+            for (int i = 0; i < nc; ++i) pcenters[pn++] = centers[i];
+            for (int i = 0; i < nf; ++i) pcenters[pn++] = flips[i];
+            refresh_patterns(pcenters, pn);
+        }
     }
     territory_ = h.old_territory;
     risk_      = h.old_risk;
