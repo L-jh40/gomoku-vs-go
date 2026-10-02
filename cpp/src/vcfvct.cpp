@@ -528,7 +528,6 @@ bool prove_black_dfs(Board& b, int steps_left, bool allow_three, ProveCtx* ctx,
     std::vector<AttackCand> cands;
     cands.reserve(32);
     gen_attack_candidates(b, steps_left, allow_three, &cands);
-
     for (size_t ci = 0; ci < cands.size(); ++ci) {
         const AttackCand& c = cands[ci];
         if (!b.make_move(c.x, c.y, BLACK)) continue;   // 禁手之外再验一次（自杀等）

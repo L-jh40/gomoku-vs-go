@@ -107,7 +107,8 @@ public:
     // 无气空点标志（缓存的 is_dead_empty；白子/障碍/无气空点在棋型层
     // 统一按“阻挡”处理，代码层面完全一致）。
     bool is_no_liberty(int idx) const { return self_cap_[idx] != 0; }
-    // color(0=黑,1=白) 视角、dir 方向、以 idx 为中心的线型（Pat 枚举值）。
+    // color(0=黑,1=白，注意不是 Cell 枚举值) 视角、dir 方向、以 idx 为中心的
+    // 线型（Pat 枚举值）。
     uint8_t cached_pattern(int color, int idx, int dir) const {
         return pat_[color][idx * 4 + dir];
     }

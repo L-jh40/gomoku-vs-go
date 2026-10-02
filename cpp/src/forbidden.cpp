@@ -110,7 +110,10 @@ PointPattern classify_point(const Board& board, int x, int y, int color,
     if (!board.in_bounds(x, y)) return PP_NONE;
     const int d = Board::dir_index(dx, dy);
     if (d < 0) return PP_NONE;  // 非四主方向：调用方不应使用
-    const uint8_t p = board.cached_pattern(color, Board::index(x, y), d);
+    // 注意 cached_pattern 的 color 约定是 0=黑/1=白，而调用方传的是 Cell
+    // 枚举值（BLACK=1/WHITE=2），需要换算。
+    const int ci = (color == BLACK) ? 0 : 1;
+    const uint8_t p = board.cached_pattern(ci, Board::index(x, y), d);
     switch (p) {
         case F5: return PP_FIVE;
         case OL: return PP_OL;
