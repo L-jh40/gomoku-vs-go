@@ -11,17 +11,22 @@
 | `main.py` | 程序入口，支持 GUI 和 CLI |
 | `gui.py` | tkinter 窗口界面、AI 搜索调度（工作进程）、计时、复盘、模式窗口、候选点显示 |
 | `board.py` | 棋盘数据结构、规则相关的底层判断、候选点、评分、障碍物 |
+| `cpp/src/pattern_table.h/.cpp` | Rapfi 棋型 DP 查表（黑/白两套规则，禁手与棋型缓存共用） |
+| `cpp/src/forbidden.h/.cpp` | Rapfi checkForbiddenPoint 忠实移植（增量棋型缓存 O(1) 预筛 + 假禁手延伸点递归） |
 | `rules.py` | 禁手判定与单方向威胁分类 |
 | `ai_search.py` | AI 搜索核心：minimax、白棋防守、黑棋算法 A、复盘表 |
 | `ai_black.py` | 黑棋 AI 对外接口 |
 | `ai_white.py` | 白棋 AI 对外接口 |
 | `ai_worker.py` | 常驻 AI 搜索工作进程（GUI 经多进程调度搜索，主窗口不卡） |
 | `engine_client.py` | C++ 引擎子进程封装（GUI"C++引擎"模式走它，协议见 cpp/README.md） |
+| `cpp/` | C++ 引擎（Rapfi 棋型缓存+禁手、元组评估、alpha-beta、证明级 VCF/VCT），见 cpp/README.md |
+| `engine_client.py` | C++ 引擎子进程封装（GUI"C++引擎"模式走它，协议见 cpp/README.md） |
 | `cpp/` | C++ 引擎（make/undo+Rapfi 禁手+元组评估+alpha-beta+VCF/VCT），见 cpp/README.md |
 | `board_tools.py` | 坐标代码（`a15`/`p0`）与棋盘文本互转、导出/导入、分析 CLI（威胁、蓝叉、禁手地图、AI 着法） |
 | `../tools/rapfi-plugin/`（在程序目录**之外**） | 外置插件：读剪贴板里的 Rapfi/Yixin 局面 → 追加代码行 + 禁手行到 `导出/粘贴板.md`；不改主程序任何文件、不读写 Yixin 目录，双击 `tools\rapfi-plugin\rapfi_plugin.bat` 运行 |
 | `tests_torus.py` | 环面/禁手/GUI/坐标读取 自动化测试（`python tests_torus.py`） |
 | `tests_text.py` | text.md 局面的自动化测试 |
+| `plugins/rapfi_plugin.py` | Rapfi/Yixin 局面 → 导出/粘贴板.md 用例采集（判定走 Python rules） |
 | `AI_ALGORITHM.md` | 算法逻辑说明 |
 | `README.md` | 使用说明 |
 | `CODE_MAP.md` | 本文档 |
