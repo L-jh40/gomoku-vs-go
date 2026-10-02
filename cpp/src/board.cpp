@@ -264,32 +264,20 @@ void Board::build_pattern_window(int color, int cx, int cy, int dx, int dy,
     }
 }
 
-void Board::refresh_pattern_cell(int idx) {
-    const int cx = idx / MAX_BOARD, cy = idx % MAX_BOARD;
-    uint8_t f[PAT_LEN];
-    for (int color = 0; color < 2; ++color) {
-        for (int d = 0; d < 4; ++d) {
-            int dx, dy;
-            dir_vec(d, dx, dy);
-            build_pattern_window(color, cx, cy, dx, dy, f);
-            pat_[color][idx * 4 + d] = line_pattern(color == 0, f);
-        }
-    }
-    p4_black_[idx] = combine_pattern4(
-        true, pat_[0][idx * 4 + 0], pat_[0][idx * 4 + 1],
-        pat_[0][idx * 4 + 2], pat_[0][idx * 4 + 3]);
-}
-
 void Board::refresh_patterns(const uint16_t* centers, int nc) {
     ++pat_gen_;
     if (pat_gen_ == 0) {
         std::memset(pat_stamp_, 0, sizeof(pat_stamp_));
+        std::memset(p4_stamp_, 0, sizeof(p4_stamp_));
         pat_gen_ = 1;
     }
+    // 棋型窗口是线段：仅与改动格同线、线距 ≤5 的 (格,方向) 键受影响。
+    // 每个受影响键重算黑/白两视角；p4 在收集到的脏格上统一重算一次。
+    uint16_t dirty[MAX_CELLS];
+    int nd = 0;
     for (int ci = 0; ci < nc; ++ci) {
         const int cx0 = centers[ci] / MAX_BOARD;
         const int cy0 = centers[ci] % MAX_BOARD;
-        // 棋型窗口是线段：仅与改动格同线、线距 ≤5 的格其窗口包含改动格。
         for (int d = 0; d < 4; ++d) {
             int dx, dy;
             dir_vec(d, dx, dy);
@@ -297,11 +285,26 @@ void Board::refresh_patterns(const uint16_t* centers, int nc) {
                 const int nx = cx0 + k * dx, ny = cy0 + k * dy;
                 if (!in_bounds(nx, ny)) continue;
                 const int idx = index(nx, ny);
-                if (pat_stamp_[idx] == pat_gen_) continue;
-                pat_stamp_[idx] = pat_gen_;
-                refresh_pattern_cell(idx);
+                const int key = idx * 4 + d;
+                if (pat_stamp_[key] == pat_gen_) continue;
+                pat_stamp_[key] = pat_gen_;
+                uint8_t f[PAT_LEN];
+                build_pattern_window(0, nx, ny, dx, dy, f);
+                pat_[0][key] = line_pattern(true, f);
+                build_pattern_window(1, nx, ny, dx, dy, f);
+                pat_[1][key] = line_pattern(false, f);
+                if (p4_stamp_[idx] != pat_gen_) {
+                    p4_stamp_[idx] = pat_gen_;
+                    if (nd < MAX_CELLS) dirty[nd++] = static_cast<uint16_t>(idx);
+                }
             }
         }
+    }
+    for (int i = 0; i < nd; ++i) {
+        const int idx = dirty[i];
+        p4_black_[idx] = combine_pattern4(
+            true, pat_[0][idx * 4 + 0], pat_[0][idx * 4 + 1],
+            pat_[0][idx * 4 + 2], pat_[0][idx * 4 + 3]);
     }
 }
 
@@ -309,13 +312,26 @@ void Board::refresh_patterns_full() {
     ++pat_gen_;
     if (pat_gen_ == 0) {
         std::memset(pat_stamp_, 0, sizeof(pat_stamp_));
+        std::memset(p4_stamp_, 0, sizeof(p4_stamp_));
         pat_gen_ = 1;
     }
     for (int x = 0; x < size_; ++x) {
         for (int y = 0; y < size_; ++y) {
             const int idx = index(x, y);
-            pat_stamp_[idx] = pat_gen_;
-            refresh_pattern_cell(idx);
+            p4_stamp_[idx] = pat_gen_;
+            uint8_t f[PAT_LEN];
+            const int cx = x, cy = y;
+            for (int d = 0; d < 4; ++d) {
+                int dx, dy;
+                dir_vec(d, dx, dy);
+                build_pattern_window(0, cx, cy, dx, dy, f);
+                pat_[0][idx * 4 + d] = line_pattern(true, f);
+                build_pattern_window(1, cx, cy, dx, dy, f);
+                pat_[1][idx * 4 + d] = line_pattern(false, f);
+            }
+            p4_black_[idx] = combine_pattern4(
+                true, pat_[0][idx * 4 + 0], pat_[0][idx * 4 + 1],
+                pat_[0][idx * 4 + 2], pat_[0][idx * 4 + 3]);
         }
     }
 }
