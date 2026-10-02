@@ -220,17 +220,19 @@ private:
     uint32_t line_gen_ = 0;
 
     // ---- Rapfi 棋型缓存（make/undo/set 增量维护）----
-    // pat_[color][idx*4+dir]：color 视角、dir 方向、以 idx 为中心的线型。
+    // pat_[color][idx*4+dir]：color(0=黑,1=白) 视角、dir 方向、以 idx 为中心
+    // 的线型。时间戳按 (格,方向) 键打，只重算窗口真正包含改动格的键。
     uint8_t  pat_[2][MAX_CELLS * 4];
     // p4_black_[idx]：黑棋四方向组合线型（FORBID 为禁手预筛标记）。
     uint8_t  p4_black_[MAX_CELLS];
-    uint32_t pat_stamp_[MAX_CELLS];
+    uint32_t pat_stamp_[MAX_CELLS * 4];
+    uint32_t p4_stamp_[MAX_CELLS];
     uint32_t pat_gen_ = 0;
 
     void build_pattern_window(int color, int cx, int cy, int dx, int dy,
                               uint8_t* f) const;
-    void refresh_pattern_cell(int idx);
-    // 以 centers（改动格及其触碰集）为圆心刷新半径 5 内所有格的棋型缓存。
+    // 以 centers（改动格：落子/提子/无气翻转）为圆心，仅重算窗口包含改动格
+    // 的 (格,方向) 键；p4 在收集到的脏格上统一重算。
     void refresh_patterns(const uint16_t* centers, int nc);
     void refresh_patterns_full();
     // undo 用：按中心集合重算 self_cap_ / dead_ 数组（territory_ 由历史
