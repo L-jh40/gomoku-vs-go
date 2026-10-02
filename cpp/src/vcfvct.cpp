@@ -21,8 +21,14 @@
 //   2.6 gen_attack_candidates            攻击候选（禁手/自杀过滤 + 预算剪枝 + 排序）
 //   2.7 prove_black_dfs                  黑方节点（OR：候选）× 白方防御集（AND）
 //   2.8 prove_white_node                 根候选落下后白方的 AND 节点
-//   2.9 analyse                          逐候选标注
-//   2.10 prove_black / vcf_exists / vct_exists
+//   3.  威胁候选点（阻挡点）：查表规则的增量棋型实现（第 7 步新增）
+//        collect_line_cells / line_threat_rank / line_blockers / collect_threat_lines
+//        threat_lines_through / double_threat_points / black_five_within_two
+//        capture_points_from_mask / blocking_point_forbidden_note
+//   4.  三层 VCT：layer_attacks / smart_responses / layer_responses / layer_dfs /
+//        layer_run（vct_all_response / vct_smart_response）+ mixed_defense_intersection
+//   5.  主入口：sound_lose_steps（健全步数）+ analyse（黑方逐候选标注；
+//        白方 = 威胁候选点 + 最好一档 + minimax 收尾）
 //
 // 硬性约束：
 //  * 全程只 make_move/undo_move，不拷贝棋盘；任何返回路径（含限流提前返回）都成对
