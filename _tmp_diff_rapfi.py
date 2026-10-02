@@ -81,25 +81,44 @@ def gen(rng):
         blacks, whites = [whites[0]], whites[1:]
     return blacks, whites
 
+def self_capture(blacks, whites):
+    """Points where a black stone would have no liberty (Go self-capture)."""
+    import sys as _s, os as _o
+    _s.path.insert(0, _o.getcwd())
+    from board import HybridBoard, BLACK, WHITE
+    b = HybridBoard(SIZE)
+    for (x, y) in blacks: b.grid[x, y] = BLACK
+    for (x, y) in whites: b.grid[x, y] = WHITE
+    b._invalidate_caches()
+    out = set()
+    for x in range(SIZE):
+        for y in range(SIZE):
+            if b.is_empty(x, y) and b.would_self_capture(x, y):
+                out.add((x, y))
+    return out
+
 def main():
     rng = random.Random(int(sys.argv[1]) if len(sys.argv) > 1 else 12345)
     N = int(sys.argv[2]) if len(sys.argv) > 2 else 200
     rap, proj = Rapfi(), Proj()
     mism = []
     tried = 0
+    nsc = 0
     try:
         for i in range(N):
             blacks, whites = gen(rng)
             tried += 1
+            sc = self_capture(blacks, whites)
+            nsc += len(sc)
             a = rap.forbid(blacks, whites)
-            b = proj.forbid(blacks, whites)
+            b = proj.forbid(blacks, whites) - sc
             if a != b:
-                mism.append((blacks, whites, sorted(a), sorted(b)))
+                mism.append((blacks, whites, sorted(a), sorted(b), sorted(sc)))
     finally:
         rap.close(); proj.close()
-    print("positions=%d  mismatches=%d" % (tried, len(mism)))
-    for (bl, wh, a, b) in mism[:8]:
-        print("  rapfi=%s engine=%s" % (a, b))
+    print("positions=%d  self-capture points excluded=%d  mismatches=%d" % (tried, nsc, len(mism)))
+    for (bl, wh, a, b, sc) in mism[:8]:
+        print("  rapfi=%s engine(no-sc)=%s sc=%s" % (a, b, sc))
         print("    blacks=%s" % sorted(bl))
         print("    whites=%s" % sorted(wh))
     return 1 if mism else 0
