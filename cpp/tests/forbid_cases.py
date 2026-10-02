@@ -92,6 +92,15 @@ class Engine:
             self.slow.append((marker, dt))
         return out
 
+    def send_one(self, line: str) -> str:
+        """只回一行的命令（play / undo / hash / pat / prove）：写一条读一行。"""
+        self.proc.stdin.write(line + "\n")
+        self.proc.stdin.flush()
+        row = self.proc.stdout.readline()
+        if row == "":
+            raise RuntimeError("engine closed")
+        return row.rstrip("\n")
+
     def timed_raw(self, line: str):
         """计时发一条命令（不限 0.2s 预算），返回 (输出行, 秒)。"""
         t0 = time.perf_counter()
@@ -280,10 +289,8 @@ def engine_patterns(eng: Engine, board):
         for y in range(board.size):
             if not board.is_empty(x, y):
                 continue
-            row = eng.send("pat %d %d" % (x, y))
-            if not row:
-                continue
-            vals = [int(v) for v in row[0].split()[:4]]
+            row = eng.send_one("pat %d %d" % (x, y))
+            vals = [int(v) for v in row.split()[:4]]
             out[(x, y)] = [PAT_NAMES.get(v, "?") for v in vals]
     return out
 
@@ -301,12 +308,10 @@ def invariant_report(eng: Engine, board, cands):
     notes = []
     for (x, y) in sorted(cands):
         engine_setup(eng, board)
-        eng.send("play w %d %d" % (x, y))
-        if eng.readline() != "ok":
+        if eng.send_one("play w %d %d" % (x, y)) != "ok":
             notes.append("候选点 %d,%d 白棋落子 illegal" % (x, y))
             continue
-        eng.send("prove 2 %g" % CAND_SEC)
-        r2 = eng.readline()
+        r2 = eng.send_one("prove 2 %g" % CAND_SEC)
         pats = engine_patterns(eng, board)
         bad = []
         for pos, dirs in pats.items():
@@ -389,6 +394,20 @@ def main() -> int:
                          if everywhere else "",
                          dt, "  期望=%s" % codes_of(board, want)
                          if not everywhere else ""), flush=True)
+
+                # 第一部分不变式（验收核心）：候选点小集合时逐点复核
+                # “白落候选点后黑棋只能走五/冲四，且 2 步内不能连五”。
+                if not everywhere and 0 < len(got) <= 8:
+                    viol, notes = invariant_report(eng, board, got)
+                    for n in notes:
+                        print("    [note] %s: %s" % (cid, n), flush=True)
+                    if viol:
+                        failures.append(
+                            "%s 不变式违例（黑棋 2 步内成五或仍有一手成活四/活三的点）: %s"
+                            % (cid, viol))
+                    else:
+                        print("    [inv] 不变式 OK：白落任一候选点后黑棋 2 步内不能连五，"
+                              "且盘上没有黑棋一手成活四/活三的点", flush=True)
 
             if not has_forbid and not has_legal:
                 print("  [note] %s 既无 forbid: 也无 legal: 期望，跳过" % cid,
