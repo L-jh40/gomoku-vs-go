@@ -2,6 +2,7 @@
 #include "board.h"
 
 #include "pattern_count.h"
+#include "pattern_table.h"
 
 #include <cstring>
 
@@ -203,6 +204,7 @@ void Board::recompute_all_counters() {
     compute_wins_total();
     rebuild_eval_lines(true);
     rebuild_cell_caches();
+    refresh_patterns_full();
 
     territory_ = 0;
     black_count_ = white_count_ = obstacle_count_ = alive_windows_ = 0;
@@ -219,6 +221,167 @@ void Board::recompute_all_counters() {
     }
 
     risk_ = risk_full();
+}
+
+// ===========================================================================
+// Rapfi 棋型缓存（增量维护）
+// ===========================================================================
+
+int Board::dir_index(int dx, int dy) {
+    if (dx == 1 && dy == 0) return 0;
+    if (dx == 0 && dy == 1) return 1;
+    if (dx == 1 && dy == 1) return 2;
+    if (dx == 1 && dy == -1) return 3;
+    return -1;
+}
+
+// 以 (cx,cy) 为中心、方向 (dx,dy) 的 11 格窗口编码。格状态从棋子 + 无气
+// 缓存直接读出（O(1)）：黑棋视角下白子 / 障碍 / 棋盘外 / 无气空点同为阻挡
+// （本项目对 Rapfi 的唯一扩展，三种状态在代码层面完全一致）。
+void Board::build_pattern_window(int color, int cx, int cy, int dx, int dy,
+                                 uint8_t* f) const {
+    for (int i = -PAT_H; i <= PAT_H; ++i) {
+        if (i == 0) {
+            f[PAT_MID] = F_SELF;
+            continue;
+        }
+        const int nx = cx + i * dx, ny = cy + i * dy;
+        if (!in_bounds(nx, ny)) {
+            f[i + PAT_MID] = F_OPPO;
+            continue;
+        }
+        const int idx = index(nx, ny);
+        const uint8_t v = cells_[idx];
+        if (v == EMPTY) {
+            f[i + PAT_MID] = (color == 0 && self_cap_[idx])
+                                 ? static_cast<uint8_t>(F_OPPO)
+                                 : static_cast<uint8_t>(F_EMPT);
+        } else if (static_cast<int>(v) == color + 1) {
+            f[i + PAT_MID] = F_SELF;
+        } else {
+            f[i + PAT_MID] = F_OPPO;
+        }
+    }
+}
+
+void Board::refresh_pattern_cell(int idx) {
+    const int cx = idx / MAX_BOARD, cy = idx % MAX_BOARD;
+    uint8_t f[PAT_LEN];
+    for (int color = 0; color < 2; ++color) {
+        for (int d = 0; d < 4; ++d) {
+            int dx, dy;
+            dir_vec(d, dx, dy);
+            build_pattern_window(color, cx, cy, dx, dy, f);
+            pat_[color][idx * 4 + d] = line_pattern(color == 0, f);
+        }
+    }
+    p4_black_[idx] = combine_pattern4(
+        true, pat_[0][idx * 4 + 0], pat_[0][idx * 4 + 1],
+        pat_[0][idx * 4 + 2], pat_[0][idx * 4 + 3]);
+}
+
+void Board::refresh_patterns(const uint16_t* centers, int nc) {
+    ++pat_gen_;
+    if (pat_gen_ == 0) {
+        std::memset(pat_stamp_, 0, sizeof(pat_stamp_));
+        pat_gen_ = 1;
+    }
+    for (int ci = 0; ci < nc; ++ci) {
+        const int cx0 = centers[ci] / MAX_BOARD;
+        const int cy0 = centers[ci] % MAX_BOARD;
+        // 棋型窗口是线段：仅与改动格同线、线距 ≤5 的格其窗口包含改动格。
+        for (int d = 0; d < 4; ++d) {
+            int dx, dy;
+            dir_vec(d, dx, dy);
+            for (int k = -PAT_H; k <= PAT_H; ++k) {
+                const int nx = cx0 + k * dx, ny = cy0 + k * dy;
+                if (!in_bounds(nx, ny)) continue;
+                const int idx = index(nx, ny);
+                if (pat_stamp_[idx] == pat_gen_) continue;
+                pat_stamp_[idx] = pat_gen_;
+                refresh_pattern_cell(idx);
+            }
+        }
+    }
+}
+
+void Board::refresh_patterns_full() {
+    ++pat_gen_;
+    if (pat_gen_ == 0) {
+        std::memset(pat_stamp_, 0, sizeof(pat_stamp_));
+        pat_gen_ = 1;
+    }
+    for (int x = 0; x < size_; ++x) {
+        for (int y = 0; y < size_; ++y) {
+            const int idx = index(x, y);
+            pat_stamp_[idx] = pat_gen_;
+            refresh_pattern_cell(idx);
+        }
+    }
+}
+
+// undo 用：按中心集合（落子点 + 被复原的提子）重算 self_cap_ / dead_ 数组。
+// territory_ 不在这里动——undo 从 HistoryEntry O(1) 还原全局计数，本函数只
+// 保证逐格数组与还原后的局面一致。触碰集合写入 tlist 返回（供棋型刷新）。
+int Board::post_move_cell_flags(const uint16_t* centers, int nc,
+                                uint16_t* tlist) {
+    touch_begin();
+    int tn = 0;
+    for (int i = 0; i < nc; ++i) {
+        const int c = centers[i];
+        touch_push(tlist, tn, c);
+        const int cx = c / MAX_BOARD, cy = c % MAX_BOARD;
+        for (int k = 0; k < 4; ++k) {
+            const int nx = cx + DX4[k], ny = cy + DY4[k];
+            if (in_bounds(nx, ny)) touch_push(tlist, tn, index(nx, ny));
+        }
+        for (int d = 0; d < 4; ++d) {
+            for (int k = -4; k <= 4; ++k) {
+                if (k == 0) continue;
+                const int nx = cx + k * EDX[d], ny = cy + k * EDY[d];
+                if (in_bounds(nx, ny)) touch_push(tlist, tn, index(nx, ny));
+            }
+        }
+    }
+
+    // 受影响棋块的空邻点（气数变化会改变这些空点的无气状态）。
+    ++comp_gen_;
+    if (comp_gen_ == 0) { std::memset(comp_stamp_, 0, sizeof(comp_stamp_)); comp_gen_ = 1; }
+    {
+        int stack[MAX_CELLS];
+        for (int i = 0; i < nc; ++i) {
+            const int s = centers[i];
+            if (cells_[s] != BLACK || comp_stamp_[s] == comp_gen_) continue;
+            int top = 0;
+            stack[top++] = s;
+            comp_stamp_[s] = comp_gen_;
+            for (int q = 0; q < top; ++q) {
+                const int cur = stack[q];
+                const int cx = cur / MAX_BOARD, cy = cur % MAX_BOARD;
+                for (int k = 0; k < 4; ++k) {
+                    const int nx = cx + DX4[k], ny = cy + DY4[k];
+                    if (!in_bounds(nx, ny)) continue;
+                    const int ni = index(nx, ny);
+                    if (cells_[ni] == EMPTY) {
+                        touch_push(tlist, tn, ni);
+                    } else if (cells_[ni] == BLACK && comp_stamp_[ni] != comp_gen_) {
+                        comp_stamp_[ni] = comp_gen_;
+                        stack[top++] = ni;
+                    }
+                }
+            }
+        }
+    }
+
+    for (int i = 0; i < tn; ++i) {
+        const int ci = tlist[i];
+        if (cells_[ci] == EMPTY)
+            self_cap_[ci] = is_dead_empty(ci / MAX_BOARD, ci % MAX_BOARD) ? 1 : 0;
+        else
+            self_cap_[ci] = 0;
+        dead_[ci] = dead_cell(ci) ? 1 : 0;
+    }
+    return tn;
 }
 
 // ===========================================================================
