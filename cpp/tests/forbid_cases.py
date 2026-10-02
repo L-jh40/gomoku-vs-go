@@ -277,6 +277,10 @@ def codes_of(board, pts):
 
 
 # 引擎 pat 命令输出的方向线型（Pat 枚举值 -> 名称）。
+# 注意：引擎的 Pat 枚举（cpp/src/pattern_table.h）是 Rapfi 的“合并版”，没有
+# B3S/B4S —— DEAD,OL,B1,F1,B2,F2,F2A,F2B,B3,F3,F3S,B4,F4,F5 = 0..13。
+# （Python rules.py 用的是 Rapfi 原版 16 值枚举，多 B3S=9 / B4S=13，两者数值不同，
+#   这里必须按引擎的枚举翻译，否则 F4 永远读不到、F3/B4 会串位。）
 PAT_NAMES = {0: "DEAD", 1: "OL", 2: "B1", 3: "F1", 4: "B2", 5: "F2", 6: "F2A",
              7: "F2B", 8: "B3", 9: "F3", 10: "F3S", 11: "B4", 12: "F4",
              13: "F5"}
