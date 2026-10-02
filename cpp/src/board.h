@@ -113,7 +113,16 @@ public:
         return pat_[color][idx * 4 + dir];
     }
     // 黑棋四方向组合线型（Pattern4 枚举值，FORBID 为禁手预筛标记）。
+    // 受下面三个禁手开关影响：关掉的那一档不再标 FORBID。
     uint8_t cached_pattern4_black(int idx) const { return p4_black_[idx]; }
+
+    // ---- 禁手开关（GUI 的“长连 / 四四 / 三三”复选框；默认全开 = renju）----
+    // 改开关会立刻重算全部 p4_black_（禁手预筛标记随开关变化）。
+    void set_forbid(bool overline, bool four_four, bool three_three);
+    bool forbid_overline() const { return forbid_overline_; }
+    bool forbid_44() const { return forbid_44_; }
+    bool forbid_33() const { return forbid_33_; }
+
     // (dx,dy) ∈ {(1,0),(0,1),(1,1),(1,-1)} → 方向下标 0..3。
     static int dir_index(int dx, int dy);
 
@@ -225,6 +234,10 @@ private:
     uint8_t  pat_[2][MAX_CELLS * 4];
     // p4_black_[idx]：黑棋四方向组合线型（FORBID 为禁手预筛标记）。
     uint8_t  p4_black_[MAX_CELLS];
+    // 禁手开关（见 set_forbid；默认全开 = renju 三禁）。
+    bool     forbid_overline_ = true;
+    bool     forbid_44_       = true;
+    bool     forbid_33_       = true;
     uint32_t pat_stamp_[MAX_CELLS * 4];
     uint32_t p4_stamp_[MAX_CELLS];
     uint32_t pat_gen_ = 0;

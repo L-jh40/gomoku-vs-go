@@ -38,6 +38,22 @@ constexpr int MaxProbeDepth  = 64;
 
 bool check_forbidden_impl(Board& b, int x, int y, int depth);  // 互递归前置声明
 
+// 把 (x,y) 当成黑子时，穿过它的连续黑子数（不落子，纯读盘）。
+// 用来区分两种 OL：真长连（run >= 6）与 Rapfi 把“一线双四”编码成的 OL
+// （run <= 5，见 pattern_table.cpp 的 dirty fix）——前者只受“长连禁手”开关管，
+// 后者本质是四四、计入 fours。
+int run_through(const Board& b, int x, int y, int dx, int dy) {
+    int n = 1;
+    for (int s = -1; s <= 1; s += 2) {
+        for (int i = 1; i < b.size(); ++i) {
+            const int nx = x + s * i * dx, ny = y + s * i * dy;
+            if (!b.in_bounds(nx, ny) || b.at(nx, ny) != BLACK) break;
+            ++n;
+        }
+    }
+    return n;
+}
+
 // 第三步主体：假定 p[0..3] 为落子点四方向线型（落子前缓存），临时落子后
 // 统计“真三”方向数。scoped 用 make_move/undo_move 保证棋型缓存一致。
 int count_true_threes(Board& b, int x, int y, const uint8_t p[4], int depth) {
@@ -95,16 +111,28 @@ bool check_forbidden_impl(Board& b, int x, int y, int depth) {
     if (b.cached_pattern4_black(idx) != FORBID) return false;
 
     // ---- 第二步：长连 / 四四（44 计数只算 B4/F4，与 Rapfi 一致）。----
+    // 三档禁手开关（GUI 复选框）：关掉的那一档不再是禁手；关掉“长连”时，真长连
+    // 方向既不判禁手也不计入四四（与 rules.py 的 _forbid_overline 语义一致）。
+    const bool forbid_ol = b.forbid_overline();
+    const bool forbid44  = b.forbid_44();
+    const bool forbid33  = b.forbid_33();
     int fours = 0;
     for (int d = 0; d < 4; ++d) {
         const uint8_t q = b.cached_pattern(0, idx, d);
-        if (q == OL) return true;              // 长连必为真禁手
-        if (q == B4 || q == F4) {
-            if (++fours >= 2) return true;     // 四四必为真禁手
+        if (q == OL) {
+            if (run_through(b, x, y, FDX[d], FDY[d]) >= 6) {
+                if (forbid_ol) return true;        // 真长连必为真禁手
+            } else {
+                fours += 2;                        // Rapfi 的“一线双四”
+                if (forbid44 && fours >= 2) return true;
+            }
+        } else if (q == B4 || q == F4) {
+            if (forbid44 && ++fours >= 2) return true;   // 四四必为真禁手
         }
     }
 
     // ---- 第三步：三三（带“假禁手延伸点”递归验证）。----
+    if (!forbid33) return false;                 // 三三禁手关闭：不再往下判
     if (depth + 1 >= MaxProbeDepth) return false;
     uint8_t p[4];
     for (int d = 0; d < 4; ++d) p[d] = b.cached_pattern(0, idx, d);
@@ -158,14 +186,26 @@ ForbiddenProbe probe_forbidden(Board& board, int x, int y) {
 
     if (r.p4 != FORBID) return r;  // O(1) 预筛：非禁手
 
+    // 与 check_forbidden_impl 同口径（含禁手开关与“一线双四/真长连”区分）。
+    const bool forbid_ol = board.forbid_overline();
+    const bool forbid44  = board.forbid_44();
+    const bool forbid33  = board.forbid_33();
     int fours = 0;
     for (int d = 0; d < 4; ++d) {
         const uint8_t q = p[d];
-        if (q == OL) { r.forbidden = true; return r; }
-        if (q == B4 || q == F4) ++fours;
+        if (q == OL) {
+            if (run_through(board, x, y, FDX[d], FDY[d]) >= 6) {
+                if (forbid_ol) { r.forbidden = true; return r; }
+            } else {
+                fours += 2;
+            }
+        } else if (q == B4 || q == F4) {
+            ++fours;
+        }
     }
     r.fours = fours;
-    if (fours >= 2) { r.forbidden = true; return r; }
+    if (forbid44 && fours >= 2) { r.forbidden = true; return r; }
+    if (!forbid33) return r;
 
     r.threes = count_true_threes(board, x, y, p, 0);
     r.forbidden = r.threes >= 2;

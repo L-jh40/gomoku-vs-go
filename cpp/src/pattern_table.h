@@ -42,4 +42,10 @@ uint8_t line_pattern(bool black_rules, const uint8_t* line);
 Pattern4 combine_pattern4(bool forbid, uint8_t p1, uint8_t p2, uint8_t p3,
                           uint8_t p4);
 
+// 同上，但三档禁手分别开关（GUI 的“长连 / 四四 / 三三”复选框；关掉的那一档
+// 不再标 FORBID，于是该点不再是禁手点）。combine_pattern4(f,...) 等价于三档全开。
+Pattern4 combine_pattern4_flags(bool forbid_overline, bool forbid_44,
+                                bool forbid_33, uint8_t p1, uint8_t p2,
+                                uint8_t p3, uint8_t p4);
+
 }  // namespace gvg

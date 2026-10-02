@@ -12,7 +12,10 @@
 //   undo                悔一步，输出 ok / err
 //   hash                输出 16 位十六进制 Zobrist
 //   dump                输出 size 行、每行 size 个格子值(0..3)
+//   forbid <o> <44> <33> 设置三档禁手开关（1=开，默认全开；不改棋盘/哈希）
 //   pat <x> <y>         诊断：输出四方向线型等
+//   wcand               诊断：白棋威胁候选点的原始报告（威胁线 + 每线阻挡点 +
+//                       双威胁必须阻挡点 + 吃子点 + 交集/并集回退后的候选池）
 // 评估相关（只评估，不搜索）：
 //   eval                输出打包后的 int64 评估值与各字段
 //   counters            输出黑白六类线型计数 / 风险 / 领地
@@ -148,6 +151,11 @@ int main() {
         } else if (cmd == "winmode") {
             int m = 0;
             if (in >> m) g_winmode = m;
+        } else if (cmd == "forbid") {
+            // forbid <长连> <四四> <三三>：1=禁手开（默认），0=该档禁手关闭。
+            // 只改 Board 的三个开关（重算 p4_black_ 预筛），不改棋盘/哈希。
+            int o = 1, f4 = 1, f3 = 1;
+            if (in >> o >> f4 >> f3) board.set_forbid(o != 0, f4 != 0, f3 != 0);
         } else if (cmd == "genmove") {
             std::string c;
             if (in >> c) {
@@ -221,6 +229,41 @@ int main() {
                     if (r.timeout) std::cout << "timeout\n";
                     std::cout << "end\n";
                 }
+            }
+        } else if (cmd == "wcand") {
+            // 诊断：白棋威胁候选点的原始报告（不进“取最好一档”的收窄）。
+            const uint64_t h0 = board.hash();
+            const gvg::WhiteCandidateReport rep =
+                gvg::white_threat_candidates(board);
+            if (board.hash() != h0) {
+                std::cout << "error hash\n";
+            } else {
+                std::cout << "unconstrained " << (rep.unconstrained ? 1 : 0)
+                          << "\n";
+                std::cout << "threatlines " << rep.threat_lines << "\n";
+                for (size_t i = 0; i < rep.lines.size(); ++i) {
+                    const gvg::ThreatLine& tl = rep.lines[i];
+                    std::cout << "line " << tl.dx << ' ' << tl.dy << " rank "
+                              << tl.rank << " blockers";
+                    for (size_t k = 0; k < tl.blockers.size(); ++k)
+                        std::cout << ' ' << tl.blockers[k].first << ','
+                                  << tl.blockers[k].second;
+                    std::cout << "\n";
+                }
+                std::cout << "mustblock";
+                for (size_t k = 0; k < rep.must_block.size(); ++k)
+                    std::cout << ' ' << rep.must_block[k].first << ','
+                              << rep.must_block[k].second;
+                std::cout << "\ncaptures";
+                for (size_t k = 0; k < rep.captures.size(); ++k)
+                    std::cout << ' ' << rep.captures[k].first << ','
+                              << rep.captures[k].second;
+                std::cout << "\nintersect " << rep.intersect_size << ' '
+                          << (rep.intersect_empty ? 1 : 0) << "\npool";
+                for (size_t k = 0; k < rep.candidates.size(); ++k)
+                    std::cout << ' ' << rep.candidates[k].first << ','
+                              << rep.candidates[k].second;
+                std::cout << "\nend\n";
             }
         } else if (cmd == "prove") {
             // 黑方证明搜索（VCT，含三）：不落子、不改棋盘，与 g_winmode 无关。

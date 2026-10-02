@@ -23,6 +23,8 @@ cpp\build\engine.exe          :: 启动引擎（stdin 读命令、stdout 逐行�
 | `set` | `<x> <y> <b\|w\|o>` | 直接摆子（`o`=障碍），不提子、不换回合 | 无 |
 | `clear` | 无 | 清空棋盘 | 无 |
 | `checkforbidden` | 无 | 所有黑棋非法点（禁手 ∪ 无气自杀） | 每行 `x y`，末尾 `end` |
+| `forbid` | `<长连> <四四> <三三>`（1=开，默认全开） | 三档禁手开关（重算 `p4_black_` 预筛；不改棋盘/哈希） | 无 |
+| `wcand` | 无 | 白棋威胁候选点原始报告（威胁线 / 每线阻挡点 / 必须阻挡点 / 吃子点 / 交集或并集候选池） | 若干行 + `end` |
 | `play` | `<b\|w> <x> <y>` | 正式落子（白提黑、黑自杀拒绝） | `ok` / `illegal` |
 | `undo` | 无 | 悔一步 | `ok` / `err`（空历史 `err`） |
 | `hash` | 无 | 当前局面 Zobrist | 16 位十六进制 |
@@ -33,7 +35,7 @@ cpp\build\engine.exe          :: 启动引擎（stdin 读命令、stdout 逐行�
 | `candidates` | `<b\|w> [steps=11] [max_sec=10] [winmode=0]` | 候选点 VCF/VCT W/L 标注 | `cand <x> <y> <W\|L><steps>` 若干行 + 可选 `timeout` + `end` |
 | `quit` | 无 | 退出 | 无 |
 
-其余命令（`move` / `dump` / `pat` / `bencheval` / `searchstat`）见
+其余命令（`move` / `dump` / `pat` / `wcand` / `bencheval` / `searchstat`）见
 [`IMPLEMENTATION.md`](IMPLEMENTATION.md) 的命令表。
 
 ## 测试
@@ -43,6 +45,7 @@ cpp\build\engine.exe          :: 启动引擎（stdin 读命令、stdout 逐行�
 ```bat
 py cpp\tests\engine_protocol.py    :: 命令行协议回归（43 条断言）
 py cpp\tests\diff_forbidden.py     :: 黑棋禁手差分 + make/undo 压力
+py cpp\tests\forbid_switches.py    :: 三档禁手开关（引擎 vs rules.py，8 种组合）
 py cpp\tests\diff_eval.py          :: 增量评估 counters/eval 差分
 py cpp\tests\search_sanity.py      :: alpha-beta 搜索健全性
 py cpp\tests\tactics.py            :: VCF/VCT + W/L 战术用例

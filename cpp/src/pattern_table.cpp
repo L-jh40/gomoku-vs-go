@@ -147,6 +147,15 @@ uint8_t line_pattern(bool black_rules, const uint8_t* line) {
 
 Pattern4 combine_pattern4(bool forbid, uint8_t p1, uint8_t p2, uint8_t p3,
                           uint8_t p4) {
+    return combine_pattern4_flags(forbid, forbid, forbid, p1, p2, p3, p4);
+}
+
+// 三档禁手开关版（GUI 的“长连/四四/三三”复选框）：关掉的那一档不再标 FORBID。
+// 关掉后同一个点的组合线型会退回到“它本来是什么”（例如三三退回 F_FLEX3_2X），
+// 于是 check_forbidden 的第一步预筛就不再把该点当禁手点。
+Pattern4 combine_pattern4_flags(bool forbid_overline, bool forbid_44,
+                                bool forbid_33, uint8_t p1, uint8_t p2,
+                                uint8_t p3, uint8_t p4) {
     int n[PATTERN_NB] = {0};
     ++n[p1];
     ++n[p2];
@@ -155,11 +164,9 @@ Pattern4 combine_pattern4(bool forbid, uint8_t p1, uint8_t p2, uint8_t p3,
 
     if (n[F5] >= 1) return A_FIVE;  // 恰好成五优先
 
-    if (forbid) {
-        if (n[OL] >= 1) return FORBID;        // 长连
-        if (n[F4] + n[B4] >= 2) return FORBID;  // 四四（B4S 在 Rapfi 中不存在）
-        if (n[F3] + n[F3S] >= 2) return FORBID; // 三三（预筛标记，真三还要递归验证）
-    }
+    if (forbid_overline && n[OL] >= 1) return FORBID;          // 长连
+    if (forbid_44 && n[F4] + n[B4] >= 2) return FORBID;        // 四四
+    if (forbid_33 && n[F3] + n[F3S] >= 2) return FORBID;       // 三三（预筛）
 
     if (n[B4] >= 2) return B_FLEX4;
     if (n[F4] >= 1) return B_FLEX4;

@@ -302,8 +302,9 @@ void Board::refresh_patterns(const uint16_t* centers, int nc) {
     }
     for (int i = 0; i < nd; ++i) {
         const int idx = dirty[i];
-        p4_black_[idx] = combine_pattern4(
-            true, pat_[0][idx * 4 + 0], pat_[0][idx * 4 + 1],
+        p4_black_[idx] = combine_pattern4_flags(
+            forbid_overline_, forbid_44_, forbid_33_,
+            pat_[0][idx * 4 + 0], pat_[0][idx * 4 + 1],
             pat_[0][idx * 4 + 2], pat_[0][idx * 4 + 3]);
     }
 }
@@ -329,11 +330,23 @@ void Board::refresh_patterns_full() {
                 build_pattern_window(1, cx, cy, dx, dy, f);
                 pat_[1][idx * 4 + d] = line_pattern(false, f);
             }
-            p4_black_[idx] = combine_pattern4(
-                true, pat_[0][idx * 4 + 0], pat_[0][idx * 4 + 1],
+            p4_black_[idx] = combine_pattern4_flags(
+                forbid_overline_, forbid_44_, forbid_33_,
+                pat_[0][idx * 4 + 0], pat_[0][idx * 4 + 1],
                 pat_[0][idx * 4 + 2], pat_[0][idx * 4 + 3]);
         }
     }
+}
+
+// 禁手开关（GUI 复选框）：改了就重算全部 p4_black_（FORBID 预筛标记随开关变）。
+void Board::set_forbid(bool overline, bool four_four, bool three_three) {
+    if (forbid_overline_ == overline && forbid_44_ == four_four &&
+        forbid_33_ == three_three)
+        return;
+    forbid_overline_ = overline;
+    forbid_44_       = four_four;
+    forbid_33_       = three_three;
+    refresh_patterns_full();
 }
 
 // undo 用：按中心集合（落子点 + 被复原的提子）重算 self_cap_ / dead_ 数组。

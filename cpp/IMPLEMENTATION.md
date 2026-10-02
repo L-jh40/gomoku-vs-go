@@ -897,3 +897,39 @@ struct VctOutcome {
 3. **T2/T5/T8 的通用 A2 断言**：白方 W0 现在表示“黑方在预算内证明不出必胜”（旧语义
    白方候选只可能是 L），故改为“落子合法 + 抽查前 3 个点 prove 不成 win”。
 
+---
+
+## 三档禁手开关（本轮补齐，`forbid` 命令）
+
+用户规格：“不开禁手时三三、四四也是[做杀]”。原来三个复选框只作用于 Python 侧
+（`rules.py` 的 `_forbid_overline/_forbid_44/_forbid_33`），C++ 引擎无论怎么设都按
+renju 三禁判定（蓝色叉、`checkforbidden`、`gen_moves` 全都不受影响）。现在：
+
+* `Board` 增加三个开关（默认全开）与 `set_forbid(o,44,33)`；改开关会立刻
+  `refresh_patterns_full()` 重算全部 `p4_black_` 预筛标记，因为“四方向组合线型”本身
+  就是按禁手规则合成的（`combine_pattern4_flags`：关掉的那一档不再标 `FORBID`，
+  例如三三退回 `F_FLEX3_2X`）。
+* `check_forbidden_impl` / `probe_forbidden` 按开关跳过对应判定；另外补上了
+  “真长连 vs Rapfi 一线双四（都用 `OL` 编码）”的区分：落子前先量穿过该点的连续黑子数
+  （`run_through`，纯读盘），`run >= 6` 才是长连（受长连开关管），否则按 `fours += 2`
+  计——与 `rules.py` 的 `_rapfi_verdict` 完全同口径。
+* `double_threat_points`（双威胁必须阻挡点）现在按“做杀”三类判定：四三恒算；
+  三三只在**三三禁手关闭**时算；四四只在**四四禁手关闭**时算。
+* 协议新增 `forbid <长连> <四四> <三三>`（0/1，默认全开，不改棋盘/哈希），
+  `engine_client.py` 的 `reset` / `forbidden_points` 会带上 GUI 当前的三个复选框；
+  诊断命令 `wcand` 直接打印 `WhiteCandidateReport`（威胁线 / 每线阻挡点 / 必须阻挡点 /
+  吃子点 / 交集或并集后的候选池），用于核对用户规格里的阻挡点查表：
+
+  | 线型 | 规格 | `wcand` 实测（row 7） |
+  | --- | --- | --- |
+  | `10111` | 1 | `{6}` |
+  | `011112` | 1 | `{4}` |
+  | `0011102` | 3 | `{4,5,9}` |
+  | `0011100` | 2 | `{5,9}` |
+  | `010110` | 3 | `{4,6,9}` |
+
+验收：`py cpp/tests/forbid_switches.py` → 8 种开关组合 × 16 个局面 = 128 次比对，
+引擎与 `rules.py` **0 不一致**（PASS）。其余回归（`forbid_cases` / `diff_forbidden` /
+`engine_protocol` / `diff_eval` / `search_sanity` / `tactics` / `tests_torus`）全部通过。
+
+

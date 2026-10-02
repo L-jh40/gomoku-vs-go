@@ -740,22 +740,33 @@ std::vector<ThreatLine> threat_lines_through(Board& b, int px, int py) {
     return out;
 }
 
-// 双威胁必须阻挡点：黑棋在方向 a 落子成活四（PP_FLEX4）、在方向 b != a 落子成活三
-// （PP_FLEX3）→ 黑做四三必胜，该点白棋必须先占（“必须阻挡点”）。
+// 双威胁必须阻挡点：黑棋落这里“做杀”必胜，白棋必须先占。三类做杀：
+//   * 四三：某方向成活四（PP_FLEX4）且另一方向成活三（PP_FLEX3）——任何规则下都算；
+//   * 三三：两方向成活三（PP_FLEX3 x2）——只在**三三禁手关闭**时才算杀（开着的话
+//     黑棋自己不能落，不是威胁）；
+//   * 四四：两方向成四（PP_B4/PP_FLEX4 共两个）——只在**四四禁手关闭**时才算杀。
+// （用户规格：“不开禁手时三三、四四也是”。开关直接读 Board 的禁手开关。）
 std::vector<Pt> double_threat_points(Board& b) {
     std::vector<Pt> out;
+    const bool forbid33 = b.forbid_33();
+    const bool forbid44 = b.forbid_44();
     const int n = b.size();
     for (int x = 0; x < n; ++x) {
         for (int y = 0; y < n; ++y) {
             if (!b.is_empty(x, y)) continue;
             const int idx = cell_index(x, y);
-            int flex4 = 0, flex3 = 0;
+            int flex4 = 0, flex3 = 0, fours = 0;
             for (int d = 0; d < 4; ++d) {
                 const PointPattern p = point_pattern_d(b, idx, d);
-                if (p == PP_FLEX4) ++flex4;
+                if (p == PP_FLEX4) { ++flex4; ++fours; }
+                else if (p == PP_B4) { ++fours; }
                 else if (p == PP_FLEX3) ++flex3;
             }
-            if (flex4 >= 1 && flex3 >= 1) out.push_back(Pt(x, y));
+            const bool four_three = (flex4 >= 1 && flex3 >= 1);
+            const bool three_three = (!forbid33 && flex3 >= 2);
+            const bool four_four = (!forbid44 && fours >= 2);
+            if (four_three || three_three || four_four)
+                out.push_back(Pt(x, y));
         }
     }
     return out;

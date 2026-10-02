@@ -97,6 +97,14 @@ class EngineClient:
     # ------------------------------------------------------------------
     # Board sync
     # ------------------------------------------------------------------
+    @staticmethod
+    def _forbid_command(board):
+        """GUI 的三个禁手复选框 -> 引擎的 forbid 命令（默认全开）。"""
+        return "forbid %d %d %d" % (
+            int(bool(getattr(board, "_forbid_overline", True))),
+            int(bool(getattr(board, "_forbid_44", True))),
+            int(bool(getattr(board, "_forbid_33", True))))
+
     def reset(self, board):
         """Load `board` into the engine: size, obstacles, then the history.
 
@@ -107,6 +115,7 @@ class EngineClient:
         with self._lock:
             self._ensure()
             self._send(f"size {board.size}")
+            self._send(self._forbid_command(board))
             for x in range(board.size):
                 for y in range(board.size):
                     if int(board.grid[x, y]) == OBSTACLE:
@@ -129,6 +138,7 @@ class EngineClient:
         with self._lock:
             self._ensure()
             self._send(f"size {board.size}")
+            self._send(self._forbid_command(board))
             for x in range(board.size):
                 for y in range(board.size):
                     value = int(board.grid[x, y])
