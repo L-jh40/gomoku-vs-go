@@ -62,11 +62,10 @@ void shift_line(const uint8_t* line, int i, uint8_t* out) {
     }
 }
 
-uint8_t get_pattern_rec(bool black_rules, uint8_t* memo_seen_guard, const uint8_t* line) {
+uint8_t get_pattern_rec(bool black_rules, const uint8_t* line) {
     Memo& memo = black_rules ? g_memo_black : g_memo_white;
     const int code = encode(line);
     if (memo.v[code]) return static_cast<uint8_t>(memo.v[code] - 1);
-    (void)memo_seen_guard;
 
     int realLen, fullLen, start, end;
     count_line(line, realLen, fullLen, start, end);
@@ -86,7 +85,7 @@ uint8_t get_pattern_rec(bool black_rules, uint8_t* memo_seen_guard, const uint8_
             if (line[i] != F_EMPT) continue;
             shift_line(line, i, shifted);
             shifted[PAT_MID] = F_SELF;
-            const uint8_t sp = get_pattern_rec(black_rules, nullptr, shifted);
+            const uint8_t sp = get_pattern_rec(black_rules, shifted);
             if (sp == F5 && patCnt[F5] < 2) f5Idx[patCnt[F5]] = i;
             ++patCnt[sp];
         }
@@ -133,8 +132,8 @@ struct PatternTableInit {
                 line[i] = static_cast<uint8_t>(t % 3);
                 t /= 3;
             }
-            get_pattern_rec(true, nullptr, line);
-            get_pattern_rec(false, nullptr, line);
+            get_pattern_rec(true, line);
+            get_pattern_rec(false, line);
         }
     }
 };
@@ -143,7 +142,7 @@ const PatternTableInit g_pattern_init;
 }  // namespace
 
 uint8_t line_pattern(bool black_rules, const uint8_t* line) {
-    return get_pattern_rec(black_rules, nullptr, line);
+    return get_pattern_rec(black_rules, line);
 }
 
 Pattern4 combine_pattern4(bool forbid, uint8_t p1, uint8_t p2, uint8_t p3,
