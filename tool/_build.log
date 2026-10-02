@@ -5,3 +5,12 @@ argutils.cpp
 benchmark.cpp
 command.cpp
 database.cpp
+dataprep.cpp
+gomocup.cpp
+opengen.cpp
+selfplay.cpp
+tuning.cpp
+hash.cpp
+iohelper.cpp
+platform.cpp
+utils.cpp
