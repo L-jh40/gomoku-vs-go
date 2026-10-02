@@ -418,15 +418,18 @@ def test_gui_torus():
     g.forbid_33_var.set(1)
     g.board._forbid_33 = True
 
-    # illegal moves in an imported code list are never played
-    # three-three at h8: black e8/f8/j8/k8, white far away in row o
-    codes_ff = "e8 o15 f8 o14 j8 o13 k8 o12 h8 i12"
+    # illegal moves in an imported code list are never played.
+    # Rapfi checkForbiddenPoint: e8..k8 is one line = one direction, so
+    # f8/g8/j8/k8 alone is NOT a three-three.  Use two open threes in two
+    # directions instead - f8/g8 in row 8 and h10/h9 in file h - which is a
+    # real three-three at h8.
+    codes_ff = "f8 o15 g8 o14 h10 o13 h9 o12 h8 i12"
     b_ill, _n6, info_ill = board_tools.parse_dump(codes_ff, size=15,
                                                   first=BLACK)
     check("forbidden move in a code list is rejected, not played",
           info_ill["errors"] == [("h8", "three_three")]
           and b_ill.grid[7, 7] == EMPTY
-          and b_ill.grid[7, 4] == BLACK and b_ill.grid[7, 10] == BLACK,
+          and b_ill.grid[7, 5] == BLACK and b_ill.grid[5, 7] == BLACK,
           str(info_ill["errors"]) + " " + str(b_ill.grid[7, 7]))
     # i12 is white's move after the rejected h8 (the turn still passes)
     check("the legal moves after the rejected one still land",
@@ -471,7 +474,7 @@ def test_gui_torus():
     note_after_import = g.thinking_label.cget("text")
     root.update()
     check("imported illegal list leaves the board consistent",
-          g.board.grid[7, 7] == EMPTY and g.board.grid[7, 4] == BLACK
+          g.board.grid[7, 7] == EMPTY and g.board.grid[7, 5] == BLACK
           and "跳过 1 手" in note_after_import,
           note_after_import)
 
@@ -639,10 +642,15 @@ def test_forbidden():
         b._invalidate_caches()
         return b, center
 
+    # Rapfi's checkForbiddenPoint counts at most ONE true three per direction
+    # (a successful scan on the first side jumps to the next direction), so
+    # two threes on the SAME line are a single three and the move is legal.
+    # Verified against the bundled Rapfi engines (yxshowforbid answers
+    # "FORBID ." for e8/f8/j8/k8 + h8).
     b5, c5 = load_line("0110A0110")
     ok5, f5 = rules.is_black_legal_move(b5, *c5)
-    check("0110A0110: two open threes on one line -> three-three",
-          (not ok5) and f5 == "three_three", f"{ok5} {f5}")
+    check("0110A0110: one line is one direction -> legal (Rapfi semantics)",
+          ok5 and f5 is None, f"{ok5} {f5}")
     b6, c6 = load_line("1110A0111")
     ok6, f6 = rules.is_black_legal_move(b6, *c6)
     check("1110A0111: two rush fours on one line -> four-four",
@@ -760,16 +768,20 @@ def test_rapfi_reader():
           str(bt.split_codes("e5f6", size=9)))
 
     # --- the same position with and without spaces ---
-    spaced = "e8 o15 f8 o14 j8 o13 k8 o12"
+    # h8 is a real three-three here (two open threes in two directions:
+    # f8/g8 in row 8 and h10/h9 in file h).  An in-line shape such as
+    # e8/f8/j8/k8 is NOT a three-three under Rapfi's checkForbiddenPoint,
+    # which counts at most one true three per direction.
+    spaced = "f8 o15 g8 o14 h10 o13 h9 o12"
     b1, _s1 = bt.board_from_code(spaced, size=15, first=bt.BLACK,
                                  gomoku=True)
-    b2, _s2 = bt.board_from_code("e8o15f8o14j8o13k8o12", size=15,
+    b2, _s2 = bt.board_from_code("f8o15g8o14h10o13h9o12", size=15,
                                  first=bt.BLACK, gomoku=True)
     check("spaceless and spaced codes give the same board",
           b1.grid.tobytes() == b2.grid.tobytes(),
           str(b1.grid.tobytes() == b2.grid.tobytes()))
     check("external (gomoku) mode keeps every stone",
-          len(b2.history) == 8 and b2.grid[7, 4] == bt.BLACK,
+          len(b2.history) == 8 and b2.grid[7, 5] == bt.BLACK,
           "%d stones" % len(b2.history))
     # a fouled position must be readable (the Go layer would refuse it)
     b3, _s3 = bt.board_from_code(spaced + " h8", size=15, first=bt.BLACK,
@@ -827,7 +839,7 @@ def test_rapfi_reader():
     text = open(path, encoding="utf-8").read()
     check("each position is appended on its own lines + blank line",
           text == ("#basic" + chr(10)
-                   + "e8 o15 f8 o14 j8 o13 k8 o12" + chr(10) + "forbid:h8"
+                   + spaced + chr(10) + "forbid:h8"
                    + chr(10) + chr(10) + "h8 i9" + chr(10) + "forbid:None"
                    + chr(10) + chr(10)),
           repr(text))

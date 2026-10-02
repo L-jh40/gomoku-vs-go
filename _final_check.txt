@@ -1,0 +1,146 @@
+﻿===== tests_torus.py =====
+PASS - torus: five across wrap detected 
+PASS - non-torus: same shape is not a five 
+PASS - torus: overline across wrap 
+PASS - torus: wrapped liberty allows the move 
+PASS - torus: wrapped liberty counted {(8, 4)}
+PASS - non-torus: same move is self-capture (rejected) 
+PASS - torus: capture via wrapped liberty [(0, 4)]
+PASS - torus: five_point at wrapped completion five_point
+PASS - torus: line_code has no edge blockers (no leading/trailing 2 from edges) 111100000
+PASS - torus: farthest uses cyclic Chebyshev [(0, 4), (4, 0), (4, 8)]
+PASS - torus: unblocked wrapped window detected 
+PASS - non-torus: ordinary five still detected 
+
+TOTAL: 12 FAILED: 0
+PASS - board.torus set by new game 
+PASS - display size = n + 4 19 vs 15
+PASS - canvas size follows display grid (dynamic cell) 618
+PASS - cell size fitted into the window (<= base, >= 50%) 30
+PASS - grid drawn as ring-coloured segments over the extended grid 684
+PASS - corner cell has 4 wrapped copies (2 per axis) [(2, 2), (2, 17), (17, 2), (17, 17)]
+PASS - real stone drawn once (ring copies are faded) 1
+PASS - click on a wrapped copy maps to the actual cell (0, 0)
+PASS - hover stores actual cell and display copy (0, 0) (17, 17)
+PASS - clicking a wrapped copy plays on the actual cell 1
+PASS - ring stones use 50% stone + 50% board background fake=3 real=1
+PASS - ring grid lines fade to white ['#808080', 'black']
+PASS - single #f2f2f2 mirror frame around the real board 1
+PASS - ring background fades towards white ['#f4e1ac']
+PASS - ghost shown on the real cell for ring hover 1
+PASS - board model stays n x n (AI never sees the ring) (15, 15)
+PASS - W moves the displayed board up one row [(2, 2), (2, 17)] -> [(1, 2), (1, 17)]
+PASS - display shift does not change the board 1
+PASS - display_to_actual inverts the shift (1, 0)
+PASS - S restores the original display [(2, 2), (2, 17)]
+PASS - Right arrow shifts the columns [(2, 3), (2, 18)]
+PASS - board export/import round-trips 15
+PASS - white and obstacle rows both export as 2 122
+PASS - obstacles are recorded in the header # obstacles=(6,6)
+PASS - dead (no-liberty) empty points export as 2 2 # no_liberty=(0,0)
+PASS - G appends one coordinate line to 粘贴板.md 'h8 i8 p0 g9' / 已复制，坐标追加到 board_dump.txt / 粘贴板.md（3 手）
+PASS - G writes the dump into the chosen directory C:\Users\lin\Desktop\gomoku-vs-go\gomoku-vs-go2\_tmp_export
+PASS - the code line replays to the same position moves
+PASS - pass records are rebuilt from the code line [2]
+PASS - imported board matches the exported position [2] 已导入 3 手，Pass 1 次
+PASS - forbid flags are read back from the dump header (True, True, False)
+PASS - importing a dump syncs the forbid check boxes 0
+PASS - bare codes carry no forbid settings None
+PASS - forbidden move in a code list is rejected, not played [('h8', 'three_three')] 0
+PASS - the legal moves after the rejected one still land 2
+PASS - no-liberty move is rejected instead of vanishing [('a15', 'self_capture')] 0
+PASS - rejected import is cancelled by default (No) 
+PASS - the dialog names every foul and coordinate 以下着法不合规则，不会落子： / h8：三三禁手 /  / 仍然导入（跳过这些着法）？ / 以下着法不合规则，不会落子： / a15：自吃（无气） /  / 仍然导入（跳过这些着法）？
+PASS - imported illegal list leaves the board consistent 已导入 9 手，跳过 1 手
+PASS - default export folder is a sub-folder C:\Users\lin\Desktop\gomoku-vs-go\gomoku-vs-go2\导出
+PASS - the export folder is created on demand C:\Users\lin\Desktop\gomoku-vs-go\gomoku-vs-go2\_tmp_export\导出\_tmp_test
+PASS - G writes both files into the export folder ['board_dump.txt', '粘贴板.md']
+PASS - the exported code line is the played move 'h8\n'
+PASS - torus off restores normal display 15 498
+PASS - hint off: no mirrored ring 15 pad=0
+PASS - hint 4 cells: display n + 8 23 pad=4
+PASS - 4-cell ring fills all wrapped cells 304
+PASS - tiny window: cell shrinks to 50% floor 15
+PASS - tiny window: readout moves beside the board 黑棋时间 / AI | 0:00 / 人类 | 0:00 / 白棋时间 / AI | 0:00 / 人类 | 0:00 / 白吃黑 0子
+
+TOTAL: 49 FAILED: 0
+PASS - two open threes is a three-three foul False three_three
+PASS - two fours is a four-four foul False four_four
+PASS - blocked extensions are illegal (four-four) False/four_four False/four_four
+PASS - the other open three can still be extended legally True None
+PASS - blocked open three does not cause a three-three foul True None
+PASS - repeated foul judgement terminates 
+PASS - 0110A0110: one line is one direction -> legal (Rapfi semantics) True None
+PASS - 1110A0111: two rush fours on one line -> four-four False four_four
+PASS - forbidden rewrite keeps compute_threats fast (<1.5s) 0.037s
+PASS - four-four stays a foul even with a capturable group False four_four
+PASS - four-four without the extra liberty False four_four
+PASS - 0110010: no spurious 33/44 fouls []
+PASS - 01100010: no spurious 33/44 fouls []
+PASS - three-three reports its lines [[(7, 3), (7, 7), (7, 9), (7, 10)], [(7, 3), (7, 4), (7, 5), (7, 7)]]
+PASS - foul_lines restores the board 
+PASS - incremental blue cache matches full recompute [(7, 6)] vs [(7, 6)]
+PASS - white move creates the self-capture blue cross [(7, 6)]
+PASS - spaced codes split ['h8', 'i9', 'p0']
+PASS - Rapfi codes without spaces split ['h8', 'i9', 'j10']
+PASS - uppercase / commas / semicolons split ['h8', 'i9', 'j10']
+PASS - two-digit rows split ['a15', 'b14']
+PASS - move numbers are dropped ['h8', 'i9']
+PASS - pass in a spaceless list ['h8', 'i9', 'p0', 'j10']
+PASS - a leading moves: label is ignored ['h8', 'i9']
+PASS - 9x9: a two-digit chunk falls back to one digit ['e5', 'f6']
+PASS - spaceless and spaced codes give the same board True
+PASS - external (gomoku) mode keeps every stone 8 stones
+PASS - Go rules refuse the three-three stone (reference) [('h8', 'three_three')]
+PASS - gomoku mode accepts it (external position) 1
+PASS - block is code line + forbid line (粘贴板.md format) ['f8 o15 g8 o14 h10 o13 h9 o12', 'forbid:h8']
+PASS - the forbidden point and type are reported [('h8', 'three_three')]
+PASS - no forbidden point -> empty list []
+PASS - the forbidden label can be turned off 'f8 o15 g8 o14 h10 o13 h9 o12\nh8'
+PASS - no forbidden point is written as forbid:None 'h8 i9\nforbid:None'
+PASS - forbid values are parsed ['j10', 'h9', 'h8']
+PASS - a forbid: line is not read as a move line 2 stones
+PASS - each position is appended on its own lines + blank line '#basic\nf8 o15 g8 o14 h10 o13 h9 o12\nforbid:h8\n\nh8 i9\nforbid:None\n\n'
+PASS - the last code line is found (forbid lines skipped) h8 i9
+PASS - the last forbid line is found 'None'
+PASS - file pairs are readable (code, forbid) [('f8 o15 g8 o14 h10 o13 h9 o12', 'h8'), ('h8 i9', 'None')]
+
+TOTAL: 23 FAILED: 0
+All torus checks passed.
+exit=0
+===== cpp/tests/forbid_cases.py =====
+[cases] 导入 15 个用例块
+  [case#1] 禁手 1 个
+  [case#2] 禁手 1 个
+  [case#3] 禁手 1 个
+  [case#4] 禁手 1 个
+  [case#5] 禁手 0 个
+  [case#6] 禁手 0 个
+  [case#7] 禁手 6 个
+  [note] case#8 rules.py 与 Rapfi 差异: py [(5, 8)] vs 期望 []
+  [case#8] 禁手 1 个
+  [case#9] 禁手 0 个
+  [case#10] 禁手 9 个
+  [case#11] 禁手 12 个
+  [case#12] 禁手 9 个
+  [note] case#13 rules.py 与 Rapfi 差异: py [(7, 6), (8, 7)] vs 期望 [(6, 6), (6, 7)]
+  [case#13] 禁手 3 个
+  [case#14] 禁手 4 个
+  [case#15] 禁手 4 个
+[timing] 全部步骤 ≤ 0.20s
+======================================================================
+[FAIL] case#8 引擎不一致: 引擎 [(5, 8)] vs 期望 []
+[FAIL] case#13 引擎不一致: 引擎 [(7, 6), (7, 7), (8, 7)] vs 期望 [(6, 6), (6, 7), (7, 7)]
+失败=2
+exit=1
+===== cpp/tests/diff_forbidden.py =====
+========================================================================
+局面数: 76 (含无气点局面: 7)  比较空点数: 9417  一致: 9417 (禁手/非法 40)
+------------------------------------------------------------------------
+硬性不一致(自杀/长连/成五/占用) = 0
+已归因 = 0
+无法归因不一致 = 0
+========================================================================
+[make/undo] plan=200 applied=200 dumps=24 bad_replies=0 initial=0000000000000000 final=0000000000000000 ok=True
+PASS
+exit=0

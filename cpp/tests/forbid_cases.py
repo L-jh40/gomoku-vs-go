@@ -197,8 +197,10 @@ def main() -> int:
             expect_set = {board_tools.code_to_coord(c, board.size)
                           for c in expect} - {None}
 
-            # Python 参考（rules.py）与 Rapfi 的已知差异只做信息报告，
-            # 不算失败——期望行才是权威（来自 Rapfi）。
+            # rules.py 现在是 Rapfi checkForbiddenPoint 的同一算法移植
+            # （只额外支持障碍/无气阻挡与环面），所以这里只做信息报告：
+            # 真正的不一致只可能来自用例块自身（代码行与 forbid: 行不匹配），
+            # 引擎一致性检查（下面）才是硬性失败。
             if expect_set != py_set:
                 print("  [note] %s rules.py 与 Rapfi 差异: py %s vs 期望 %s"
                       % (cid, sorted(py_set - expect_set),

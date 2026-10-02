@@ -78,12 +78,16 @@
 | `match_line_threat` | 匹配活四/冲四/活三/眠三等 |
 | `classify_direction_after_move` | 单方向威胁判定 |
 | `classify_position_after_move` | 落子后的综合威胁类型 |
-| `is_black_legal_move` | 黑棋合法/禁手判断：五连优先→长连→两四（四四）→两真活三（三三）；吃子规则只让自吃点不可落子；按棋盘状态缓存 |
+| `is_black_legal_move` | 黑棋合法/禁手判断：**逐行移植 Rapfi `checkForbiddenPoint`**（五连优先→长连/一线双四→两真活三）；自吃点不可落子；按棋盘状态缓存。与 C++ `cpp/src/forbidden.cpp` 同一算法，`cpp/tests/diff_forbidden.py` 逐点差分必须 0 不一致 |
+| `_rapfi_pattern` / `_rapfi_combine4` | Rapfi 线型 DP 与四方向组合（B4S/B3S、长连、一线双四 dirty fix），带记忆表 |
+| `_rapfi_dir_pattern` / `_rapfi_pattern4` | 11 格窗口（环面回绕）下某点的单方向线型 / 组合线型 |
+| `_rapfi_count_true_threes` | Rapfi 第三步：每个方向最多 1 个真三（首侧命中即跳过另一侧），延伸点支持“假禁手”递归验证 |
+| `_rapfi_cell_flag` | 黑棋视角格子状态：白子/障碍/无气空点/棋盘外一律 OPPO（三者代码层面完全一致） |
 | `_windows_containing` | 枚举含该落点的 5 格线窗 |
-| `_four_sets` | 四的集合（4 子 + 1 空成五），去重：活四计 1，一线两侧两个冲四计 2（四四） |
-| `_three_sets` | 真活三集合：6 格窗匹配活三棋形（直 011100 / 跳 011010，眠三 10101 不算）；延伸点须紧邻该三、可落且能形成四；一线两侧两个活三计 2（三三） |
-| `_simple_forbidden` | 单层“延伸点不可用”检验（自吃/长连/四四，再加一层有界的三三），避免深递归 |
-| `_count_foul_shapes` | 统计四数与真活三数（带提前退出） |
+| `_four_sets` | 旧棋形集合版“四”统计（现仅 `foul_lines` 画线用；判定已走 Rapfi 移植） |
+| `_three_sets` | 旧棋形集合版真活三统计（现仅 `foul_lines` 画线用） |
+| `_simple_forbidden` | 旧单层“延伸点不可用”检验（现仅 `foul_lines` 画线用） |
+| `_count_foul_shapes` | 旧四数/真活三数统计（画线与差分归因用） |
 | `foul_lines` | 返回构成禁手的线（供 GUI 红字画线；落子点临时放置后恢复） |
 | `get_blue_cross_positions` | 禁手/自吃蓝叉缓存；落子后只增量刷新 4 条线（`_refresh_blue_cross`） |
 | `find_all_threats` | 兼容接口 |
@@ -91,7 +95,14 @@
 修改红色位置类型时：
 - 若只改单方向棋形，去 `PATTERNS` / `match_line_threat`；
 - 若改综合类型，去 `classify_position_after_move`；
-- 若改禁手，去 `is_black_legal_move`。
+- 若改禁手，去 `is_black_legal_move`（＝Rapfi 移植，改算法要同时改
+  `cpp/src/forbidden.cpp`，并跑 `cpp/tests/diff_forbidden.py` 与
+  `cpp/tests/forbid_cases.py`）。
+
+注意 Rapfi 语义：`checkForbiddenPoint` **每个方向最多计 1 个真三**（先看一侧，
+命中就跳到下一个方向），所以“同一条线上两个活三”（如 `0110A0110`）在 Rapfi
+下**不算**三三；`1110A0111` 这类同线两个四被 Rapfi 编码成长连（OL），本程序按
+四四报出（更贴近规则书，禁手集合相同）。
 
 ---
 
