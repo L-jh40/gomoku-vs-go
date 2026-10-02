@@ -47,8 +47,9 @@ ROW_CHARS = set("0123456789Xx")
 PASS_WORDS = ("p0", "pass", "p")
 CODE_LABELS = ("moves:", "moves=", "move:", "code:", "code=",
                "board:", "board=", "局面:", "坐标:", "着法:")
-FORBIDDEN_LABELS = ("forbid:", "forbid=", "forbidden:", "forbidden=",
-                    "禁手:", "禁手=", "禁手：")
+FORBIDDEN_LABELS = ("forbid:", "forbid=", "fobid:", "forbids:",
+                    "forbidden:", "forbidden=", "禁手:", "禁手=",
+                    "禁手：")
 
 
 def split_codes(text: str, size: int = 15) -> list:
