@@ -23,6 +23,7 @@ Usage:
 """
 from __future__ import annotations
 
+import os
 import sys
 
 from board import HybridBoard, BLACK, WHITE, EMPTY, OBSTACLE
@@ -41,6 +42,74 @@ MARKERS = {
 
 PASS_CODE = "p0"
 ROW_CHARS = set("0123456789Xx")
+PASS_WORDS = ("p0", "pass", "p")
+CODE_LABELS = ("moves:", "moves=", "move:", "code:", "code=",
+               "board:", "board=", "局面:", "坐标:", "着法:")
+FORBIDDEN_LABELS = ("forbidden:", "forbidden=", "禁手:", "禁手=")
+
+
+def split_codes(text: str, size: int = 15) -> list:
+    """Split a coordinate string into move tokens (spaces optional).
+
+    Rapfi / Yixin copy a position without any separator, so the reader has
+    to chunk the string itself; the same helper also accepts our own
+    exports and hand-written lists:
+
+        "h8 i9 p0"    -> ["h8", "i9", "p0"]
+        "h8i9j10"     -> ["h8", "i9", "j10"]   (Rapfi, no spaces)
+        "H8,I9;J10"   -> ["h8", "i9", "j10"]
+        "a15b14"      -> ["a15", "b14"]         (two-digit rows)
+        "1.h8 2.i9"   -> ["h8", "i9"]           (move numbers dropped)
+
+    A leading "moves:" / "board=" label is ignored, separators and
+    decorations (quotes, brackets, dots) are skipped, and pieces that
+    cannot be a coordinate (a lone letter, a bare number when real tokens
+    exist) are dropped instead of breaking the whole read.
+    """
+    s = str(text).strip()
+    low = s.lower()
+    for label in CODE_LABELS:
+        if low.startswith(label):
+            s = s[len(label):]
+            break
+
+    raw = []
+    i = 0
+    n = len(s)
+    limit = int(size) if int(size) > 0 else 15
+    while i < n:
+        ch = s[i]
+        ascii_alpha = ch.isascii() and ch.isalpha()
+        if ascii_alpha:
+            j = i + 1
+            digits = ""
+            while j < n and s[j].isdigit() and len(digits) < 2:
+                digits += s[j]
+                j += 1
+            if not digits:
+                raw.append(ch)          # lone letter: dropped below
+                i = j
+                continue
+            if len(digits) == 2 and int(digits) > limit:
+                # "a15" on a 9x9 board: keep the first digit only.
+                digits = digits[0]
+                j = i + 2
+            raw.append(ch.lower() + digits)
+            i = j
+            continue
+        if ch.isdigit():
+            j = i
+            while j < n and s[j].isdigit():
+                j += 1
+            raw.append(s[i:j])
+            i = j
+            continue
+        i += 1                          # separator or decoration
+
+    coords = [t for t in raw if t[:1].isalpha() and len(t) > 1]
+    if coords:
+        raw = coords                     # drop move numbers / row digits
+    return raw
 
 
 def coord_to_code(x: int, y: int, size: int) -> str:
@@ -104,11 +173,20 @@ def pass_records_from_codes(codes) -> list:
     return out
 
 
-def codes_from_text(text: str) -> str:
-    """Last move-code line of a dump or of a coordinates-only file.
+def _line_value(line: str, labels) -> str:
+    """Value of a labelled line ("moves: h8" -> "h8")."""
+    for sep in (":", "="):
+        if sep in line:
+            return line.split(sep, 1)[1].strip()
+    return ""
 
-    Header lines and board rows are skipped, so the same helper works for
-    board_dump.txt and for the appended 粘贴板.md file.
+
+def codes_from_text(text: str) -> str:
+    """Last move-code line of a dump / coordinates file.
+
+    Header lines, board rows and "forbidden:" lines are skipped, so the
+    same helper works for board_dump.txt, for 粘贴板.md written by the GUI
+    and for the two-line blocks written by the Rapfi plugin.
     """
     candidate = ""
     for raw in text.splitlines():
@@ -116,8 +194,10 @@ def codes_from_text(text: str) -> str:
         if not line or line.startswith("#"):
             continue
         lower = line.lower()
-        if lower.startswith("moves:"):
-            candidate = line.split(":", 1)[1].strip()
+        if any(lower.startswith(l) for l in FORBIDDEN_LABELS):
+            continue
+        if any(lower.startswith(l) for l in CODE_LABELS):
+            candidate = _line_value(line, CODE_LABELS)
             continue
         stripped = line.replace(" ", "")
         if stripped and all(ch in ROW_CHARS for ch in stripped):
@@ -126,9 +206,37 @@ def codes_from_text(text: str) -> str:
     return candidate
 
 
+def forbidden_from_text(text: str) -> str:
+    """Last "forbidden:" line of a file written by the Rapfi plugin."""
+    out = ""
+    for raw in text.splitlines():
+        line = raw.strip()
+        lower = line.lower()
+        if any(lower.startswith(l) for l in FORBIDDEN_LABELS):
+            out = _line_value(line, FORBIDDEN_LABELS)
+    return out
+
+
 def codes_from_file(path: str) -> str:
     with open(path, "r", encoding="utf-8") as f:
         return codes_from_text(f.read())
+
+
+def append_position(path: str, block: str) -> str:
+    """Append one block (one position) on its own lines and return path.
+
+    A newline is added in front when the file does not end with one, so
+    every block keeps its own line and can be read back line by line.
+    """
+    prefix = ""
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            old = f.read()
+        if old and not old.endswith("\n"):
+            prefix = "\n"
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(prefix + block.rstrip("\n") + "\n")
+    return path
 
 
 def _parse_obstacles(text: str):
@@ -188,19 +296,25 @@ def board_to_text(board, pass_records=None, moves=None,
 
 def board_from_code(text: str, size: int = 15, first: int = BLACK,
                     torus: bool = False, obstacles=None,
-                    check_rules: bool = True):
+                    check_rules: bool = True, gomoku: bool = False):
     """Replay a move-code string and return (board, side_to_move).
 
-    Illegal moves (forbidden / self-capture / occupied) are NOT played when
-    check_rules is on; they are collected as (token, foul_type) tuples on
-    board.import_errors so callers can report them.  The turn still passes,
-    so the remaining moves keep their colour.
+    The string may be spaced or not (Rapfi / Yixin copies it without any
+    separator; see split_codes).  Illegal moves (forbidden / self-capture
+    / occupied) are NOT played when check_rules is on; they are collected
+    as (token, foul_type) tuples on board.import_errors so callers can
+    report them.  The turn still passes, so the remaining moves keep their
+    colour.
+
+    gomoku=True places the stones directly (no Go capture, no self-capture
+    check), which is what an external gomoku / Renju position needs: those
+    positions may contain shapes our Go layer would refuse to play.
     """
     board = HybridBoard(int(size))
     board.torus = bool(torus)
     board.import_errors = []
     color = first
-    for token in text.replace(",", " ").split():
+    for token in split_codes(text, board.size):
         if not token:
             continue
         coord = code_to_coord(token, board.size)
@@ -208,6 +322,14 @@ def board_from_code(text: str, size: int = 15, first: int = BLACK,
             color = WHITE if color == BLACK else BLACK
             continue
         x, y = coord
+        if gomoku:
+            if not board.is_empty(x, y):
+                board.import_errors.append((token, "occupied"))
+            else:
+                board.grid[x, y] = color
+                board.history.append((color, x, y, []))
+            color = WHITE if color == BLACK else BLACK
+            continue
         if color == BLACK:
             if check_rules:
                 legal, ftype = rules.is_black_legal_move(board, x, y)
