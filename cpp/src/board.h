@@ -103,6 +103,19 @@ public:
     // (x,y) 所在的棋块是否有至少一口气（用于黑棋自杀检测）。非黑子返回 false。
     bool black_group_has_liberty(int x, int y) const;
 
+    // ---- Rapfi 棋型缓存（make/undo/set 增量维护，O(1) 读取）----
+    // 无气空点标志（缓存的 is_dead_empty；白子/障碍/无气空点在棋型层
+    // 统一按“阻挡”处理，代码层面完全一致）。
+    bool is_no_liberty(int idx) const { return self_cap_[idx] != 0; }
+    // color(0=黑,1=白) 视角、dir 方向、以 idx 为中心的线型（Pat 枚举值）。
+    uint8_t cached_pattern(int color, int idx, int dir) const {
+        return pat_[color][idx * 4 + dir];
+    }
+    // 黑棋四方向组合线型（Pattern4 枚举值，FORBID 为禁手预筛标记）。
+    uint8_t cached_pattern4_black(int idx) const { return p4_black_[idx]; }
+    // (dx,dy) ∈ {(1,0),(0,1),(1,1),(1,-1)} → 方向下标 0..3。
+    static int dir_index(int dx, int dy);
+
     // ---- 评估计数器只读接口 ----
     // 六类线型计数（黑/白分开），下标 0..5 依次为
     // open_four/rush_four/open_three/sleep_three/open_two/sleep_two。
@@ -204,6 +217,25 @@ private:
     // 线去重标记（一次落子可能影响落子点 + 所有被提子所在的多条线）。
     uint32_t line_stamp_[4][MAX_LINES];
     uint32_t line_gen_ = 0;
+
+    // ---- Rapfi 棋型缓存（make/undo/set 增量维护）----
+    // pat_[color][idx*4+dir]：color 视角、dir 方向、以 idx 为中心的线型。
+    uint8_t  pat_[2][MAX_CELLS * 4];
+    // p4_black_[idx]：黑棋四方向组合线型（FORBID 为禁手预筛标记）。
+    uint8_t  p4_black_[MAX_CELLS];
+    uint32_t pat_stamp_[MAX_CELLS];
+    uint32_t pat_gen_ = 0;
+
+    void build_pattern_window(int color, int cx, int cy, int dx, int dy,
+                              uint8_t* f) const;
+    void refresh_pattern_cell(int idx);
+    // 以 centers（改动格及其触碰集）为圆心刷新半径 5 内所有格的棋型缓存。
+    void refresh_patterns(const uint16_t* centers, int nc);
+    void refresh_patterns_full();
+    // undo 用：按中心集合重算 self_cap_ / dead_ 数组（territory_ 由历史
+    // 还原），触碰集合写入 tlist 并返回数量（供棋型刷新使用）。
+    int  post_move_cell_flags(const uint16_t* centers, int nc,
+                              uint16_t* tlist);
 };
 
 }  // namespace gvg
