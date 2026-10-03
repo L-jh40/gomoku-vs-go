@@ -234,6 +234,7 @@ class GameGUI:
         self.engine_client = None
         # (x, y) -> (tag, steps) of the engine's candidate W/L annotation.
         self.engine_labels = {}
+        self.engine_labels_done = False
         # 引擎候选集已落地标志：True 时页面方块才使用引擎候选点
         # （False = 刷新未完成/被清除，宁缺勿滥，不显示旧算法的点）。
         self.engine_labels_done = False
@@ -920,6 +921,7 @@ class GameGUI:
         self.current = self.board.turn
         self.display_shift = [0, 0]
         self.engine_labels = {}
+        self.engine_labels_done = False
         self._clear_engine_forbidden()
         if size_changed:
             self._select_board_size_var(self.size)
@@ -2384,6 +2386,7 @@ class GameGUI:
         check box is turned off, otherwise fetch it for the position."""
         if not self.show_candidates_var.get():
             self.engine_labels = {}
+        self.engine_labels_done = False
             self.engine_labels_done = False
         self._maybe_refresh_engine_labels()
         self.draw_board()
@@ -3040,6 +3043,7 @@ class GameGUI:
         self.depth_label.config(text="")
         self._apply_canvas_size()
         self.engine_labels = {}
+        self.engine_labels_done = False
         self._clear_engine_forbidden()
         self.draw_board()
         self.update_info()
@@ -3113,6 +3117,7 @@ class GameGUI:
             if self.previous_game_snapshot is not None:
                 self._restore_previous_game()
                 self.engine_labels = {}
+        self.engine_labels_done = False
                 self._clear_engine_forbidden()
                 self._maybe_refresh_engine_labels()
                 self._maybe_refresh_engine_forbidden()
@@ -3146,6 +3151,7 @@ class GameGUI:
                     if self.board.history else None
                 )
                 self.engine_labels = {}
+        self.engine_labels_done = False
                 self._clear_engine_forbidden()
                 self.draw_board()
                 self.update_info()
@@ -3174,6 +3180,7 @@ class GameGUI:
                 if self.board.history else None
             )
             self.engine_labels = {}
+        self.engine_labels_done = False
             self._clear_engine_forbidden()
             self.draw_board()
             self.update_info()
@@ -3199,6 +3206,7 @@ class GameGUI:
             if self.board.history else None
         self.current = self.board.turn
         self.engine_labels = {}
+        self.engine_labels_done = False
         self._clear_engine_forbidden()
         self.draw_board()
         self.update_info()
