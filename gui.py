@@ -1432,6 +1432,12 @@ class GameGUI:
                                     fill=color, font=("Arial", 8, "bold"))
 
     def _get_candidate_display_positions(self):
+        # C++引擎模式：页面候选方块只来自引擎 candidates 输出（Rapfi 语义，
+        # 与测试一致）；刷新未落地时宁缺勿滥。引擎关闭走 Python 旧算法。
+        if self.engine_var.get() and self.show_candidates_var.get():
+            if self.engine_labels_done:
+                return sorted(self.engine_labels.keys())
+            return []
         threats = self.board.compute_threats()
         if self.current == BLACK:
             if ai_search._forced(threats):
