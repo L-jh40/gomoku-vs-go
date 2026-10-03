@@ -32,7 +32,7 @@ cpp\build\engine.exe          :: 启动引擎（stdin 读命令、stdout 逐行�
 | `counters` | 无 | 六类线型计数 / 风险 / 领地 | `cnt b=.. w=.. risk=<n> terr=<n>` |
 | `winmode` | `<0\|1>` | 胜负模式（0=line_block，1=occupy） | 无 |
 | `genmove` | `<b\|w> [max_depth] [min_sec] [max_sec] [winmode]` | 迭代加深搜索，不落子 | `info depth <d> move <x> <y> score <packed>` 若干行 + `move <x> <y>` / `pass` / `resign` |
-| `candidates` | `<b\|w> [steps=11] [max_sec=10] [winmode=0] [vc=1] [vct=18] [vcf=180]` | 候选点 VCF/VCT W/L 标注；`vc/vct/vcf` = 三档威胁搜索步数（VC2 活二/眠三、VCT 活三/做杀、VCF 冲四） | `cand <x> <y> <W\|L><steps>` 若干行 + 可选 `timeout` + `end` |
+| `candidates` | `<b\|w> [steps=11] [max_sec=10] [winmode=0] [vc=1] [vct=18] [vcf=180]` | 候选点 VCF/VCT W/L 标注；`vc/vct/vcf` = 三档威胁搜索步数（VC2 活二/眠三、VCT 活三/做杀、VCF 冲四） | `cand <x> <y> <W\|L><steps>[+]` 若干行 + 可选 `timeout` + `end`；末尾 `+` = 步数只是下界（层 2 智能应对兜底） |
 | `quit` | 无 | 退出 | 无 |
 
 其余命令（`move` / `dump` / `pat` / `wcand` / `bencheval` / `searchstat`）见
