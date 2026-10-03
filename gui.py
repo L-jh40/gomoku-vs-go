@@ -2386,7 +2386,7 @@ class GameGUI:
         check box is turned off, otherwise fetch it for the position."""
         if not self.show_candidates_var.get():
             self.engine_labels = {}
-            self.engine_labels_done = False
+        self.engine_labels_done = False
         self._maybe_refresh_engine_labels()
         self.draw_board()
 
@@ -3150,7 +3150,7 @@ class GameGUI:
                     if self.board.history else None
                 )
                 self.engine_labels = {}
-        self.engine_labels_done = False
+                self.engine_labels_done = False
                 self._clear_engine_forbidden()
                 self.draw_board()
                 self.update_info()
@@ -3179,7 +3179,7 @@ class GameGUI:
                 if self.board.history else None
             )
             self.engine_labels = {}
-        self.engine_labels_done = False
+            self.engine_labels_done = False
             self._clear_engine_forbidden()
             self.draw_board()
             self.update_info()
