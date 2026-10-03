@@ -78,6 +78,9 @@ int count_true_threes(Board& b, int x, int y, const uint8_t p[4], int depth) {
                 const int cidx = Board::index(cx, cy);
                 const uint8_t v = b.at(cx, cy);
                 if (v == EMPTY) {
+                    // 无气空点在本项目里等同白子（算法层同一形式：白/障碍/无气/棋盘外
+                    // 都是同一个阻挡态），所以它不是延伸点——直接当阻挡，不算这一个三。
+                    if (b.is_no_liberty(cidx)) break;
                     // 遇到第一个空点即判定（与 Rapfi 一致）。
                     const uint8_t p4c = b.cached_pattern4_black(cidx);
                     const uint8_t pc  = b.cached_pattern(0, cidx, d);

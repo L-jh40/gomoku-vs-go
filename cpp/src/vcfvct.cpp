@@ -668,6 +668,8 @@ AtkType line_threat_rank(const Board& b, const int* cells, int n, int d) {
     for (int i = 0; i < n; ++i) {
         const int c = cells[i];
         if (!b.is_empty(cell_x(c), cell_y(c))) continue;
+        // 无气空点黑棋不能落（等同白/障碍）→ 不是黑棋的成五/成四点。
+        if (b.is_dead_empty(cell_x(c), cell_y(c))) continue;
         const PointPattern p = point_pattern_d(b, c, d);
         if (p == PP_FIVE) return AtkType::FIVE;
         if (p == PP_FLEX4) r = AtkType::OPEN_FOUR;
@@ -681,6 +683,7 @@ bool line_still_winning(const Board& b, const int* cells, int n, int d) {
     for (int i = 0; i < n; ++i) {
         const int c = cells[i];
         if (!b.is_empty(cell_x(c), cell_y(c))) continue;
+        if (b.is_dead_empty(cell_x(c), cell_y(c))) continue;   // 无气空点 = 阻挡
         const PointPattern p = point_pattern_d(b, c, d);
         if (p == PP_FIVE || p == PP_FLEX4) return true;
     }
