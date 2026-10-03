@@ -2336,6 +2336,9 @@ class GameGUI:
         epoch = self.engine_candidates_job
         color = self.current
         winmode = 0 if self.white_win_var.get() == "line_block" else 1
+        # Tk 变量只能在主线程读：工作线程里读会抛
+        # "main thread is not in main loop"。
+        steps = self._threat_steps()
 
         def work():
             client = self._ensure_engine_client()
@@ -2343,8 +2346,7 @@ class GameGUI:
             try:
                 # 响应优先：自动刷新的 W/L 标注最多占引擎 2 秒，避免下一步
                 # AI 落子（同一引擎进程串行）被深证明搜索拖慢。
-                labels = client.candidates(color, 11, 2, winmode,
-                                           *self._threat_steps())
+                labels = client.candidates(color, 11, 2, winmode, *steps)
             except engine_client.EngineError:
                 pass
 
