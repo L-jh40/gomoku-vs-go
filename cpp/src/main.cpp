@@ -29,7 +29,7 @@
 //                               最后输出 move <x> <y>（白无着 pass / 黑无着 resign）
 //   searchstat                  输出上一次 genmove 的 nodes / depth / 毫秒
 // 战术搜索（VCF/VCT + W/L 标注）：
-//   candidates <b|w> [steps=11] [max_sec=10] [winmode=0]
+//   candidates <b|w> [steps=11] [max_sec=10] [winmode=0] [vc=1] [vct=18] [vcf=180]
 //                               给 gen_moves(color) 的每个候选打标注；每行输出
 //                               cand <x> <y> <tag><steps>（tag=W/L），超时截断时
 //                               额外输出一行 timeout，末尾 end。棋盘被改动时
@@ -212,11 +212,17 @@ int main() {
                 if (rest.size() >= 1) steps   = to_int(rest[0], steps);
                 if (rest.size() >= 2) max_sec = to_double(rest[1], max_sec);
                 if (rest.size() >= 3) wm      = to_int(rest[2], wm);
+                // 三档威胁搜索步数（VC2 / VCT / VCF），缺省 1 / 18 / 180。
+                gvg::VctParams params;
+                if (rest.size() >= 4) params.vc  = to_int(rest[3], params.vc);
+                if (rest.size() >= 5) params.vct = to_int(rest[4], params.vct);
+                if (rest.size() >= 6) params.vcf = to_int(rest[5], params.vcf);
 
                 const int color = (c == "b") ? gvg::BLACK : gvg::WHITE;
                 const uint64_t h0 = board.hash();
                 gvg::AnalysisResult r =
-                    gvg::analyse(board, color, steps, wm, max_sec, 300000);
+                    gvg::analyse(board, color, steps, wm, max_sec, 300000,
+                                 params);
                 if (board.hash() != h0) {
                     std::cout << "error hash\n";
                 } else {
