@@ -219,7 +219,8 @@ class EngineClient:
                     raise EngineError(f"engine error: {line}")
                 # Anything else is informational: ignore it.
 
-    def candidates(self, color, steps=11, max_sec=10, winmode=0):
+    def candidates(self, color, steps=11, max_sec=10, winmode=0,
+                   vc=1, vct=18, vcf=180):
         """Candidate points with VCF/VCT W/L annotation.
 
         Returns a list of (x, y, tag, k) tuples read from the
@@ -228,8 +229,9 @@ class EngineClient:
         """
         with self._lock:
             self._send(f"winmode {winmode}")
+            # 三档威胁搜索步数：VC2 / VCT / VCF（引擎缺省 1 / 18 / 180）。
             self._send(f"candidates {'b' if color == BLACK else 'w'} "
-                       f"{steps} {max_sec}")
+                       f"{steps} {max_sec} {winmode} {vc} {vct} {vcf}")
             out = []
             timed_out = False
             while True:

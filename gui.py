@@ -184,7 +184,8 @@ class GameGUI:
         top_buttons.pack(fill=tk.X, pady=1)
         tk.Button(top_buttons, text="新对局", command=self.new_game).pack(
             side=tk.LEFT, fill=tk.X, expand=True)
-        tk.Button(top_buttons, text="选择模式", command=self.open_mode_window).pack(
+        tk.Button(top_buttons, text="对局设置",
+                  command=self.open_mode_window).pack(
             side=tk.LEFT, fill=tk.X, expand=True, padx=(4, 0))
         tk.Button(self.info, text="悔棋", command=self.undo_move).pack(
             fill=tk.X, pady=1)
@@ -2325,7 +2326,8 @@ class GameGUI:
             try:
                 # 响应优先：自动刷新的 W/L 标注最多占引擎 2 秒，避免下一步
                 # AI 落子（同一引擎进程串行）被深证明搜索拖慢。
-                labels = client.candidates(color, 11, 2, winmode)
+                labels = client.candidates(color, 11, 2, winmode,
+                                           *self._threat_steps())
             except engine_client.EngineError:
                 pass
 
@@ -2692,6 +2694,66 @@ class GameGUI:
         self.draw_board(with_hints=False)
         self.update_info()
 
+    def _threat_steps(self):
+        """(vc, vct, vcf)：AI 设置里的威胁搜索步数，非法输入回退缺省值。"""
+        def geti(var, dflt):
+            try:
+                v = int(str(var.get()).strip())
+            except (TypeError, ValueError):
+                return dflt
+            return v if v >= 0 else dflt
+        return (geti(self.vc_steps_var, 1), geti(self.vct_steps_var, 18),
+                geti(self.vcf_steps_var, 180))
+
+    def open_ai_window(self):
+        """AI 设置窗口：minimax 层数 / 限时 / 威胁搜索步数。"""
+        self._restore_main_window()
+        if self.ai_window is not None and self.ai_window.winfo_exists():
+            self.ai_window.lift()
+            return
+        win = tk.Toplevel(self.root)
+        self.ai_window = win
+        win.title("AI 设置")
+        win.transient(self.root)
+
+        tk.Label(win, text="Minimax 层数", font=("Arial", 11, "bold")).pack(
+            anchor=tk.W, padx=10)
+        frame = tk.Frame(win)
+        frame.pack(fill=tk.X, padx=10)
+        for value in (0, 1, 2, 3, 4):
+            tk.Radiobutton(frame, text=str(value), variable=self.depth_var,
+                           value=str(value),
+                           command=self._on_depth_change).pack(side=tk.LEFT)
+
+        tk.Label(win, text="限时（秒）", font=("Arial", 11, "bold")).pack(
+            anchor=tk.W, padx=10, pady=(8, 0))
+        time_frame = tk.Frame(win)
+        time_frame.pack(fill=tk.X, padx=10)
+        tk.Label(time_frame, text="最短:", font=("Arial", 9)).pack(side=tk.LEFT)
+        tk.Entry(time_frame, textvariable=self.min_search_time_var,
+                 width=6).pack(side=tk.LEFT)
+        tk.Label(time_frame, text="  最长:", font=("Arial", 9)).pack(
+            side=tk.LEFT)
+        tk.Entry(time_frame, textvariable=self.max_search_time_var,
+                 width=6).pack(side=tk.LEFT)
+
+        tk.Label(win, text="威胁搜索步数", font=("Arial", 11, "bold")).pack(
+            anchor=tk.W, padx=10, pady=(8, 0))
+        tk.Label(win, text="VC2 只形成活二/眠三；VCT 活三/做杀；VCF 冲四\n"
+                           "调度：最多 1 步 VC2 → 之后每步至少 VCT → "
+                           "VCT 耗尽后每步至少 VCF",
+                 font=("Arial", 8), fg="#555555", justify=tk.LEFT).pack(
+            anchor=tk.W, padx=10)
+        steps_frame = tk.Frame(win)
+        steps_frame.pack(fill=tk.X, padx=10)
+        for label, var in (("VC2:", self.vc_steps_var),
+                           ("VCT:", self.vct_steps_var),
+                           ("VCF:", self.vcf_steps_var)):
+            tk.Label(steps_frame, text=label,
+                     font=("Arial", 9)).pack(side=tk.LEFT)
+            tk.Entry(steps_frame, textvariable=var, width=5).pack(
+                side=tk.LEFT, padx=(0, 8))
+
     def open_mode_window(self):
         self._restore_main_window()
         if self.mode_window is not None and self.mode_window.winfo_exists():
@@ -2699,9 +2761,19 @@ class GameGUI:
             return
         win = tk.Toplevel(self.root)
         self.mode_window = win
-        win.title("选择模式")
+        win.title("对局设置")
         win.transient(self.root)
         win.protocol("WM_DELETE_WINDOW", self._close_mode_window)
+
+        # 导入 / 导出（原来在主面板；G / I 快捷键照旧）。
+        tk.Label(win, text="导入 / 导出", font=("Arial", 11, "bold")).pack(
+            anchor=tk.W, padx=10)
+        io_frame = tk.Frame(win)
+        io_frame.pack(fill=tk.X, padx=10)
+        tk.Button(io_frame, text="导出棋盘(复制 G)",
+                  command=self.export_board).pack(side=tk.LEFT)
+        tk.Button(io_frame, text="导入坐标(I)",
+                  command=self.open_import_dialog).pack(side=tk.LEFT, padx=6)
 
         # 棋盘样式 no longer lives here: it is on the main window, applied
         # immediately (style_point_var / style_cell_var / _on_style_* are
