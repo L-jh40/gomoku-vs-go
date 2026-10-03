@@ -45,6 +45,9 @@ struct CandidateLabel {
     int x, y;
     char tag;   // 'W' / 'L' / 0(无标注)
     int steps;  // W: 2*m-1（黑候选）/ L: 2*m（白候选）；tag==0 时无意义
+    // true = 步数只是下界（“至少 steps 步”）：来自层 2 智能应对（完备但不可靠）的
+    // 兜底步数，输出成 W<steps>+ / L<steps>+；后续枚举全部应对可以把步数算准。
+    bool at_least = false;
 };
 
 struct AnalysisResult {

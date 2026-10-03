@@ -252,11 +252,14 @@ class EngineClient:
                     tag = tag_text[:1]
                     if tag not in ("W", "L"):
                         raise EngineError(f"bad cand tag: {line!r}")
+                    # 末尾 '+'：步数只是下界（层 2 智能应对兜底），"W8+"。
+                    at_least = tag_text.endswith("+")
+                    digits = tag_text[1:-1] if at_least else tag_text[1:]
                     try:
-                        k = int(tag_text[1:])
+                        k = int(digits)
                     except ValueError:
                         raise EngineError(f"bad cand line: {line!r}")
-                    out.append((x, y, tag, k))
+                    out.append((x, y, tag, k, at_least))
                     continue
                 if head == "timeout":
                     timed_out = True

@@ -229,8 +229,10 @@ int main() {
                     for (size_t i = 0; i < r.labels.size(); ++i) {
                         const gvg::CandidateLabel& lab = r.labels[i];
                         if (lab.tag == 0) continue;
+                        // 步数只是下界时加 '+'（W8+ = 至少 8 步；层 2 智能应对兜底）
                         std::cout << "cand " << lab.x << ' ' << lab.y << ' '
-                                  << lab.tag << lab.steps << '\n';
+                                  << lab.tag << lab.steps
+                                  << (lab.at_least ? "+" : "") << '\n';
                     }
                     if (r.timeout) std::cout << "timeout\n";
                     std::cout << "end\n";

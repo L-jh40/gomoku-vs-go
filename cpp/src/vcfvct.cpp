@@ -1440,7 +1440,7 @@ AnalysisResult analyse(Board& b, int color, int max_steps, int winmode,
             r.score = score;
             r.tag = (m > 0) ? 'L' : 'W';
             r.steps = (m > 0) ? 2 * m : 0;
-            r.smart_only = smart_only;
+            r.smart_only = smart_only;   // 仅层 2 兜底 → 步数是下界（L<k>+）
             rows.push_back(r);
         }
 
@@ -1509,6 +1509,7 @@ AnalysisResult analyse(Board& b, int color, int max_steps, int winmode,
             lab.y = rows[i].y;
             lab.tag = rows[i].tag;
             lab.steps = rows[i].steps;
+            lab.at_least = (rows[i].tag != 0) && rows[i].smart_only;
             res.labels.push_back(lab);
             ++res.paths_found;
         }

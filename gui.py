@@ -1414,13 +1414,15 @@ class GameGUI:
         empty points (green = win within k, red = loss within k)."""
         if not self.engine_labels:
             return
-        for (x, y), (tag, k) in self.engine_labels.items():
+        for (x, y), (tag, k, at_least) in self.engine_labels.items():
             if not self.board.is_empty(x, y):
                 continue
             cx, cy = self._point_center(x, y)
             color = "#1a7f1a" if tag == "W" else "#c01010"
+            # "W8+" / "L8+"：步数只是下界（层 2 智能应对兜底）。
+            suffix = "+" if at_least else ""
             self.canvas.create_text(cx + CELL * 0.34, cy - CELL * 0.34,
-                                    text=f"{tag}{k}",
+                                    text=f"{tag}{k}{suffix}",
                                     fill=color, font=("Arial", 8, "bold"))
 
     def _get_candidate_display_positions(self):
@@ -1875,7 +1877,8 @@ class GameGUI:
                     epoch, labels = payload
                     if epoch == self.engine_candidates_job:
                         self.engine_labels = (
-                            {(x, y): (tag, k) for (x, y, tag, k) in labels}
+                            {(x, y): (tag, k, at_least)
+                             for (x, y, tag, k, at_least) in labels}
                             if labels else {})
                         self.draw_board()
                 elif kind == "forbidden":
