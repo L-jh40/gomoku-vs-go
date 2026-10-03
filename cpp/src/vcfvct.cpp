@@ -395,6 +395,7 @@ std::vector<Pt> defense_three(Board& b, int px, int py) {
 // ===========================================================================
 struct AttackCand {
     int x, y, rank, score;
+    int cls = 2;   // 三档预算分类：2=VCF(冲四/活四/五) 1=VCT(活三/做杀) 0=VC2(活二/眠三)
 };
 
 // 黑方攻击候选：已有黑子切比雪夫距离 <= ATTACK_RADIUS 的空点里
@@ -406,8 +407,10 @@ struct AttackCand {
 // 廉价预筛（不改变结果集）：任何五/四/三都要求该点在某个 5 连窗内与 >= 2 个黑子
 // 同行同列同对角，故“切比雪夫距离 <= 4 的邻域内黑子数 < 2”的点必然
 // attack_class == NONE，直接跳过。邻域黑子数用二维前缀和 O(1) 查询。
+// allow_vc2：再把“只形成活二 / 眠三”的点也收进来（VC2 档，见第 4 节的三档预算）。
 void gen_attack_candidates(Board& b, int steps_left, bool allow_three,
-                           std::vector<AttackCand>* out) {
+                           std::vector<AttackCand>* out,
+                           bool allow_vc2 = false) {
     const int n = b.size();
     const int S = MAX_BOARD + 1;
     int pre[(MAX_BOARD + 1) * (MAX_BOARD + 1)];
@@ -433,18 +436,34 @@ void gen_attack_candidates(Board& b, int steps_left, bool allow_three,
             const int y1 = std::min(n - 1, ny + ATTACK_RADIUS);
             if (box_count(x0, y0, x1, y1) < 2) continue;   // 不可能构成威胁
             const int rank = attack_rank_at(b, nx, ny);
-            if (rank <= static_cast<int>(AtkType::NONE)) continue;
-            if (rank == static_cast<int>(AtkType::OPEN_THREE)) {
+            int cls = -1;
+            if (rank >= static_cast<int>(AtkType::RUSH_FOUR)) {
+                cls = 2;                                  // 冲四 / 活四 / 五 -> VCF
+                if (rank < static_cast<int>(AtkType::FIVE) && steps_left < 2)
+                    continue;                             // 四类：至少还要一手才能成五
+                if (steps_left < 1) continue;
+            } else if (rank == static_cast<int>(AtkType::OPEN_THREE)) {
+                cls = 1;                                  // 活三 / 做杀 -> VCT
                 if (!allow_three) continue;
                 if (steps_left < 3) continue;
-            } else if (rank < static_cast<int>(AtkType::FIVE)) {
-                if (steps_left < 2) continue;   // 四类：至少还要一手才能成五
+            } else if (allow_vc2) {
+                // 只形成活二 / 眠三 -> VC2
+                for (int d = 0; d < 4; ++d) {
+                    const PointPattern p =
+                        classify_point(b, nx, ny, BLACK, DX4[d], DY4[d]);
+                    if (p == PP_FLEX2 || p == PP_B3) { cls = 0; break; }
+                }
+                if (cls < 0) continue;
+                if (steps_left < 1) continue;
+            } else {
+                continue;
             }
             if (black_point_illegal(b, nx, ny)) continue;   // 禁手 / 无气自杀
             AttackCand c;
             c.x = nx;
             c.y = ny;
             c.rank = rank;
+            c.cls = cls;
             c.score = order_score(b, nx, ny, BLACK);
             out->push_back(c);
         }
@@ -870,6 +889,18 @@ struct LayerCtx {
     long long node_limit = 300000;
     double    deadline = 0.0;
     bool      timeout = false;
+    // 三档预算已消耗的手数（0=VC2 活二/眠三，1=VCT 活三/做杀，2=VCF 冲四）。
+    // 用户规格：预算优先消耗最大的档；现实现的调度是“最多 1 步 VC2，之后每步至少
+    // VCT，VCT 耗尽后每步至少 VCF”（节点数少）。
+    int used[3] = {0, 0, 0};
+};
+
+// RAII：选了一手就把对应档的预算计上，任何返回路径（含提前 return）都会还回去。
+struct ClassGuard {
+    int* used;
+    int  cls;
+    ClassGuard(int* u, int c) : used(u), cls(c) { ++used[cls]; }
+    ~ClassGuard() { --used[cls]; }
 };
 
 bool layer_budget_exceeded(LayerCtx* c) {
