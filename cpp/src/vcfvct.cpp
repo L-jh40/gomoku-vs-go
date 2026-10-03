@@ -910,18 +910,27 @@ bool layer_budget_exceeded(LayerCtx* c) {
     return false;
 }
 
-// 黑方威胁手（按参数预算）：四类手受 vcf 约束、三类手受 vct 约束。
-void layer_attacks(Board& b, int steps_left, const VctParams& p,
+// 黑方威胁手（按三档预算）：VC2 = 只形成活二/眠三（预算 vc，只能第一手），
+// VCT = 活三/做杀（预算 vct），VCF = 冲四/活四/五（预算 vcf）。
+// 调度：最多 1 步 VC2 → 之后每步至少 VCT → VCT 耗尽后每步至少 VCF。
+void layer_attacks(Board& b, int steps_left, LayerCtx* ctx,
                    std::vector<AttackCand>* out) {
-    const bool allow_three = (steps_left <= p.vct && steps_left >= 1);
-    gen_attack_candidates(b, steps_left, allow_three, out);
-    if (steps_left > p.vcf) {                 // 超出 VCF 预算：不再展开四类手
-        size_t w = 0;
-        for (size_t i = 0; i < out->size(); ++i)
-            if ((*out)[i].rank == static_cast<int>(AtkType::OPEN_THREE))
-                (*out)[w++] = (*out)[i];
-        out->resize(w);
+    const VctParams& p = ctx->params;
+    const bool allow_vc  = (ctx->used[0] < p.vc) && ctx->used[1] == 0 &&
+                           ctx->used[2] == 0;          // VC2 只能是第一手
+    const bool allow_vct = (ctx->used[1] < p.vct);
+    const bool allow_vcf = (ctx->used[2] < p.vcf);
+    if (!allow_vct && !allow_vcf) return;              // 三/四两档都耗尽
+    gen_attack_candidates(b, steps_left, /*allow_three=*/allow_vct, out,
+                          /*allow_vc2=*/allow_vc);
+    size_t w = 0;
+    for (size_t i = 0; i < out->size(); ++i) {
+        const int cls = (*out)[i].cls;
+        const bool ok = (cls == 2) ? allow_vcf
+                                     : (cls == 1 ? allow_vct : allow_vc);
+        if (ok) (*out)[w++] = (*out)[i];
     }
+    out->resize(w);
 }
 
 // 全盘黑棋“眠三 / 活二”点数（智能应对的比较规则用）。
@@ -1018,9 +1027,10 @@ bool layer_dfs(Board& b, int steps_left, bool smart, LayerCtx* ctx,
 
     std::vector<AttackCand> cands;
     cands.reserve(32);
-    layer_attacks(b, steps_left, ctx->params, &cands);
+    layer_attacks(b, steps_left, ctx, &cands);
     for (size_t ci = 0; ci < cands.size(); ++ci) {
         const AttackCand c = cands[ci];
+        ClassGuard guard(ctx->used, c.cls);   // 消耗对应档预算（离开作用域自动还）
         if (!b.make_move(c.x, c.y, BLACK)) continue;
         if (b.last_move_was_five()) {
             b.undo_move();
@@ -1058,15 +1068,17 @@ VctOutcome layer_run(Board& b, const VctParams& params, double time_sec, bool sm
     LayerCtx ctx;
     ctx.params = params;
     ctx.deadline = (time_sec > 0.0) ? now_sec() + time_sec : 0.0;
-    const int max_m = std::max(1, std::min(params.vct, params.vcf));
+    // 手数上限 = 三档预算之和（VC2 1 步 + VCT 额外若干 + VCF 额外若干）。
+    const int max_m = std::max(1, params.vc + params.vct + params.vcf);
     for (int m = 1; m <= max_m; ++m) {
         std::vector<AttackCand> cands;
         cands.reserve(32);
-        layer_attacks(b, m, params, &cands);
+        layer_attacks(b, m, &ctx, &cands);
         bool any = false;
         for (size_t ci = 0; ci < cands.size(); ++ci) {
             if (layer_budget_exceeded(&ctx)) break;
             const AttackCand c = cands[ci];
+            ClassGuard guard(ctx.used, c.cls);   // 消耗对应档预算
             if (!b.make_move(c.x, c.y, BLACK)) continue;
             bool win = false;
             std::vector<DefenseSet> route_sets;
