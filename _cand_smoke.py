@@ -11,7 +11,10 @@ import gui
 def put_stones(app, codes, color):
     for c in codes.split():
         x, y = bt.code_to_coord(c, 15)
-        app.board.grid[x, y] = color
+        if color == 1:
+            assert app.board.play_black(x, y)[0]
+        else:
+            assert app.board.play_white(x, y)[0]
 
 
 def pump(root, sec):
