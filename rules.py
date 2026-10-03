@@ -654,6 +654,10 @@ def _rapfi_count_true_threes(board, x, y, dirs, depth):
                     cx, cy = cell
                     v = int(board.grid[cx, cy])
                     if v == EMPTY:
+                        # 无气空点在本项目里等同白子/障碍（算法层同一形式）：
+                        # 它不是延伸点，直接当阻挡。
+                        if (cx, cy) in noli:
+                            break
                         cache: dict = {}
                         p4 = _rapfi_pattern4(board, cx, cy, noli, cache)
                         pc = _rapfi_dir_pattern(board, cx, cy, dx, dy, noli,

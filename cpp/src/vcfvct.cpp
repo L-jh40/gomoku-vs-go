@@ -1405,31 +1405,37 @@ AnalysisResult analyse(Board& b, int color, int max_steps, int winmode,
             int m = sound_lose_steps(b, max_steps, &ctx, &tt);
             bool smart_only = false;
             if (m == 0 && !ctx.timeout) {
-                // 2) 层 1 全应对 VCT（先跑，可靠但不完备）。
-                const double now = now_sec();
-                double remain = (ctx.deadline > 0.0) ? (ctx.deadline - now) : 0.0;
-                const double slice = (ctx.deadline > 0.0)
-                                         ? std::max(0.05, remain * 0.25)
-                                         : 0.0;
-                VctOutcome l1 = vct_all_response(b, params, slice);
-                if (l1.win) {
-                    m = l1.steps;
-                } else if (!l1.timeout) {
-                    // 3) 层 2 智能应对 VCT（完备但不可靠）→ 混合判定。
-                    const double now2 = now_sec();
-                    double remain2 = (ctx.deadline > 0.0) ? (ctx.deadline - now2) : 0.0;
-                    const double slice2 = (ctx.deadline > 0.0)
-                                              ? std::max(0.05, remain2 * 0.25)
-                                              : 0.0;
-                    VctOutcome l2 = vct_smart_response(b, params, slice2);
-                    if (l2.win) {
-                        // 混合判定（第二部分 2.3）：全应对无必胜、智能应对有必胜 ⇒ 该点判负。
-                        // “可靠 VCT 的防御点位集合”就是 threat_lines_through 给出的各威胁线
-                        // 阻挡点（见 mixed_defense_intersection / Part 1 的交集框架），
-                        // 因此这里只需要用智能应对层的步数兜底标注；交集本身已经体现在
-                        // 候选池里（若无交集则按最大步数这一档输出）。
-                        m = l2.steps;
-                        smart_only = true;
+                // 层 1 全应对（可靠但不完备）与层 2 智能应对（完备但不可靠）的先后：
+                //   有禁手：先智能应对（快），再全应对；
+                //   无禁手：先全应对（阻挡点少、分支小、可靠），智能应对只做兜底。
+                // 用户规格（本轮）：无禁手先全应对、然后智能应对、最后枚举所有应对
+                // （枚举 = 上面的健全 AND-OR 证明搜索，它已经先跑）；有禁手先智能应对
+                // 再枚举所有应对。智能层兜底时步数只是下界（at_least → W/L<k>+）。
+                const bool any_forbid = b.forbid_overline() || b.forbid_44() ||
+                                        b.forbid_33();
+                const bool smart_first = any_forbid;
+                auto slice = [&](double frac) {
+                    const double now = now_sec();
+                    const double remain =
+                        (ctx.deadline > 0.0) ? (ctx.deadline - now) : 0.0;
+                    return (ctx.deadline > 0.0)
+                               ? std::max(0.05, remain * frac)
+                               : 0.0;
+                };
+                VctOutcome first = smart_first
+                                       ? vct_smart_response(b, params, slice(0.25))
+                                       : vct_all_response(b, params, slice(0.25));
+                if (first.win) {
+                    m = first.steps;
+                    smart_only = smart_first;      // 智能层 = 步数下界
+                } else if (!first.timeout) {
+                    VctOutcome second =
+                        smart_first
+                            ? vct_all_response(b, params, slice(0.25))
+                            : vct_smart_response(b, params, slice(0.25));
+                    if (second.win) {
+                        m = second.steps;
+                        smart_only = !smart_first; // 智能层兜底 = 步数下界
                     }
                 }
             }
