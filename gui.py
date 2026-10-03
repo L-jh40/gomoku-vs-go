@@ -192,10 +192,10 @@ class GameGUI:
             fill=tk.X, pady=1)
         tk.Button(self.info, text="AI 立即落子",
                   command=self.force_ai_current).pack(fill=tk.X, pady=1)
-        tk.Button(self.info, text="导出棋盘(复制 G)",
-                  command=self.export_board).pack(fill=tk.X, pady=1)
-        tk.Button(self.info, text="导入坐标(I)",
-                  command=self.open_import_dialog).pack(fill=tk.X, pady=1)
+        # AI 设置（minimax 层数 / 限时 / 威胁搜索步数）紧跟在“AI 立即落子”下面；
+        # 导出/导入按钮搬进“对局设置”窗口（G / I 快捷键不变）。
+        tk.Button(self.info, text="AI 设置",
+                  command=self.open_ai_window).pack(fill=tk.X, pady=1)
 
         self.black_ai_var = tk.IntVar(value=1 if black_is_ai else 0)
         self.white_ai_var = tk.IntVar(value=1 if white_is_ai else 0)
@@ -275,30 +275,16 @@ class GameGUI:
                        variable=self.torus_hint_width_var, value=4,
                        command=self._on_torus_hint_change).pack(side=tk.LEFT)
 
+        # 下面这些设置项都搬进了“AI 设置”窗口（open_ai_window），主面板只留按钮。
         self.depth_var = tk.StringVar(value="2")
-        frame = tk.Frame(self.info)
-        frame.pack(fill=tk.X, pady=1)
-        tk.Label(frame, text="Minimax 层数:", font=("Arial", 9)).pack(side=tk.LEFT)
-        for value in (0, 1, 2, 3, 4):
-            tk.Radiobutton(frame, text=str(value), variable=self.depth_var,
-                           value=str(value),
-                           command=self._on_depth_change).pack(side=tk.LEFT)
-
         self.min_search_time_var = tk.StringVar(value="0")
-        time_frame = tk.Frame(self.info)
-        time_frame.pack(fill=tk.X, pady=1)
-        tk.Label(time_frame, text="最短搜索时间(s):",
-                 font=("Arial", 9)).pack(side=tk.LEFT)
-        tk.Entry(time_frame, textvariable=self.min_search_time_var,
-                 width=6).pack(side=tk.LEFT)
-
         self.max_search_time_var = tk.StringVar(value="0")
-        max_time_frame = tk.Frame(self.info)
-        max_time_frame.pack(fill=tk.X, pady=1)
-        tk.Label(max_time_frame, text="最长搜索时间(s):",
-                 font=("Arial", 9)).pack(side=tk.LEFT)
-        tk.Entry(max_time_frame, textvariable=self.max_search_time_var,
-                 width=6).pack(side=tk.LEFT)
+        # 威胁搜索步数（用户规格）：VC2 = 只形成活二/眠三、VCT = 活三/做杀、
+        # VCF = 冲四；调度为“最多 1 步 VC2 → 之后每步至少 VCT → VCT 耗尽后每步至少 VCF”。
+        self.vc_steps_var = tk.StringVar(value="1")
+        self.vct_steps_var = tk.StringVar(value="18")
+        self.vcf_steps_var = tk.StringVar(value="180")
+        self.ai_window = None
 
         self.hint_var = tk.IntVar(value=0)
         tk.Checkbutton(self.info, text="玩家落子提示",
