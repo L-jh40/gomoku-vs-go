@@ -3116,7 +3116,7 @@ class GameGUI:
             if self.previous_game_snapshot is not None:
                 self._restore_previous_game()
                 self.engine_labels = {}
-        self.engine_labels_done = False
+                self.engine_labels_done = False
                 self._clear_engine_forbidden()
                 self._maybe_refresh_engine_labels()
                 self._maybe_refresh_engine_forbidden()
