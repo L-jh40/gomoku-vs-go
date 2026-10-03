@@ -765,8 +765,12 @@ std::vector<Pt> double_threat_points(Board& b) {
             const bool four_three = (flex4 >= 1 && flex3 >= 1);
             const bool three_three = (!forbid33 && flex3 >= 2);
             const bool four_four = (!forbid44 && fours >= 2);
-            if (four_three || three_three || four_four)
-                out.push_back(Pt(x, y));
+            if (!(four_three || three_three || four_four)) continue;
+            // 黑棋自己不能落的点（真禁手 / 无气自杀）不是杀点——规格：“先检查是否有
+            // 三三禁手在阻挡点上（四四/长连没有多重禁手），然后检查这两个三是否依赖
+            // 于禁手预备点位”，也就是用 check_forbidden 的真判定而不是组合表预筛。
+            if (black_point_illegal(b, x, y)) continue;
+            out.push_back(Pt(x, y));
         }
     }
     return out;
@@ -1137,6 +1141,44 @@ VctOutcome vct_smart_response(Board& b, const VctParams& p, double time_sec) {
     return out;
 }
 
+// 盘上“真三三禁手点”（递归复判，不看组合表预筛）：白棋占某点后如果黑棋多出这种点，
+// 说明黑棋被自己的禁手挡住，白棋这一手就是有效应手（禁手消失 / 多重禁手）。
+// 判据：预筛 FORBID → 无长连/一线双四 → 非四四 → check_forbidden 为真 且真三数 >= 2。
+void collect_real_33(Board& b, std::vector<int>* out) {
+    out->clear();
+    const int n = b.size();
+    for (int x = 0; x < n; ++x) {
+        for (int y = 0; y < n; ++y) {
+            if (!b.is_empty(x, y)) continue;
+            const int idx = cell_index(x, y);
+            if (b.cached_pattern4_black(idx) != FORBID) continue;  // O(1) 预筛
+            const ForbiddenProbe pr = probe_forbidden(b, x, y);
+            bool overline = false;
+            for (int d = 0; d < 4; ++d)
+                if (pr.dir[d] == OL) overline = true;   // 长连 / Rapfi 一线双四
+            if (overline || pr.fours >= 2) continue;    // 四四/长连没有“多重禁手”
+            if (pr.forbidden && pr.threes >= 2) out->push_back(idx);
+        }
+    }
+}
+
+// 白棋真实落 (px,py) 后，黑棋是否多出 before 里没有的真三三禁手点。
+bool creates_new_black_33(Board& b, int px, int py,
+                          const std::vector<int>& before) {
+    if (!b.is_empty(px, py)) return false;
+    if (!b.make_move(px, py, WHITE)) return false;
+    std::vector<int> after;
+    collect_real_33(b, &after);
+    b.undo_move();
+    for (size_t i = 0; i < after.size(); ++i) {
+        bool seen = false;
+        for (size_t k = 0; k < before.size(); ++k)
+            if (before[k] == after[i]) { seen = true; break; }
+        if (!seen) return true;
+    }
+    return false;
+}
+
 // ===========================================================================
 // 3.6 白棋威胁候选点（交集框架）
 // ===========================================================================
@@ -1182,21 +1224,6 @@ WhiteCandidateReport white_threat_candidates(Board& b) {
     rep.intersect_size = static_cast<int>(inter.size());
     rep.intersect_empty = inter.empty();
 
-    // 双威胁必须阻挡点：黑做四三必胜，白棋必须先占；交集里也裁到它（若可交）。
-    rep.must_block = double_threat_points(b);
-    if (!rep.must_block.empty() && !inter.empty()) {
-        std::vector<int> mb;
-        for (size_t k = 0; k < rep.must_block.size(); ++k)
-            mb.push_back(cell_index(rep.must_block[k].first,
-                                    rep.must_block[k].second));
-        std::sort(mb.begin(), mb.end());
-        std::vector<int> next;
-        for (size_t k = 0; k < inter.size(); ++k)
-            if (std::binary_search(mb.begin(), mb.end(), inter[k]))
-                next.push_back(inter[k]);
-        if (!next.empty()) inter.swap(next);
-    }
-
     // 交集为空 → 按规格回退到“所有威胁候选集合的并集”。
     PointSet pool;
     if (!inter.empty()) {
@@ -1207,9 +1234,6 @@ WhiteCandidateReport white_threat_candidates(Board& b) {
                 pool.add(b, cell_index(rep.lines[i].blockers[k].first,
                                        rep.lines[i].blockers[k].second));
     }
-    // 必须阻挡点与吃子点都并入候选集（都要被白棋考虑）。
-    for (size_t k = 0; k < rep.must_block.size(); ++k)
-        pool.add(b, cell_index(rep.must_block[k].first, rep.must_block[k].second));
 
     uint8_t mask[MAX_CELLS];
     std::memset(mask, 0, sizeof(mask));
@@ -1217,6 +1241,31 @@ WhiteCandidateReport white_threat_candidates(Board& b) {
     rep.captures = capture_points_from_mask(b, mask);
     for (size_t k = 0; k < rep.captures.size(); ++k)
         pool.add(b, cell_index(rep.captures[k].first, rep.captures[k].second));
+
+    // 双威胁（做杀）必须阻挡点：黑棋在这些点做四三（禁手关掉时三三/四四也算）即必胜，
+    // 白棋**只能占其中之一**。所以只要 must_block 非空，就把候选池整体裁到它——其余
+    // 候选（最典型的就是活三的另一端）会被黑棋四三取胜，绝不能留在候选集里。
+    // 唯一例外：白占某点后黑棋**多出一个真三三禁手**（禁手消失 / 多重禁手 → 黑棋被挡），
+    // 这种点也算有效应手，保留在候选池里。
+    rep.must_block = double_threat_points(b);
+    if (!rep.must_block.empty()) {
+        std::vector<int> before;
+        collect_real_33(b, &before);
+        PointSet keep;
+        for (size_t k = 0; k < rep.must_block.size(); ++k)
+            keep.add(b, cell_index(rep.must_block[k].first,
+                                   rep.must_block[k].second));
+        std::vector<Pt> pool_pts;
+        pool.finalize(&pool_pts);
+        for (size_t k = 0; k < pool_pts.size(); ++k) {
+            const int idx = cell_index(pool_pts[k].first, pool_pts[k].second);
+            if (keep.mark[idx]) continue;                  // 本身就是杀点
+            if (creates_new_black_33(b, pool_pts[k].first, pool_pts[k].second,
+                                     before))
+                keep.add(b, idx);
+        }
+        pool = keep;
+    }
 
     pool.finalize(&rep.candidates);
     return rep;
