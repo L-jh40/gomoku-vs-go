@@ -808,13 +808,24 @@ white_threat_candidates(b)            # ① 阻挡点（第一部分）
 
 | 层 | 步数参数 | 语义 | 可靠性 |
 | --- | --- | --- | --- |
-| VC | `vc = 1` | 黑落子至少形成活二 / 眠三（最浅层筛查） | — |
+| VC2 | `vc = 1` | 黑落子**只**形成活二 / 眠三（最浅层筛查；按调度只能当第一手） | — |
 | VCT | `vct = 18` | 黑落子至少形成活三 / 做杀（四三；无禁手时三三、四四） | 层 2 完备但不可靠 |
 | VCF | `vcf = 180` | 黑落子形成冲四 | 层 1 可靠但不完备 |
 
 `analyse(..., const VctParams& params = VctParams())` 的缺省值就是上表；`candidates`
-命令的 `steps` 参数覆盖 VCT 层预算（`main.cpp` 缺省 11）。预算落地在
-`layer_attacks()`：四类手要求剩余步数 ≤ `vcf`，三类手要求 ≤ `vct`。
+命令现在是 `candidates <b|w> [steps] [max_sec] [winmode] [vc] [vct] [vcf]`，后三个就是
+三档威胁搜索步数（AI 设置窗口里可改）。
+
+预算落地在 `layer_attacks()` + `LayerCtx::used[3]`：每个候选按“最高档”归类
+（冲四/活四/五 → VCF；活三/做杀 → VCT；**只**形成活二/眠三 → VC2），选一手就用
+`ClassGuard` 把对应档计上（回溯自动归还）。允许的着手是：
+
+* VC2 档：`used[0] < vc` **且**是整条路线的第一手；
+* VCT 档：`used[1] < vct`；
+* VCF 档：`used[2] < vcf`；两档都耗尽就停。
+
+也就是用户规格的调度：**最多 1 步 VC2 → 之后每步至少 VCT → VCT 耗尽后每步至少 VCF**
+（节点数少）；手数上限 = `vc + vct + vcf`。
 
 * **层 1 全应对 VCT**（`vct_all_response`）：黑棋只走威胁手；白棋在该手威胁线的**全部
   阻挡点 ∪ 吃子点**应对（`layer_responses`）。黑方节点是存在量词 ⇒ **胜即真胜**

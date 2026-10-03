@@ -129,9 +129,10 @@
 ## 5. GUI - gui.py
 
 ### UI 区域
-- 顶部按钮：新对局、选择模式、悔棋、Pass、AI 立即落子、导出棋盘(复制)(G)、导入坐标(I)
+- 顶部按钮：新对局、对局设置、悔棋、Pass、AI 立即落子、AI 设置（导出/导入按钮已搬进“对局设置”窗口，G / I 快捷键不变）
+- 「AI 设置」窗口（按钮就在“AI 立即落子”下面）：Minimax 层数（0~4）、最短/最长搜索时间、威胁搜索步数 VC2/VCT/VCF（缺省 1 / 18 / 180，随 `candidates` 命令传给引擎）
+- 「对局设置」窗口（原“选择模式”）：棋盘尺寸、先手、禁手开关、白棋获胜条件、环面、障碍、保存目录/坐标文件，外加导入/导出按钮
 - 勾选框：黑棋 AI / 白棋 AI、C++引擎（勾选后 AI 落子与候选点 W/L 角标都走 cpp/build/engine.exe）、棋盘样式（交叉点/格子，即时生效）、玩家落子提示、显示手数、显示AI候选点、取消投子认负
-- 搜索设置：Minimax 层数（0~4）、最短搜索时间、最长搜索时间
 - 黄色棋盘区顶部统计条：黑棋时间/AI/人类（靠棋盘左缘三行）、白吃黑 N子（垂直居中）、白棋时间/AI/人类（靠棋盘右缘三行）；微软雅黑UI字体 9路≈9pt → 15路起封顶20pt，与棋盘间隔一行。AI 行=自动AI搜索思考时间（蓝字口径）累计；人类行=人类落子用时（含右键AI辅助）；同方人类+AI≈该方总用时
 - 蓝/绿小字：AI回合显示搜索进度/上一步AI用时；人类回合蓝字=本步正在用时、绿字=上一手人类用时
 - C++引擎模式：候选点 W/L 角标（绿=W 必胜手数、红=L），由 `_maybe_refresh_engine_labels` 异步取回、`draw_board` 画在候选点方块右上角；禁手蓝叉改由 `_maybe_refresh_engine_forbidden` 取引擎 `checkforbidden`（Rapfi 语义），不再用 Python `rules.py` 判定
@@ -149,7 +150,8 @@
 | 函数 | 作用 |
 |------|------|
 | `new_game` | 按模式设置开新局（含所选棋盘尺寸） |
-| `open_mode_window` | 选择模式窗口 |
+| `open_mode_window` | 对局设置窗口（原“选择模式”；内含导入/导出按钮） |
+| `open_ai_window` / `_threat_steps` | AI 设置窗口（minimax 层数 / 限时 / 威胁搜索步数 VC2·VCT·VCF）与取值 |
 | `run_ai_move` | 向 AI 工作进程提交搜索任务（立即返回，不阻塞界面） |
 | `_ensure_worker / _shutdown_worker / _poll_worker` | AI 工作进程的启动/关闭与结果队列轮询 |
 | `_sync_worker_epoch / _abort_active_search / _stop_search` | 跨进程中断：纪元计数器同步、“AI 立即落子”中断、废弃搜索 |
