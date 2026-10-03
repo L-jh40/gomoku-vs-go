@@ -234,6 +234,9 @@ class GameGUI:
         self.engine_client = None
         # (x, y) -> (tag, steps) of the engine's candidate W/L annotation.
         self.engine_labels = {}
+        # 引擎候选集已落地标志：True 时页面方块才使用引擎候选点
+        # （False = 刷新未完成/被清除，宁缺勿滥，不显示旧算法的点）。
+        self.engine_labels_done = False
         # Job counter that discards stale candidate results.
         self.engine_candidates_job = 0
         # (x, y) set of black's forbidden / no-liberty points as reported by
@@ -404,6 +407,7 @@ class GameGUI:
     def _on_engine_toggle(self):
         """C++ engine check box changed: drop the engine's annotations."""
         self.engine_labels = {}
+        self.engine_labels_done = False
         self._clear_engine_forbidden()
         self._maybe_refresh_engine_forbidden()
         self.draw_board()
@@ -1880,6 +1884,7 @@ class GameGUI:
                             {(x, y): (tag, k, at_least)
                              for (x, y, tag, k, at_least) in labels}
                             if labels else {})
+                        self.engine_labels_done = True
                         self.draw_board()
                 elif kind == "forbidden":
                     # Engine checkforbidden reply (Rapfi semantics) for the
@@ -2319,6 +2324,7 @@ class GameGUI:
         if not os.path.exists(engine_client.ENGINE_PATH):
             return
         self.engine_candidates_job += 1
+        self.engine_labels_done = False
         epoch = self.engine_candidates_job
         color = self.current
         winmode = 0 if self.white_win_var.get() == "line_block" else 1
@@ -2378,6 +2384,7 @@ class GameGUI:
         check box is turned off, otherwise fetch it for the position."""
         if not self.show_candidates_var.get():
             self.engine_labels = {}
+            self.engine_labels_done = False
         self._maybe_refresh_engine_labels()
         self.draw_board()
 
