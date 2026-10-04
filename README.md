@@ -11,6 +11,28 @@
 
 [AI_ALGORITHM.md](AI_ALGORITHM.md) —— 黑棋 / 白棋 AI 算法详解（实心圆 / 三角形 / 大小圆圈等威胁评分体系）。
 
+## 道棋AI（环面·KataGo）
+
+环面模式下勾选主面板的 **「道棋AI（环面·KataGo）」**，白棋（围棋方）改由
+道棋俱乐部训练的环面围棋神经网络驱动（[daoqiclub/katrain_daoqi](https://github.com/daoqiclub/katrain_daoqi)
+的 DAOQI 模型 + KataGo v1.18.1 官方引擎，文件在 `daoqi_katago/`，下载来源见
+其中的 README）：
+
+- **胜率 / 目差**：侧栏紫色一行实时显示 KataGo 的围棋评估（白方视角），每手
+  棋后自动刷新；黑方视角数值即"白胜率的补、目差取反"。
+- **走子策略**：黑棋连五点位立即挡五、紧迫威胁（成五/四三/活四/冲四/活三）
+  由内置白棋算法防守（KataGo 不懂连五），其余安静局面按 KataGo 的围棋评估
+  落子。黑棋 AI 始终是内置五子棋引擎。
+- **候选点**：「显示AI候选点」在道棋AI模式下显示 KataGo 的 top 候选与白方
+  胜率百分比。
+- **参数**：「AI 设置」窗口可改贴目（默认 5.5，道棋 16 路惯例，只影响评估）
+  与每手访问数（默认 192）。
+- **性能**：OpenCL（核显）优先，自动回退 CPU 版；首次启动有一次性的 GPU
+  调优（约 4 分钟，之后启动约 25 秒，勾选后后台预热）。引擎文件较大，git
+  忽略，换机器时按 `daoqi_katago/README.md` 重新下载。
+- 冒烟测试：`python _daoqi_smoke.py`（无 GUI，含跨边提子）、
+  `python _daoqi_gui_smoke.py`（真 GUI 对局）。
+
 ## 界面预览
 
 ![黑棋胜利](docs/black-win.png)

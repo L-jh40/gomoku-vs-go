@@ -138,6 +138,7 @@
 - 黄色棋盘区顶部统计条：黑棋时间/AI/人类（靠棋盘左缘三行）、白吃黑 N子（垂直居中）、白棋时间/AI/人类（靠棋盘右缘三行）；微软雅黑UI字体 9路≈9pt → 15路起封顶20pt，与棋盘间隔一行。AI 行=自动AI搜索思考时间（蓝字口径）累计；人类行=人类落子用时（含右键AI辅助）；同方人类+AI≈该方总用时
 - 蓝/绿小字：AI回合显示搜索进度/上一步AI用时；人类回合蓝字=本步正在用时、绿字=上一手人类用时
 - C++引擎模式：候选点 W/L 角标（绿=W 必胜手数、红=L），由 `_maybe_refresh_engine_labels` 异步取回、`draw_board` 画在候选点方块右上角；步数带 `+`（如 `L8+`）表示只是下界（层 2 智能应对兜底，见 vcfvct 的 `CandidateLabel::at_least`）；禁手蓝叉改由 `_maybe_refresh_engine_forbidden` 取引擎 `checkforbidden`（Rapfi 语义），不再用 Python `rules.py` 判定
+- 道棋AI模式（`daoqi_ai_var`，仅环面模式对白棋生效）：白棋（围棋方）改用 daoqi KataGo——`run_ai_move` 先走 `_run_daoqi_white`：连五点位用 `_quick_forced_response` 同步挡五、紧迫威胁（成五/四三/活四/冲四/活三）回落内置白棋算法、安静局面 `_run_ai_move_daoqi` 查 KataGo；紫色标签（`daoqi_label`）显示**白方胜率/目差**（KataGo 黑方视角 winrate/scoreLead 换算，`_store_daoqi_eval`/`_update_daoqi_label`），每手棋后由 `_maybe_refresh_daoqi_eval` 异步低访问数刷新，与 AI 落子查询共用一个客户端锁串行；「显示AI候选点」显示 KataGo top 候选 + 白方胜率百分比；黑棋永远是内置五子棋引擎（KataGo 不懂连五）；贴目/每手访问数在「AI 设置」窗口（`daoqi_komi_var`/`daoqi_visits_var`，默认 5.5 / 192）；冒烟脚本 `_daoqi_smoke.py`（无 GUI）与 `_daoqi_gui_smoke.py`（真 GUI）
 - 模式窗口：棋盘尺寸（9~19 奇数，新对局生效）、先手、禁手设置、白棋获胜条件、环面模式（新对局生效）、障碍
 - 环面模式：上下/左右互通（气、连五、禁手、领地、距离全部回绕，AI 只搜索实际 n×n 棋盘）
 - 环面提示（主面板复选框）：开启后四周显示镜面复制区，宽度可选 2 格（n+4）或 4 格（n+8），关闭则只显示 n×n；复制区背景统一用第一圈色、网格线统一 50% 白、假棋子=50%棋子色+50%棋盘底色，实际棋盘四周只有一条 #f2f2f2 粗镜框；鼠标在复制区时幽灵棋子只显示在实际对应格；点击复制格映射到实际格落子
