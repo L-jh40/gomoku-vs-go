@@ -2313,6 +2313,11 @@ class GameGUI:
                 self._pass_turn()
             return
         x, y = result["move"]
+        self._apply_ai_move_and_advance(color, x, y)
+
+    def _apply_ai_move_and_advance(self, color, x, y):
+        """Drop an AI move (Python worker / C++ engine / 道棋AI all use
+        this), advance the turn and refresh every readout."""
         if color == BLACK:
             ok, _ = self.board.play_black(x, y)
             if not ok:
@@ -2431,7 +2436,272 @@ class GameGUI:
             self.engine_labels = {}
         self.engine_labels_done = False
         self._maybe_refresh_engine_labels()
+        self._maybe_refresh_daoqi_eval()
         self.draw_board()
+
+    # ------------------------------------------------------------------
+    # 道棋AI（环面·KataGo）
+    # ------------------------------------------------------------------
+    def _on_daoqi_toggle(self):
+        """道棋AI check box changed: drop the evaluation, prewarm the
+        engine when turning on, refresh the readout for this position."""
+        self._clear_daoqi_state()
+        if self.daoqi_ai_var.get():
+            if not katago_client.available():
+                self.daoqi_ai_var.set(0)
+                self._restore_main_window()
+                messagebox.showinfo(
+                    "道棋AI",
+                    "未找到 daoqi_katago 引擎文件\n"
+                    "（katago_opencl.exe / katago_eigen.exe / model.bin.gz），"
+                    "已保持道棋AI关闭。")
+                self.update_mode_label()
+                return
+            self._prewarm_katago()
+        self._maybe_refresh_daoqi_eval()
+        self.draw_board()
+        self.update_mode_label()
+
+    def _ensure_katago_client(self):
+        """The one KataGo client of this window (created on first use)."""
+        if self.katago_client is None:
+            self.katago_client = katago_client.KataGoClient()
+        return self.katago_client
+
+    def _prewarm_katago(self):
+        """Start the KataGo process in the background so the first AI move
+        pays no 20s+ startup cost (OpenCL buffers + model upload)."""
+        def work():
+            backend = None
+            try:
+                backend = self._ensure_katago_client().backend
+            except Exception:
+                backend = None
+            self.engine_ui_queue.put(("daoqi_ready", backend))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _daoqi_komi(self):
+        try:
+            value = float(str(self.daoqi_komi_var.get()).strip())
+        except (TypeError, ValueError):
+            return 5.5
+        return value
+
+    def _daoqi_visits(self, cap=None):
+        try:
+            value = int(str(self.daoqi_visits_var.get()).strip())
+        except (TypeError, ValueError):
+            value = 192
+        value = max(8, min(value, 2000))
+        if cap is not None:
+            value = min(value, cap)
+        return value
+
+    def _run_daoqi_white(self, color, assist=False):
+        """道棋AI dispatch for White's move.  Returns True when this call
+        handled the move (five-block or KataGo), False when the built-in
+        white AI should handle it (urgent gomoku threat / engine missing).
+        """
+        if not katago_client.available():
+            # Missing engine files: say so once, uncheck, use built-in AI.
+            self.daoqi_ai_var.set(0)
+            self.update_mode_label()
+            self._restore_main_window()
+            messagebox.showinfo(
+                "道棋AI",
+                "未找到 daoqi_katago 引擎文件，已切换回内置白棋算法。")
+            return False
+        # 黑棋连五点位（下一步成五）必须挡：KataGo 不懂连五，这里沿用
+        # 人类辅助同款挡五逻辑，同步落子。
+        if self._quick_forced_response():
+            return True
+        # 紧迫威胁（成五/四三/活四/冲四/活三）：内置白棋算法防守。
+        threats = self.board.compute_threats()
+        urgent = any(t in ("five_point", "four_three", "open_four",
+                           "rush_four", "open_three")
+                     for t in threats.values())
+        if urgent:
+            return False
+        self._run_ai_move_daoqi(color, assist=assist)
+        return True
+
+    def _run_ai_move_daoqi(self, color, assist=False):
+        """Query KataGo for White's move; same scaffolding as
+        _run_ai_move_engine (epoch, thinking flags, ticker, max-time cap),
+        but the search runs in a thread driving daoqi_katago's engine and
+        the reply also carries winrate / scoreLead."""
+        self.ai_thinking = True
+        self._daoqi_thinking = True
+        self.search_epoch += 1
+        epoch = self.search_epoch
+        self.last_even_depth = 0
+        self.last_even_time = 0.0
+        self.last_layer_depth = 0
+        self.last_layer_time = 0.0
+        self._last_progress_ui_time = 0.0
+        self.depth0_unfinished = False
+        self.last_focused = False
+        self.last_focused_depth = -1
+        self.prev_layer_depth = -1
+        self.prev_layer_time = 0.0
+        self.search_start_time = time.time()
+        self.thinking_label.config(text="道棋AI(KataGo) 搜索中...")
+        self.root.update_idletasks()
+        self._schedule_search_ticker()
+
+        try:
+            max_search_time = float(self.max_search_time_var.get())
+        except ValueError:
+            max_search_time = 0.0
+        if max_search_time > 0:
+            self._cancel_max_search_timer()
+            self.max_time_after_id = self.root.after(
+                int(max_search_time * 1000), self._on_max_search_time
+            )
+
+        visits = self._daoqi_visits()
+        komi = self._daoqi_komi()
+        snapshot = self.board.copy()
+
+        def work():
+            error = None
+            result = None
+            try:
+                result = self._ensure_katago_client().analyze(
+                    snapshot, color, max_visits=visits, komi=komi)
+            except katago_client.KataGoError as exc:
+                error = str(exc)
+            self.engine_ui_queue.put(("daoqi_apply", {
+                "epoch": epoch, "color": color, "assist": assist,
+                "error": error, "result": result,
+            }))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _apply_daoqi_result(self, data):
+        """Apply a finished KataGo search (runs on the Tk main thread,
+        called from _poll_worker)."""
+        epoch = data["epoch"]
+        color = data["color"]
+        assist = data["assist"]
+        error = data["error"]
+        result = data["result"]
+        if epoch != self.search_epoch:
+            return
+        self._cancel_max_search_timer()
+        self.ai_thinking = False
+        self._daoqi_thinking = False
+        total = time.time() - self.search_start_time
+        if error is not None:
+            # A killed process (AI 立即落子 / max-time cap) surfaces as
+            # "engine closed": stop quietly, no popup.
+            self.katago_client = None
+            if "engine closed" in error:
+                self.thinking_label.config(text="道棋AI已中断")
+                return
+            if ("binary missing" in error or "cannot start" in error
+                    or "did not become ready" in error):
+                self.daoqi_ai_var.set(0)
+                self.update_mode_label()
+                self._show_search_error(f"道棋AI(KataGo): {error}")
+                return
+            self._show_search_error(f"道棋AI(KataGo): {error}")
+            return
+        visits = result.get("visits", 0) if result else 0
+        self.thinking_label.config(
+            text=f"道棋AI，用时: {total:.2f}s，访问数: {visits}")
+        self.depth_label.config(
+            text=f"上一步AI用时: {total:.2f}s | 道棋AI访问数: {visits}")
+        if assist:
+            self._record_human_move_time(color)
+            self._finish_turn_time(color, False)
+        else:
+            self._add_ai_search_time(color, total)
+        self._store_daoqi_eval(result)
+        if result is None or result.get("verdict") == "pass":
+            self._pass_turn()
+            return
+        x, y = result["move"]
+        self._apply_ai_move_and_advance(color, x, y)
+
+    def _store_daoqi_eval(self, result):
+        """Record a KataGo evaluation (move search or eval-only) and refresh
+        the purple winrate / score-lead line."""
+        self.daoqi_eval = result
+        self.daoqi_candidates = {}
+        if result:
+            for x, y, wr_b, _sl_b in result.get("candidates", [])[:8]:
+                # Candidates belong to White (the KataGo side): store the
+                # white-view winrate for the board overlay.
+                self.daoqi_candidates[(x, y)] = 1.0 - wr_b
+        self._update_daoqi_label()
+
+    def _update_daoqi_label(self):
+        """Purple readout: 白方胜率 / 目差 from the latest KataGo query."""
+        result = self.daoqi_eval
+        if not result:
+            self.daoqi_label.config(text="")
+            return
+        wr_white = 1.0 - result.get("winrate", 0.0)
+        lead_white = -result.get("scoreLead", 0.0)
+        self.daoqi_label.config(
+            text=(f"道棋 白胜率 {wr_white * 100:.1f}% | "
+                  f"目差 {lead_white:+.1f}"
+                  f"（{result.get('visits', 0)}访·"
+                  f"{result.get('backend', '?')}）"))
+
+    def _clear_daoqi_state(self):
+        """Drop the KataGo evaluation and invalidate in-flight eval jobs."""
+        self.daoqi_eval = None
+        self.daoqi_candidates = {}
+        self.daoqi_eval_job += 1
+        self._update_daoqi_label()
+
+    def _maybe_refresh_daoqi_eval(self):
+        """Refresh the KataGo winrate / score-lead readout in the background
+        (道棋AI on, torus game, idle).  Cheap query (capped visits)."""
+        if not self.daoqi_ai_var.get() or not self.board.torus:
+            return
+        if self.game_over or self.ai_thinking or self.replay_mode:
+            return
+        if not katago_client.available():
+            return
+        self.daoqi_eval_job += 1
+        epoch = self.daoqi_eval_job
+        color = self.current
+        snapshot = self.board.copy()
+        visits = self._daoqi_visits(cap=64)
+        komi = self._daoqi_komi()
+
+        def work():
+            result = None
+            try:
+                result = self._ensure_katago_client().analyze(
+                    snapshot, color, max_visits=visits, komi=komi)
+            except katago_client.KataGoError:
+                result = None
+            self.engine_ui_queue.put(("daoqi_eval", epoch, result))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _draw_daoqi_candidates(self):
+        """KataGo candidate annotation: white-view winrate percentage text
+        on the candidate squares (squares themselves come from
+        _draw_candidate_squares via _get_candidate_display_positions)."""
+        if not self.daoqi_ai_var.get() or not self.daoqi_candidates:
+            return
+        for (x, y), wr in self.daoqi_candidates.items():
+            if not self.board.is_empty(x, y):
+                continue
+            for dx, dy in self._display_copies(x, y):
+                cx, cy = self._display_center(dx, dy)
+                color = "#1a7f1a"
+                if not self._in_actual_region(dx, dy):
+                    color = self._fake_mix(color)
+                self.canvas.create_text(
+                    cx, cy, text=f"{wr * 100:.0f}",
+                    fill=color, font=("Arial", 8, "bold"))
 
     def _show_search_error(self, msg):
         self.ai_thinking = False
