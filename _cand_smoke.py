@@ -1,6 +1,21 @@
 import sys, time, tkinter as tk
 sys.path.insert(0, ".")
 import board_tools as bt
+
+import engine_client as _ec
+_orig_cand = _ec.EngineClient.candidates
+def _logged(self, *a, **k):
+    import time as _t
+    _t0 = _t.time()
+    try:
+        r = _orig_cand(self, *a, **k)
+        print("[cand] %.2fs -> %d labels" % (_t.time() - _t0, len(r) if r else 0), flush=True)
+        return r
+    except _ec.EngineError as e:
+        print("[cand] %.2fs -> EngineError: %s" % (_t.time() - _t0, e), flush=True)
+        raise
+_ec.EngineClient.candidates = _logged
+
 import gui
 
 root = tk.Tk()
