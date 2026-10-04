@@ -9,3 +9,12 @@ venv/
 # 导出/导入的本地数据（棋盘 dump、坐标文件）
 导出/
 board_dump.txt
+
+# 道棋AI（KataGo 二进制 + daoqi 模型 + 运行日志），大文件不纳入版本库。
+# 下载来源见 daoqi_katago/README.md，重新获取后放入本目录即可。
+daoqi_katago/model.bin.gz
+daoqi_katago/katago_opencl.exe
+daoqi_katago/katago_eigen.exe
+daoqi_katago/*.dll
+daoqi_katago/analysis_logs/
+daoqi_katago/KataGoData/
