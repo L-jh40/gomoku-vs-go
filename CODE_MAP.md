@@ -22,6 +22,8 @@
 | `cpp/` | C++ 引擎（Rapfi 棋型缓存+禁手、元组评估、alpha-beta、证明级 VCF/VCT），见 cpp/README.md |
 | `engine_client.py` | C++ 引擎子进程封装（GUI"C++引擎"模式走它，协议见 cpp/README.md） |
 | `cpp/` | C++ 引擎（make/undo+Rapfi 禁手+元组评估+alpha-beta+VCF/VCT），见 cpp/README.md |
+| `katago_client.py` | 道棋AI（环面围棋 KataGo）客户端：KataGo **analysis 协议**（stdin/stdout JSON），把当前环面局面石子作为 `initialStones` 直传（不做走子重放），GTP 坐标互转，OpenCL 优先/Eigen 自动回退；`analyze()` 返回 best move + 黑方视角 winrate/scoreLead + top 候选 |
+| `daoqi_katago/` | 道棋引擎文件（git 忽略，来源见 `daoqi_katago/README.md`）：`model.bin.gz`（道棋俱乐部 DAOQI 网络）、`katago_opencl.exe`/`katago_eigen.exe`（KataGo v1.18.1 官方版）、`analysis_daoqi.cfg`（`reportAnalysisWinratesAs=BLACK`） |
 | `board_tools.py` | 坐标代码（`a15`/`p0`）与棋盘文本互转、导出/导入、分析 CLI（威胁、蓝叉、禁手地图、AI 着法） |
 | `../tools/rapfi-plugin/rapfi_plugin.py`（在程序目录**之外**） | 唯一的 Rapfi 外置插件：**直接从 Rapfi/Yixin 窗口抓局面**（Ctrl+C）或读剪贴板 → **禁手默认问 Rapfi 引擎**（`INFO rule 2` + `YXBOARD` + `YXSHOWFORBID`，与窗口显示一致）→ 追加代码行 + 禁手行到 `导出/粘贴板.md`，预览点阵把禁手画成 X；不改主程序任何文件、不读写 Yixin 目录，双击 `tools\rapfi-plugin\rapfi_plugin.bat` 运行 |
 | `tests_torus.py` | 环面/禁手/GUI/坐标读取 自动化测试（`python tests_torus.py`） |
