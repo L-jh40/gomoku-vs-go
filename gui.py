@@ -24,6 +24,7 @@ import rules
 import ai_search
 import ai_worker
 import engine_client
+import katago_client
 import board_tools
 
 CELL = 30
@@ -178,6 +179,10 @@ class GameGUI:
         self.depth_label = tk.Label(self.info, text="", fg="green",
                                     font=("Arial", 9))
         self.depth_label.pack(pady=1)
+        # 道棋AI（KataGo）评估行：白方胜率 / 目差（白=围棋方）。
+        self.daoqi_label = tk.Label(self.info, text="", fg="#8a2be2",
+                                    font=("Arial", 9))
+        self.daoqi_label.pack(pady=1)
         self.stats_label.pack(pady=1)
 
         top_buttons = tk.Frame(self.info)
