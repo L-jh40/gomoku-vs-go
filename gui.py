@@ -458,9 +458,10 @@ class GameGUI:
         extra = " | 黑棋查表必胜" if self.black_table_mode else ""
         torus = " | 环面" if self.board.torus else ""
         engine = " | C++引擎" if self.engine_var.get() else ""
+        daoqi = " | 道棋AI" if self.daoqi_ai_var.get() else ""
         self.mode_label.config(
             text=f"模式: 黑({bh}) vs 白({wh}) | 深度 {self.depth_var.get()}"
-                 f"{extra}{torus}{engine}"
+                 f"{extra}{torus}{engine}{daoqi}"
         )
         self.draw_board()
 
@@ -963,6 +964,7 @@ class GameGUI:
         self.update_mode_label()
         self._maybe_refresh_engine_labels()
         self._maybe_refresh_engine_forbidden()
+        self._maybe_refresh_daoqi_eval()
         errors = list(info.get("errors") or [])
         note = f"已导入 {len(self.board.history)} 手"
         if self.pass_records:
@@ -1719,6 +1721,7 @@ class GameGUI:
         self.update_info()
         self._maybe_refresh_engine_labels()
         self._maybe_refresh_engine_forbidden()
+        self._maybe_refresh_daoqi_eval()
         self.root.after(300, self.maybe_play_ai)
 
     def try_play_white(self, x, y):
@@ -1753,6 +1756,7 @@ class GameGUI:
         self.update_info()
         self._maybe_refresh_engine_labels()
         self._maybe_refresh_engine_forbidden()
+        self._maybe_refresh_daoqi_eval()
         self.root.after(300, self.maybe_play_ai)
 
     def human_pass(self):
@@ -1788,6 +1792,7 @@ class GameGUI:
         self.update_info()
         self._maybe_refresh_engine_labels()
         self._maybe_refresh_engine_forbidden()
+        self._maybe_refresh_daoqi_eval()
         self.root.after(300, self.maybe_play_ai)
 
     # ------------------------------------------------------------------
@@ -2389,6 +2394,7 @@ class GameGUI:
         self.update_info()
         self._maybe_refresh_engine_labels()
         self._maybe_refresh_engine_forbidden()
+        self._maybe_refresh_daoqi_eval()
         self.root.after(300, self.maybe_play_ai)
 
     def _update_engine_progress(self, depth):
@@ -2767,6 +2773,13 @@ class GameGUI:
         if self.search_start_time <= 0:
             return
         total = time.time() - self.search_start_time
+        if self._daoqi_thinking:
+            # KataGo has no depth layers; the visit count only exists in the
+            # final reply, so just keep the elapsed time fresh.
+            self.thinking_label.config(
+                text=f"道棋AI(KataGo) 搜索中，用时: {total:.2f}s"
+            )
+            return
         if self.ai_thinking and not self.last_focused and \
                 self.last_layer_depth == 0:
             self.thinking_label.config(
@@ -3396,11 +3409,14 @@ class GameGUI:
         self.engine_labels = {}
         self.engine_labels_done = False
         self._clear_engine_forbidden()
+        self._clear_daoqi_state()
         self.draw_board()
         self.update_info()
         self.update_mode_label()
         self._maybe_refresh_engine_labels()
         self._maybe_refresh_engine_forbidden()
+        self._maybe_refresh_daoqi_eval()
+        self._maybe_refresh_daoqi_eval()
         if self.current == BLACK and self.black_ai_var.get():
             self.root.after(300, self.maybe_play_ai)
         elif self.current == WHITE and self.white_ai_var.get():
@@ -3472,6 +3488,7 @@ class GameGUI:
                 self._clear_engine_forbidden()
                 self._maybe_refresh_engine_labels()
                 self._maybe_refresh_engine_forbidden()
+                self._maybe_refresh_daoqi_eval()
                 return
             messagebox.showinfo("悔棋", "没有可悔的棋")
             return
@@ -3564,6 +3581,7 @@ class GameGUI:
         self.update_mode_label()
         self._maybe_refresh_engine_labels()
         self._maybe_refresh_engine_forbidden()
+        self._maybe_refresh_daoqi_eval()
         self.root.after(300, self.maybe_play_ai)
 
 
