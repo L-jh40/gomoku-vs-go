@@ -168,7 +168,7 @@
 | `_on_size_check / _selected_board_size` | 棋盘尺寸复选框互斥与读取 |
 | `_on_style_point / _on_style_cell` | 棋盘样式复选框互斥与即时切换 |
 | `_apply_canvas_size` | 尺寸变化时重设画布/侧栏大小与窗口标题 |
-| `_get_candidate_display_positions` | 候选点显示 |
+| `_get_candidate_display_positions` | 候选点显示（C++引擎模式=引擎 candidates 输出；关闭时=Python 算法） |
 | `_finish_turn_time / update_info` | 用时统计 |
 | `play_replay_black` | 复盘黑棋应对 |
 | `undo_move / human_pass / _pass_turn` | 悔棋、Pass（`_pass_turn` 把"已下子数"记入 `pass_records`，导出时还原 `p0` 位置；悔棋时 `_trim_pass_records` 清理） |
