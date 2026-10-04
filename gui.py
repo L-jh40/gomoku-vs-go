@@ -3131,6 +3131,26 @@ class GameGUI:
             tk.Entry(steps_frame, textvariable=var, width=5).pack(
                 side=tk.LEFT, padx=(0, 8))
 
+        tk.Label(win, text="道棋AI（环面·KataGo）", font=("Arial", 11, "bold")
+                 ).pack(anchor=tk.W, padx=10, pady=(8, 0))
+        tk.Label(win,
+                 text="勾选“道棋AI”且开启环面时，白棋（围棋方）改用 daoqi_katago/"
+                      "的道棋神经网络：挡五与紧迫威胁仍由内置算法防守，其余"
+                      "局面按围棋评估落子；胜率/目差为 KataGo 围棋评估（白方"
+                      "视角）。贴目仅影响评估，默认 5.5（道棋 16 路惯例）。",
+                 font=("Arial", 8), fg="#555555", justify=tk.LEFT).pack(
+            anchor=tk.W, padx=10)
+        daoqi_frame = tk.Frame(win)
+        daoqi_frame.pack(fill=tk.X, padx=10)
+        tk.Label(daoqi_frame, text="贴目:", font=("Arial", 9)).pack(
+            side=tk.LEFT)
+        tk.Entry(daoqi_frame, textvariable=self.daoqi_komi_var,
+                 width=6).pack(side=tk.LEFT)
+        tk.Label(daoqi_frame, text="  每手访问数:", font=("Arial", 9)).pack(
+            side=tk.LEFT)
+        tk.Entry(daoqi_frame, textvariable=self.daoqi_visits_var,
+                 width=6).pack(side=tk.LEFT)
+
     def open_mode_window(self):
         self._restore_main_window()
         if self.mode_window is not None and self.mode_window.winfo_exists():
