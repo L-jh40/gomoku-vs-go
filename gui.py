@@ -3416,7 +3416,6 @@ class GameGUI:
         self._maybe_refresh_engine_labels()
         self._maybe_refresh_engine_forbidden()
         self._maybe_refresh_daoqi_eval()
-        self._maybe_refresh_daoqi_eval()
         if self.current == BLACK and self.black_ai_var.get():
             self.root.after(300, self.maybe_play_ai)
         elif self.current == WHITE and self.white_ai_var.get():
