@@ -19,7 +19,12 @@ def main():
     assert kc.gtp_to_xy("J4", 19) == (8, 15)
     assert kc.gtp_to_xy("T19", 19) == (18, 0)
     assert kc.gtp_to_xy("pass", 9) is None
-    print("gtp_to_xy OK")
+    assert kc.xy_to_gtp(15, 0, 16) == "Q16"
+    assert kc.gtp_to_xy("Q16", 16) == (15, 0)
+    for x in range(19):
+        for y in range(19):
+            assert kc.gtp_to_xy(kc.xy_to_gtp(x, y, 19), 19) == (x, y)
+    print("gtp_to_xy / xy_to_gtp OK")
 
     client = kc.KataGoClient()
     t0 = time.time()

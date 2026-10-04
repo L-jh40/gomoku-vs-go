@@ -88,6 +88,15 @@ def gtp_to_xy(move, size):
     return col, size - row
 
 
+def xy_to_gtp(x, y, size):
+    """(col, row) grid indices -> GTP vertex string (inverse of gtp_to_xy)."""
+    if not (0 <= x < size and 0 <= y < size):
+        raise KataGoError(f"point out of board: {(x, y)}")
+    letter = chr(ord("A") + x + (1 if x >= 8 else 0))   # skip I
+    row = size - y
+    return f"{letter}{row}"
+
+
 class KataGoClient:
     """One KataGo analysis subprocess, auto-falling back between backends.
 
@@ -216,11 +225,11 @@ class KataGoClient:
                 for y in range(size):
                     v = int(board.grid[x, y])
                     if v == BLACK:
-                        stones.append(["B", x, y])
+                        stones.append(["B", xy_to_gtp(x, y, size)])
                     elif v in (WHITE, OBSTACLE):
                         # Obstacles are projected as white stones: the closest
                         # go equivalent of a wall nobody can play on.
-                        stones.append(["W", x, y])
+                        stones.append(["W", xy_to_gtp(x, y, size)])
             self._query_id += 1
             query = {
                 "id": f"daoqi-{self._query_id}",
