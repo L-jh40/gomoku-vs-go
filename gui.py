@@ -259,6 +259,25 @@ class GameGUI:
         # the Tk main thread instead.
         self.engine_ui_queue = queue_mod.Queue()
 
+        # "道棋AI": torus mode only.  White (the go side) is driven by the
+        # daoqi-trained KataGo network in daoqi_katago/ instead of the
+        # Python/C++ gomoku engines; the winrate / score-lead readout comes
+        # from the same queries.  Black stays the gomoku engine.
+        self.daoqi_ai_var = tk.IntVar(value=0)
+        tk.Checkbutton(self.info, text="道棋AI（环面·KataGo）",
+                       variable=self.daoqi_ai_var,
+                       command=self._on_daoqi_toggle).pack(anchor=tk.W)
+        self.katago_client = None
+        # Latest daoqi evaluation (black-view winrate / scoreLead, visits,
+        # backend) from the last KataGo query, plus the top candidates as
+        # {(x, y): white-view winrate} for the 候选点 overlay.
+        self.daoqi_eval = None
+        self.daoqi_candidates = {}
+        # Job counter that discards stale evaluation replies.
+        self.daoqi_eval_job = 0
+        # True while a KataGo search is in flight (thinking-label wording).
+        self._daoqi_thinking = False
+
         # Board style lives on the main window (outside the mode window).
         style_row = tk.Frame(self.info)
         style_row.pack(fill=tk.X, pady=1)
@@ -294,6 +313,9 @@ class GameGUI:
         self.vc_steps_var = tk.StringVar(value="1")
         self.vct_steps_var = tk.StringVar(value="18")
         self.vcf_steps_var = tk.StringVar(value="180")
+        # 道棋AI（KataGo）：贴目与每手访问数（AI 设置窗口可改）。
+        self.daoqi_komi_var = tk.StringVar(value="5.5")
+        self.daoqi_visits_var = tk.StringVar(value="192")
         self.ai_window = None
 
         self.hint_var = tk.IntVar(value=0)
@@ -2094,6 +2116,12 @@ class GameGUI:
         not counted in the AI (thinking) row."""
         if self.game_over:
             return
+        # 道棋AI：环面模式下白棋（围棋方）由 daoqi KataGo 驱动。挡五/紧迫
+        # 威胁仍交给内置白棋算法（KataGo 不懂连五），安静局面才用 KataGo。
+        if (self.daoqi_ai_var.get() and color == WHITE
+                and self.board.torus):
+            if self._run_daoqi_white(color, assist=assist):
+                return
         if self.engine_var.get():
             if os.path.exists(engine_client.ENGINE_PATH):
                 self._run_ai_move_engine(color, assist=assist)
