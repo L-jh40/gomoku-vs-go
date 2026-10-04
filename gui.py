@@ -411,6 +411,11 @@ class GameGUI:
                 self.engine_client.quit()
             except Exception:
                 pass
+        if self.katago_client is not None:
+            try:
+                self.katago_client.quit()
+            except Exception:
+                pass
         self._shutdown_worker()
         self._close_active_dialog()
         self._close_mode_window()
@@ -1289,6 +1294,7 @@ class GameGUI:
         elif self.show_candidates_var.get():
             self._draw_candidate_squares()
             self._draw_engine_labels()
+            self._draw_daoqi_candidates()
         else:
             # with_hints=False: no hint overlay, but the C++ engine's W/L
             # annotation (if any) still belongs on the board.
@@ -1459,6 +1465,11 @@ class GameGUI:
                                     fill=color, font=("Arial", 8, "bold"))
 
     def _get_candidate_display_positions(self):
+        # 道棋AI模式：候选方块来自 KataGo 的 top moves（环面围棋语义）；
+        # 评估未落地时宁缺勿滥。
+        if (self.daoqi_ai_var.get() and self.board.torus
+                and self.daoqi_candidates):
+            return sorted(self.daoqi_candidates.keys())
         # C++引擎模式：页面候选方块只来自引擎 candidates 输出（Rapfi 语义，
         # 与测试一致）；刷新未落地时宁缺勿滥。引擎关闭走 Python 旧算法。
         if self.engine_var.get() and self.show_candidates_var.get():
@@ -1875,6 +1886,11 @@ class GameGUI:
                 self.engine_client.abort()
             except Exception:
                 pass
+        if self.katago_client is not None:
+            try:
+                self.katago_client.abort()
+            except Exception:
+                pass
         try:
             self.worker_epoch_ctl.value += 1
         except Exception:
@@ -1886,8 +1902,14 @@ class GameGUI:
                 self.engine_client.abort()
             except Exception:
                 pass
+        if self.katago_client is not None:
+            try:
+                self.katago_client.abort()
+            except Exception:
+                pass
         self.search_epoch += 1
         self.ai_thinking = False
+        self._daoqi_thinking = False
         self._cancel_max_search_timer()
         self._sync_worker_epoch()
 
@@ -1928,6 +1950,23 @@ class GameGUI:
                     if epoch == self.engine_forbidden_job:
                         self.engine_forbidden = set(points) if points else set()
                         self.draw_board()
+                elif kind == "daoqi_apply":
+                    self._apply_daoqi_result(payload[0])
+                elif kind == "daoqi_eval":
+                    # Eval-only KataGo reply for the winrate / score-lead
+                    # line; stale jobs are dropped by their epoch.
+                    epoch, result = payload
+                    if epoch == self.daoqi_eval_job and result is not None:
+                        self._store_daoqi_eval(result)
+                        self.draw_board()
+                elif kind == "daoqi_ready":
+                    backend = payload[0]
+                    if self.daoqi_ai_var.get() and self.daoqi_eval is None:
+                        if backend:
+                            self.daoqi_label.config(
+                                text=f"道棋AI引擎就绪（{backend}）")
+                        else:
+                            self.daoqi_label.config(text="道棋AI引擎启动失败")
         except queue_mod.Empty:
             pass
         except Exception:
