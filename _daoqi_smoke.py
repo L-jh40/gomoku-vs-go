@@ -38,18 +38,19 @@ def main():
     ok, _ = board.play_white(x, y)
     assert ok, "KataGo move rejected by board"
 
-    # Torus capture: black group on the top row dies when its wrapped
-    # liberty is taken from the bottom row.
+    # Torus capture: a black stone on the top row dies when its wrapped
+    # liberty is taken from the bottom row (on a torus a "corner" stone
+    # still has four neighbours: (1,0), (8,0)≡(-1,0), (0,1), (0,8)≡(0,-1)).
     b = HybridBoard(9)
     b.torus = True
     b.turn = WHITE
-    ok, _ = b.play_black(0, 0, check_rules=False)   # corner = wraps both ways
+    ok, _ = b.play_black(0, 0, check_rules=False)
     assert ok
-    for wx, wy in ((1, 0), (0, 1), (8, 0)):          # flat + left-wrapped liberty
+    for wx, wy in ((1, 0), (0, 1), (8, 0), (0, 8)):
         ok, _ = b.play_white(wx, wy)
         assert ok
-    assert b.grid[0, 0] == 0, "corner stone should be captured via wrap"
-    print("torus capture OK: black corner removed by white at (8,0)")
+    assert b.grid[0, 0] == 0, "stone should be captured via wrapped liberty"
+    print("torus capture OK: black (0,0) removed by white at (0,8)")
 
     r2 = client.analyze(b, BLACK, max_visits=48, komi=5.5)
     print(f"after capture, black to move: wr(B)={r2['winrate']:.3f} "
