@@ -494,6 +494,12 @@ int64_t node_dfs(Board& b, int depth, int64_t alpha, int64_t beta, int ply,
 
     if (ply >= MAX_PLY) return stm_score(b, ctx.winmode);
 
+    // depth <= 0：陷入 VCF 尾部（vcf_attack / vcf_defend 自带棋型扫描与静态杀）。
+    if (depth <= 0) {
+        if (b.turn() == BLACK) return vcf_attack(b, alpha, beta, ply, ctx);
+        return vcf_defend(b, alpha, beta, ply, ctx);
+    }
+
     const int color = b.turn();
 
     NMove mv[MAX_MOVES];
@@ -530,11 +536,6 @@ int64_t node_dfs(Board& b, int depth, int64_t alpha, int64_t beta, int ply,
         return stm_score(b, ctx.winmode);
     }
 
-    if (depth <= 0) {
-        if (color == BLACK) return vcf_attack(b, alpha, beta, ply, ctx);
-        return vcf_defend(b, alpha, beta, ply, ctx);
-    }
-
     // TT best 提前。
     if (tt_best >= 0) {
         for (int i = 0; i < nm; ++i)
@@ -557,16 +558,14 @@ int64_t node_dfs(Board& b, int depth, int64_t alpha, int64_t beta, int ply,
         } else if (b.white_wins_now(ctx.winmode)) {
             score = (color == WHITE) ? (MATE - ply - 1) : (-MATE + ply);
         } else {
-            int64_t v;
             if (searched == 0) {
-                v = node_dfs(b, depth - 1, -beta, -alpha, ply + 1, ctx);
+                score = -node_dfs(b, depth - 1, -beta, -alpha, ply + 1, ctx);
             } else {
-                // PVS：零窗口试探，失败再重搜。
-                v = -node_dfs(b, depth - 1, -alpha - 1, -alpha, ply + 1, ctx);
-                if (v > alpha && v < beta)
-                    v = node_dfs(b, depth - 1, -beta, -v, ply + 1, ctx);
+                // PVS：零窗口试探，失败高再以全窗口重搜。
+                score = -node_dfs(b, depth - 1, -alpha - 1, -alpha, ply + 1, ctx);
+                if (score > alpha && score < beta)
+                    score = -node_dfs(b, depth - 1, -beta, -alpha, ply + 1, ctx);
             }
-            score = v;
         }
         b.undo_move();
         if (ctx.timeout) return 0;
