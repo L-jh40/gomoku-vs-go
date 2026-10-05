@@ -944,3 +944,68 @@ renju 三禁判定（蓝色叉、`checkforbidden`、`gen_moves` 全都不受影�
 `engine_protocol` / `diff_eval` / `search_sanity` / `tactics` / `tests_torus`）全部通过。
 
 
+
+---
+
+## 白棋威胁候选点重写（第 8 步：rapfi 式威胁分类 + 防御集交集，`cpp/src/vcfvct.cpp` 第 3 节）
+
+> 第 7 步的"威胁线查表阻挡点 + 三层 VCT（全应对/智能应对/混合判定）+ 最好一档收窄
+> + minimax 收尾"已整体**停用封存**（源码以 `#if 0` 保留在 vcfvct.cpp 内，不再编译；
+> vcfvct.h 保留声明）。用户指令：人工证明显示中央 5 子局面仅几分钟可完成证明，
+> 笔记本可直接跑逐节点证明，初筛不必要；候选点改由威胁分类直接给出。
+
+### 语义（用户冻结）
+
+候选点 = 使黑棋 2 步内无法连五的点位（无禁手开关时三三也算胜）。手段：直接阻挡 /
+吃子 / 构造无气（禁手阻挡并入试落判定）；覆盖活三、冲四、做杀（四三；无禁手时
+三三、四四）。算法迁移自 Rapfi：`game/pattern.cpp` 的 DEFENCE 防守掩码（防守子试落
+后攻击方线型 < F3）+ `game/movegen.cpp` 的 findFourDefence / findB4F3Defence /
+findFlex4LineDefence。
+
+### 威胁点分类（`scan_black_threats`，增量棋型缓存 O(1)/点）
+
+| kind | 条件（方向线型组合） | 防御集 |
+| --- | --- | --- |
+| 0 成五点 | 某方向 PP_FIVE（盘上已有四） | 成五点本身 ∪ 吃子点（10111→1 点） |
+| 1 杀点 | PP_FLEX4∧(三/四)、双活四、双冲四、三三[禁手关] | 杀点本身 ∪ 吃子 ∪ 无气构造（活四不可挡，探针无效） |
+| 2 四三杀点 | PP_B4 ∧ PP_FLEX3 | 杀点 ∪ 活三线"降级"探针(<F3) ∪ 冲四线成五点 ∪ 吃子/无气 |
+| 3 纯活四点 | 单方向 PP_FLEX4（活三端点） | 该线试落阻挡点 ∪ 吃子/无气构造 |
+
+纯冲四点（单方向 B4）与纯活三点**不是**强迫威胁（冲四成五点一手可挡；活三由它的
+成活四点代表）→ 不产生候选。p4==FORBID 且 `check_forbidden` 为真的真禁手点跳过；
+假禁手点照常分类。
+
+### 试落阻挡 / 无气构造 / 吃子
+
+* **试落阻挡点**（`line_defense_points`）：白棋真实 `make_move(p, WHITE)`（含提子与
+  无气翻转）后，线上不再有"黑棋可落的 F5/F4 制造点"（制造点本身禁手/自杀的算假威胁）。
+  只探测线上黑子 ±5 窗口内的空点。用户规格查表逐条复现：10111/011112→1 点；
+  0011102→3 点；0011100→紧邻 2 点。提子会使死线复活/活线死亡，试落判定自动覆盖。
+* **无气构造点**（`self_capture_defense`）：黑棋落威胁点后其块气恰 1/2 时的气点
+  （1 气：q 自填即被提；2 气：白占一气后下一手提）。块气按"假想落黑后 BFS 连通块"
+  精确计算。
+* **吃子点**（`threat_captures`）：威胁方向线 ±5 内黑子所在块的 1 气提子点 + 2 气点
+  （落子后黑棋 2 步内不能连五才有效，`black_five_within_two` 守卫）。
+
+### 候选集（`white_threat_candidates`）
+
+候选 = 所有威胁防御集的**交集**（"这一手必须同时防住每一个威胁"）；交集为空回退
+**并集**（黑棋多重杀时白棋已不可挡，并集给出最有抵抗价值的点）；盘面无强迫威胁 →
+不受约束（全盘空点，legal:everywhere）。
+
+### 协议与测试影响
+
+* `candidates w` 输出三列 `cand x y`（无 W/L 标注，tag=0）；`candidates b` 输出不变。
+* `wcand` 诊断：`lines[i]` = 逐威胁报告（rank=种类、black={威胁点}、blockers=防御集）。
+* `engine_client.py` 接受 3/4 列 cand 行（白方 tag=None）；`gui.py` 角标文字跳过
+  tag=None（候选方块照常显示）。
+* `tactics.py`：run_candidates 接受 3 列；verify_labels 对无标注候选只抽查落子合法；
+  T5/T8 断言改为"无标注 + 候选局限在阻挡点内"。
+
+### 验收
+
+粘贴板 5 用例（`py cpp/tests/forbid_cases.py`）：a→{h9}、b→everywhere(221)、
+c→{g8}、#4→{g10,h10,h9,k6}、#5→{h5,h9}；逐点 prove-2 不变式 OK；单块用时 ≤0.05s
+（旧三层 VCT 实现单块 0.04~0.19s 且依赖证明搜索）。回归全部通过：tactics（66 断言）、
+engine_protocol（43）、forbid_switches（136 组合）、diff_forbidden、diff_eval、
+search_sanity、tests_torus。

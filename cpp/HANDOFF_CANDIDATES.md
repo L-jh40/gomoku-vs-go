@@ -1,34 +1,61 @@
-# 候选点算法收尾交接（下一会话从这里继续）
+# 候选点算法完成交接（第 8 步，2026-10-06）
 
-## 用户冻结的语义
-候选点 = 使黑棋 2 步内无法连五的点位（无禁手开关时三三也算胜）。手段：阻挡/吃子/构造无气/构造禁手；覆盖活三/冲四/做杀。
-查表规则：阻挡点 = 线上"黑落成五或成四"的空点（10111/011112→1 点；0011102→3 点；0011100→紧邻 2 点）。
-双威胁必须阻挡：活三∧活二并存时"成活四∧成活三"点（无禁手时含 33/44 maker）。
-快速通道：白落子不影响禁手集合时跳过禁手重算。
+## 本轮已完成（用户冻结语义全部落地）
 
-## 已完成
-- line_blockers 已改查表规则（vcfvct.cpp，已编译）：阻挡点=point_pattern_d ∈ {PP_FIVE,PP_FLEX4,PP_B4}。
-- 实测：用例 a → {h9}✓；基础活三 → 仍只出一端 (8,4)✗。
+**候选点语义**：候选点 = 使黑棋 2 步内无法连五的点位（无禁手开关时三三也算胜）。
+手段：直接阻挡 / 吃子 / 构造无气 / （禁手阻挡并入试落判定）；覆盖活三、冲四、做杀
+（四三；无禁手时三三、四四）。实现迁移自 Rapfi：game/pattern.cpp 的 DEFENCE 防守
+掩码思想（防守子试落后攻击方线型 < F3）+ game/movegen.cpp 的 findFourDefence /
+findB4F3Defence / findFlex4LineDefence。
 
-## 剩余 bug 精确定位（已验证的事实）
-1. vcfvct.cpp `analyse` 白方 constrained 分支（`struct Row` 起，约 1396 行）：
-   每候选跑 sound_lose_steps + 三层 VCT 打 L/W 标签，然后"取最好的一档"收窄
-   （sort：W 优先、L 步数降序，只保留与首行同 tag 同 steps 的行）+ minimax 收尾。
-   基础活三两端证明深度不同（一端 L8 一端 L6/W0）→ 收窄丢掉另一端。
-2. 修复方向（用户指令：停用候选路径的 W/L 引擎）：
-   白方 constrained 分支整体替换为：`res.labels = pool 逐点 {tag=0, steps=0}`，
-   直接返回（删除 Row 循环/排序/收窄/minimax）。
-3. main.cpp candidates 打印处（约 231 行）有 `if (lab.tag == 0) continue;` ——
-   必须改为 tag==0 时输出三列 `cand x y`（否则新标签全被吞）。
-   注意：main.cpp 与 vcfvct.cpp 的上述两处改动要**同一批**做（上次只改 main.cpp
-   导致 build 失败，已 git checkout 恢复）。
-4. splice 技巧：vcfvct.cpp 的替换用 `s.find(marker, start)`（带 start 偏移），
-   `"    res.paths_found"` 在 unconstrained 分支（51335）先出现，不带 start 会错位。
+**新算法**（vcfvct.cpp 第 3 节，全部重写）：
+1. `scan_black_threats`：全盘 O(n²)×4 查表扫描黑棋"强迫威胁点"，按方向线型分类：
+   - kind 0 成五点（某方向 F5，盘上有四）：防御 = 成五点 ∪ 吃子（10111→1 点）；
+   - kind 1 杀点（活四/双四成分参与的立即胜：F4∧三/四、双活四、双冲四、三三[关]）：
+     防御 = 杀点本身 ∪ 吃子 ∪ 无气构造（活四不可挡，占位/降级探针无效 → 用例 a={h9}）；
+   - kind 2 四三杀点（B4∧F3）：防御 = 杀点 ∪ 活三线"线型降级"探针（<F3）∪ 冲四线
+     成五点 ∪ 吃子/无气构造（用例 #4={h9,h10,g10,k6}）；
+   - kind 3 纯活四点（单方向 F4，活三端点）：防御 = 该线试落阻挡点 ∪ 吃子/无气构造
+     （用例 #5={h9,h5}；用例 c 三威胁交集={g8}）。
+   - 纯冲四点（单方向 B4）/ 纯活三点**不是**强迫威胁 → 不产生候选（用例 b=everywhere）。
+   - p4==FORBID 且 check_forbidden 为真的真禁手点跳过；假禁手点照常分类。
+2. `line_defense_points`（试落阻挡）：白棋真实 make_move（含提子/无气翻转）后线上
+   不再有"黑棋可落的 F5/F4 制造点"（制造点本身禁手/自杀的算假威胁）。只探测线上
+   黑子 ±5 窗口内的空点。用户规格查表逐条复现：10111/011112→1；0011102→3；
+   0011100→紧邻 2。
+3. `self_capture_defense`（无气构造）：黑棋落威胁点后其块气恰 1/2 时的气点
+   （1 气：q 自填即被提；2 气：白占一气后下一手提）——用例 c 的 g8 即此机制。
+4. `threat_captures`：威胁相关黑块（威胁方向线 ±5 内黑子）的 1 气提子点 + 2 气点
+   （带 black_five_within_two 守卫）。
+5. `white_threat_candidates`：候选 = 所有威胁防御集的**交集**；交集为空回退**并集**
+   （黑棋多重杀，白棋已不可挡）；无威胁 → unconstrained（全盘空点）。
 
-## 验收清单
-- 基础活三（set 8 5/6/7 b）→ cand 恰 {(8,4),(8,8)}（两端）。
-- 粘贴板 3 用例：a→{h9}、b→everywhere、c→{g8}；用户更新的 #4 → {g10,h10,h9,k6}
-  （若不符：查表集与证明式语义的差 = 待与用户核对的点）。
-- runner（py -3.14 cpp/tests/forbid_cases.py）：候选块精确相等 + 2 步不变式逐点复核。
-- 回归：diff_forbidden、engine_protocol（vcfvct 黑方分支未动应不受影响）。
-- GUI：候选方块数据源已改为引擎输出（engine_labels_done 标志机制），无需再动。
+**停用封存**（vcfvct.cpp 内 `#if 0` 块，源码保留不编译）：第 7 步的威胁线查表阻挡点
+（line_threat_rank/line_still_winning/line_blockers/collect_threat_lines/
+threat_lines_through）、双威胁必须阻挡点（double_threat_points）、阻挡点禁手说明、
+三层 VCT（layer_* / vct_all_response / vct_smart_response / mixed_defense_intersection）、
+禁手消失判定（collect_real_33/creates_new_black_33）、白方逐点 W/L 标注路径
+（sound_lose_steps + analyse 白分支旧体 → analyse_white_legacy）。
+vcfvct.h 中三者的声明保留（无定义，调用即链接失败），已加注释。
+
+**协议变化**：`candidates w` 输出三列 `cand x y`（无 W/L 标注，tag=0）；黑方
+`candidates b` 输出不变（仍只输出有标注的行，tag==0 跳过）。GUI：engine_client.py
+接受 3/4 列（tag=None），gui.py 角标文字跳过 tag=None。
+
+## 验收结果（全部通过）
+- 粘贴板 5 用例（forbid_cases.py）：a→{h9}、b→everywhere(221)、c→{g8}、
+  #4→{g10,h10,h9,k6}、#5→{h5,h9}；逐点 prove-2 不变式 OK；单块用时 ≤0.05s。
+- 回归：tactics.py（66 断言）、engine_protocol.py（43）、forbid_switches.py（136 组合）、
+  diff_forbidden.py、diff_eval.py、search_sanity.py、tests_torus.py 全部 PASS。
+
+## 下一会话从这里继续：rapfi 式逐节点搜索（用户主线任务）
+1. 读 rapfi search/（searchengine.cpp / searchthread.cpp / movepick.cpp）与
+   game/wincheck.h（quickWinCheck 静态杀）+ game/board.h 的 p4Count/StateInfo，
+   规划迁移：PVS/alpha-beta 逐节点 + 置换表 + quickWinCheck + movegen 分层
+   （WINNING/VCF/VCT/VC2/DEFEND_*），替换本项目的证明级 AND-OR 搜索与 gen_moves。
+2. 本项目的混合规则差异点（迁移时必须保留）：白棋吃子/黑棋无气自杀（make_move）、
+   无气空点=阻挡（棋型层已统一）、白棋不能连五只能封堵（winmode line_block）、
+   禁手三开关（forbid 命令）、环面模式（board 支持，rapfi 没有）。
+3. 候选点算法（本轮产出）作为白方防御集生成器/着法排序的底层件直接复用。
+4. 工具脚本：cpp/tests/_run_paste_cases.py（5 用例快速复核 cand/wcand）、
+   cpp/tests/_pat_probe.py（pat 棋型探针）。
