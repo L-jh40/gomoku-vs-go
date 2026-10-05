@@ -58,17 +58,23 @@ struct AnalysisResult {
 };
 
 // ===========================================================================
-// 威胁候选点（阻挡点）与三层 VCT（第 7 步重写新增）
+// 白棋威胁候选点（第 8 步重写：rapfi 式威胁分类 + 逐威胁防御集 + 交集框架）
 // ===========================================================================
-// 记号（用户规格原文约定）：0 = 空，1 = 黑棋，2 = 阻挡（白子 / 障碍 / 无气空点——
-// 三者在 Board 的棋型层已是同一状态，代码中共用同一判定）。
-//
-// 阻挡点（blocker）= 一条黑棋威胁线上“白棋的有效应对点”，全部经 Board 的增量棋型
-// 缓存（classify_point / classify_point4）判定，不新写字符串匹配。查表规则、双威胁
-// 必须阻挡点、禁手消失说明、吃子点与交集框架见 vcfvct.cpp 第 3 节；三层 VCT 的
-// 流程与参数见第 4、5 节与 IMPLEMENTATION.md。
+// 迁移自 Rapfi 的威胁判定（game/pattern.cpp DEFENCE 防守掩码、game/movegen.cpp
+// findFourDefence / findB4F3Defence / findFlex4LineDefence）。黑棋“强迫威胁点”
+// 按方向线型组合分类：
+//   * 成五点（某方向 F5，盘上已有四）：防御 = 成五点本身 ∪ 吃子点；
+//   * 杀点（活四/双四成分参与的立即胜：F4∧三/四、双活四、双冲四、三三[禁手关]）：
+//     防御 = 杀点本身 ∪ 吃子点 ∪ 无气构造点；
+//   * 四三杀点（B4∧F3）：防御 = 杀点 ∪ 活三线降级探针 ∪ 冲四线成五点 ∪ 吃子/无气；
+//   * 纯活四点（单方向 F4，活三的成活四点）：防御 = 该线试落阻挡点 ∪ 吃子/无气。
+// 纯冲四点（单方向 B4）与纯活三点不是强迫威胁（冲四成五点一手可挡；活三由它的
+// 成活四点代表）→ 不产生候选。试落阻挡点 = 白棋落 p（真实 make_move，含提子）后
+// 线上不再有“黑棋可落的成五/活四制造点”（Rapfi DEFENCE 表的运行时等价）。
+// 候选集 = 所有威胁防御集的交集；交集为空回退并集；无威胁 → 全盘空点（everywhere）。
 
 // 三层 VCT 的步数参数（analyse 的缺省参数；candidates 命令的 steps 覆盖 vct 层）。
+// 注意：第 8 步起白方候选不再做逐点 W/L 标注，该参数仅保留协议兼容。
 struct VctParams {
     int vc  = 1;    // VC ：黑落子至少形成活二 / 眠三，最多 1 步（浅层筛查）
     int vct = 18;   // VCT：黑落子至少形成活三 / 做杀（四三；无禁手时三三、四四）
@@ -76,6 +82,8 @@ struct VctParams {
 };
 
 // 一条“含黑棋强制威胁”的线：线上存在黑棋一步成五 / 成四的点。
+// （第 8 步起 rep.lines 改为逐威胁报告：rank = 威胁种类，black = {威胁点}，
+//   blockers = 该威胁的防御集。）
 struct ThreatLine {
     int dx = 0, dy = 0;        // 线方向（DX4/DY4 之一）
     int rank = 0;              // 该线黑棋最强威胁等级（AtkType 值）
@@ -86,7 +94,7 @@ struct ThreatLine {
 
 // “本轮全部应对点”集合：Rapfi 式必胜搜索里可平移、可判定无效防御的存储单元。
 // 本轮 = 黑棋刚落下的那一手威胁手（bx,by）；points = 白棋对它的全部应对
-// （阻挡点 ∪ 吃子点）。本轮只做数据结构与填充，不做查表匹配。
+// （阻挡点 ∪ 吃子点）。（第 8 步起随三层 VCT 封存，仅保留类型定义。）
 struct DefenseSet {
     std::vector<Pt> points;    // 本轮白棋的全部应对点
     int bx = -1, by = -1;      // 产生该应对集的黑棋威胁手
@@ -99,7 +107,7 @@ struct VctRoute {
     std::vector<DefenseSet> sets;
 };
 
-// 三层 VCT 的结果。
+// 三层 VCT 的结果。（第 8 步起随三层 VCT 封存，仅保留类型定义。）
 struct VctOutcome {
     bool win = false;                    // 黑方在预算内被证明必胜
     int  steps = 0;                      // 成功时的黑方攻击手数 m
@@ -108,35 +116,34 @@ struct VctOutcome {
     std::vector<VctRoute> routes;        // 成功路线（供后续 Rapfi 式必胜搜索）
 };
 
-// 层 1 全应对 VCT：黑棋只走“能形成活三 / 眠四”的棋，白棋在该手威胁线的**全部**
-// 阻挡点（外加吃子点）应对。可靠但不完备（黑方节点为存在量词：胜即真胜）。
+// 层 1 全应对 VCT / 层 2 智能应对 VCT——第 8 步起**已封存**（vcfvct.cpp 内 #if 0），
+// 仅有声明无定义；任何调用都会链接失败。保留声明以记录历史接口。
 VctOutcome vct_all_response(Board& b, const VctParams& p, double time_sec);
-// 层 2 智能应对 VCT：白棋只在威胁候选点内落子，并按“优先吃子 / 挡成死三 / 比较两个
-// 阻挡点取黑棋活二眠三最少者”的规则选点。完备但不可靠（供混合判定交叉校验）。
 VctOutcome vct_smart_response(Board& b, const VctParams& p, double time_sec);
 
-// 混合判定（第二部分 2.3）的防御点交集：各条成功路线的首轮应手集合取交集
-// =“每种可靠 VCT 的防御点位集合”。交集为空 ⇒ 调用方按规格退回“按最大步数标注”。
+// 混合判定的防御点交集——同上，已封存。
 std::vector<Pt> mixed_defense_intersection(Board& b, const VctOutcome& all_resp);
 
 // 白棋威胁候选点的完整报告（candidates w 的输出依据）。
 struct WhiteCandidateReport {
-    bool unconstrained = false;  // 盘面无黑棋威胁 → 全盘空点都是候选点（legal:everywhere）
-    int  threat_lines   = 0;     // 威胁线条数
-    int  intersect_size = 0;     // 交集规模（无交集时为 0）
-    bool intersect_empty = false;// 交集为空 → 按规格回退到并集
-    std::vector<Pt> must_block;  // 双威胁必须阻挡点
-    std::vector<Pt> captures;    // 吃子点
-    std::vector<Pt> candidates;  // 最终候选点（交集 / 并集回退，已排序去重）
-    std::vector<ThreatLine> lines;
+    bool unconstrained = false;   // 盘面无黑棋强迫威胁 → 全盘空点都是候选点（legal:everywhere）
+    int  threat_lines   = 0;      // 威胁点数（字段名沿用：威胁点分类后不再按“线”计数）
+    int  intersect_size = 0;      // 交集规模（无交集时为 0）
+    bool intersect_empty = false; // 交集为空 → 回退并集（黑棋多重杀，白棋已不可挡）
+    std::vector<Pt> must_block;   // 杀点类威胁点（成五点/杀点：白棋“只能占据”的点）
+    std::vector<Pt> captures;     // 威胁相关吃子点并集
+    std::vector<Pt> candidates;   // 最终候选点（交集 / 并集回退，已排序去重）
+    std::vector<ThreatLine> lines;// 逐威胁报告（rank=种类, black={威胁点}, blockers=防御集）
 };
 WhiteCandidateReport white_threat_candidates(Board& b);
 
 // 主入口：对“轮到 color 行棋”的当前局面给候选打标注。
-//   color == BLACK：对 gen_moves(BLACK) 的每个候选打 W/L（与第 6 步一致）。
-//   color == WHITE：候选集 = 白棋威胁候选点（白方 blocked 点交集，无交集回退并集，
-//     再取标注最好的一档）；每个候选点带 L<2m>（黑方 m 手内被证明必胜）或
-//     W0（黑方在预算内证明不出必胜）；盘面无黑棋威胁时输出全部空点（W0）。
+//   color == BLACK：对 gen_moves(BLACK) 的每个候选打 W/L（第 6 步 AND-OR 证明语义，
+//     不变）。
+//   color == WHITE：候选集 = 白棋威胁候选点（第 8 步：威胁防御集交集，无交集回退
+//     并集；无强迫威胁时输出全部空点 legal:everywhere）。候选点一律 tag=0 无标注
+//     （输出三列 cand x y）；逐点 W/L 证明标注已停用封存，由后续的 rapfi 式
+//     逐节点搜索承担。
 AnalysisResult analyse(Board& b, int color, int max_steps, int winmode,
                        double time_limit_sec, long long node_limit,
                        const VctParams& params = VctParams());

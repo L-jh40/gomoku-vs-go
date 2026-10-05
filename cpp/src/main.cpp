@@ -228,7 +228,13 @@ int main() {
                 } else {
                     for (size_t i = 0; i < r.labels.size(); ++i) {
                         const gvg::CandidateLabel& lab = r.labels[i];
-                        if (lab.tag == 0) continue;
+                        if (lab.tag == 0) {
+                            // 白棋威胁候选点（第 8 步）：无 W/L 标注，输出三列
+                            // cand x y（威胁防御集交集，逐点证明搜索已停用封存）。
+                            std::cout << "cand " << lab.x << ' ' << lab.y
+                                      << '\n';
+                            continue;
+                        }
                         // 步数只是下界时加 '+'（W8+ = 至少 8 步；层 2 智能应对兜底）
                         std::cout << "cand " << lab.x << ' ' << lab.y << ' '
                                   << lab.tag << lab.steps

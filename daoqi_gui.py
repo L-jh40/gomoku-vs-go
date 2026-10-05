@@ -628,8 +628,9 @@ class DaoqiApp:
         else:
             self._set_status(f"{'黑' if self.turn == BLACK else '白'}方行棋"
                              f"（第 {self.move_count + 1} 手）· {cap_text}")
-        self.draw_board()
+        # 先清 busy 再绘制：即使绘制抛异常也不会卡死对弈状态机。
         self.job_pending = False
+        self.draw_board()
         self._maybe_chain()
 
     def _maybe_chain(self):
@@ -861,9 +862,16 @@ class DaoqiApp:
 
     @staticmethod
     def _mix(color, ratio_to_bg):
-        """把颜色向棋盘底色混合 ratio_to_bg（镜面区 50% 淡色）。"""
+        """把颜色向棋盘底色混合 ratio_to_bg（镜面区 50% 淡色）。
+        支持 Tk 颜色名（black/white/red）与 #rrggbb。"""
+        named = {"black": "#000000", "white": "#ffffff", "red": "#ff0000"}
+        color = named.get(color, color)
         bg = (0xF0, 0xD6, 0x8C)
-        rgb = (int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16))
+        try:
+            rgb = (int(color[1:3], 16), int(color[3:5], 16),
+                   int(color[5:7], 16))
+        except ValueError:
+            return color
         mixed = tuple(int(c * (1 - ratio_to_bg) + b * ratio_to_bg)
                       for c, b in zip(rgb, bg))
         return "#%02x%02x%02x" % mixed

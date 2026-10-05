@@ -21,14 +21,13 @@
 //   2.6 gen_attack_candidates            攻击候选（禁手/自杀过滤 + 预算剪枝 + 排序）
 //   2.7 prove_black_dfs                  黑方节点（OR：候选）× 白方防御集（AND）
 //   2.8 prove_white_node                 根候选落下后白方的 AND 节点
-//   3.  威胁候选点（阻挡点）：查表规则的增量棋型实现（第 7 步新增）
-//        collect_line_cells / line_threat_rank / line_blockers / collect_threat_lines
-//        threat_lines_through / double_threat_points / black_five_within_two
-//        capture_points_from_mask / blocking_point_forbidden_note
-//   4.  三层 VCT：layer_attacks / smart_responses / layer_responses / layer_dfs /
-//        layer_run（vct_all_response / vct_smart_response）+ mixed_defense_intersection
-//   5.  主入口：sound_lose_steps（健全步数）+ analyse（黑方逐候选标注；
-//        白方 = 威胁候选点 + 最好一档 + minimax 收尾）
+//   3.  白棋威胁候选点（第 8 步重写，rapfi 式）：scan_black_threats（威胁点分类：
+//        成五点 / 杀点 / 四三杀点 / 纯活四点）+ line_defense_points（试落阻挡）+
+//        self_capture_defense（无气构造）+ threat_captures（吃子）+ threat_defense
+//        （逐威胁防御集）→ white_threat_candidates（交集框架，无交集回退并集）
+//   [封存] 第 7 步的威胁线查表阻挡点、双威胁必须阻挡点、三层 VCT（全应对/智能
+//        应对/混合判定）与白方逐点 W/L 标注路径——#if 0 保留源码，不再编译/调用。
+//   5.  主入口：analyse（黑方逐候选 W/L 标注不变；白方 = 威胁候选点 tag=0）
 //
 // 硬性约束：
 //  * 全程只 make_move/undo_move，不拷贝棋盘；任何返回路径（含限流提前返回）都成对
@@ -673,6 +672,10 @@ PointPattern point_pattern_d(const Board& b, int idx, int d) {
     return classify_point(b, cell_x(idx), cell_y(idx), BLACK, DX4[d], DY4[d]);
 }
 
+// 前置声明（定义见 3.6 节之后；threat_captures / line_has_fire 先用）。
+std::vector<Pt> capture_points_from_mask(Board& b, const uint8_t* mask);
+bool black_five_within_two(Board& b);
+
 // ---- 3.1 威胁点分类 -------------------------------------------------------
 struct ThreatPoint {
     int x = 0, y = 0;
@@ -733,7 +736,7 @@ std::vector<ThreatPoint> scan_black_threats(Board& b) {
 
 // ---- 3.2 试落阻挡点 -------------------------------------------------------
 // 线上是否仍存在“黑棋可落”的成五/活四制造点（制造点本身是禁手/自杀的算假威胁）。
-bool line_has_fire(const Board& b, const int* cells, int n, int d) {
+bool line_has_fire(Board& b, const int* cells, int n, int d) {
     for (int i = 0; i < n; ++i) {
         const int c = cells[i];
         const int x = cell_x(c), y = cell_y(c);
@@ -819,8 +822,8 @@ std::vector<Pt> self_capture_defense(Board& b, int x, int y) {
     std::vector<Pt> out;
     std::vector<int> libs;
     black_group_libs_after(b, x, y, &libs);
-    const size_t take = std::min<size_t>(libs.size(), 2);
-    for (size_t i = 0; i < take; ++i)
+    if (libs.size() > 2) return out;    // 气 >= 3：构造无气不可行
+    for (size_t i = 0; i < libs.size(); ++i)
         out.push_back(Pt(cell_x(libs[i]), cell_y(libs[i])));
     return out;
 }
@@ -1597,16 +1600,12 @@ WhiteCandidateReport white_threat_candidates(Board& b) {
             rep.must_block.push_back(Pt(threats[i].x, threats[i].y));
     {
         PointSet caps;
-        for (size_t i = 0; i < defenses.size(); ++i)
-            for (size_t k = 0; k < defenses[i].size(); ++k) {
-                const Pt& p = defenses[i][k];
-                const int idx = cell_index(p.first, p.second);
-                if (!caps.mark[idx]) {
-                    // 标记吃子点（防御集中由 threat_captures 贡献的点）——诊断用。
-                }
-                caps.add(b, idx);
-            }
-        (void)caps;
+        for (size_t i = 0; i < threats.size(); ++i) {
+            const std::vector<Pt> cs = threat_captures(b, threats[i]);
+            for (size_t k = 0; k < cs.size(); ++k)
+                caps.add(b, cell_index(cs[k].first, cs[k].second));
+        }
+        caps.finalize(&rep.captures);
     }
 
     pool.swap(rep.candidates);
@@ -1621,6 +1620,12 @@ WhiteCandidateReport white_threat_candidates(Board& b) {
 // ===========================================================================
 // 5. 主入口：逐候选标注
 // ===========================================================================
+#if 0  // ==== 封存（第 8 步）：白方逐点 W/L 标注路径（证明搜索 + 三层 VCT 初筛 +
+//       “最好一档”收窄 + minimax 收尾）整体停用。用户指令：全应对/智能应对初筛
+//       不必要——人工证明显示中央 5 子局面仅几分钟可完成证明，笔记本可直接跑
+//       逐节点证明。候选点改由 white_threat_candidates 的威胁防御集交集给出
+//       （tag=0，无标注）；逐点证明搜索交给后续的 rapfi 式逐节点搜索。
+
 // 白方候选的健全步数：迭代加深（与第 6 步一致），返回首个证明成功的黑方攻击手数 m。
 int sound_lose_steps(Board& b, int max_steps, ProveCtx* ctx, ProveTT* tt) {
     for (int m = 1; m <= max_steps; ++m) {
@@ -1630,6 +1635,202 @@ int sound_lose_steps(Board& b, int max_steps, ProveCtx* ctx, ProveTT* tt) {
     }
     return 0;
 }
+
+// 旧版白方分析路径（原 analyse 的 color==WHITE 分支，仅作封存参考，不被调用）。
+AnalysisResult analyse_white_legacy(Board& b, int max_steps, int winmode,
+                                    double time_limit_sec, long long node_limit,
+                                    const VctParams& params) {
+    AnalysisResult res;
+    res.paths_found = 0;
+    res.nodes = 0;
+    res.timeout = false;
+#ifndef NDEBUG
+    const uint64_t h0 = b.hash();
+#endif
+    ProveCtx ctx;
+    ctx.node_limit = node_limit;
+    ctx.deadline = (time_limit_sec > 0.0) ? now_sec() + time_limit_sec : 0.0;
+    ProveTT tt;
+
+    const WhiteCandidateReport rep = white_threat_candidates(b);
+    std::vector<Pt> pool = rep.candidates;
+
+    if (rep.unconstrained) {
+        // 盘面无强迫威胁（没有“黑棋一手成活四/成五”的线）：候选集**不受约束**=
+        // 全盘空点（legal:everywhere）。逐点仍做健全证明搜索以给出诚实的标注
+        // （L<2m> = 黑方 m 手内被证明必胜；W0 = 该点未被证明会输），但不做
+        // “取最好一档”的收窄——不受约束就是全部空点。
+        std::vector<Pt> all = pool;
+        std::vector<CandidateLabel> labs;
+        labs.reserve(all.size());
+        for (size_t i = 0; i < all.size(); ++i) {
+            const int x = all[i].first, y = all[i].second;
+            if (ctx.timeout) break;          // 预算用尽：剩余点不输出（未见分晓的点不标）
+            if (!b.make_move(x, y, WHITE)) continue;
+            const int m = sound_lose_steps(b, max_steps, &ctx, &tt);
+            b.undo_move();
+            if (ctx.timeout) break;          // 该点未判定：宁可不标
+            CandidateLabel lab;
+            lab.x = x;
+            lab.y = y;
+            lab.tag = (m > 0) ? 'L' : 'W';
+            lab.steps = (m > 0) ? 2 * m : 0;
+            labs.push_back(lab);
+        }
+        std::sort(labs.begin(), labs.end(),
+                  [](const CandidateLabel& a, const CandidateLabel& c) {
+                      if (a.x != c.x) return a.x < c.x;
+                      return a.y < c.y;
+                  });
+        res.labels = labs;
+        res.paths_found = static_cast<int>(labs.size());
+        res.nodes = ctx.nodes;
+        res.timeout = ctx.timeout;
+#ifndef NDEBUG
+        assert(b.hash() == h0);
+#endif
+        return res;
+    }
+
+    struct Row {
+        int x, y, steps;
+        int score;
+        char tag;
+        bool smart_only;
+    };
+    std::vector<Row> rows;
+    rows.reserve(pool.size());
+    for (size_t i = 0; i < pool.size(); ++i) {
+        if (ctx.timeout) break;
+        const int x = pool[i].first, y = pool[i].second;
+        if (!b.make_move(x, y, WHITE)) continue;
+
+        // 1) 健全 AND-OR 证明搜索（第 6 步，含吃子反驳）——权威步数。
+        int m = sound_lose_steps(b, max_steps, &ctx, &tt);
+        bool smart_only = false;
+        if (m == 0 && !ctx.timeout) {
+            // 层 1 全应对（可靠但不完备）与层 2 智能应对（完备但不可靠）的先后：
+            //   有禁手：先智能应对（快），再全应对；
+            //   无禁手：先全应对（阻挡点少、分支小、可靠），智能应对只做兜底。
+            const bool any_forbid = b.forbid_overline() || b.forbid_44() ||
+                                    b.forbid_33();
+            const bool smart_first = any_forbid;
+            auto slice = [&](double frac) {
+                const double now = now_sec();
+                const double remain =
+                    (ctx.deadline > 0.0) ? (ctx.deadline - now) : 0.0;
+                return (ctx.deadline > 0.0)
+                           ? std::max(0.05, remain * frac)
+                           : 0.0;
+            };
+            VctOutcome first = smart_first
+                                   ? vct_smart_response(b, params, slice(0.25))
+                                   : vct_all_response(b, params, slice(0.25));
+            if (first.win) {
+                m = first.steps;
+                smart_only = smart_first;      // 智能层 = 步数下界
+            } else if (!first.timeout) {
+                VctOutcome second =
+                    smart_first
+                        ? vct_all_response(b, params, slice(0.25))
+                        : vct_smart_response(b, params, slice(0.25));
+                if (second.win) {
+                    m = second.steps;
+                    smart_only = !smart_first; // 智能层兜底 = 步数下界
+                }
+            }
+        }
+        const int score = order_score(b, x, y, WHITE);
+        b.undo_move();
+        if (ctx.timeout) break;      // 该点未判定：不输出（宁可不标，不可错标）
+
+        Row r;
+        r.x = x;
+        r.y = y;
+        r.score = score;
+        r.tag = (m > 0) ? 'L' : 'W';
+        r.steps = (m > 0) ? 2 * m : 0;
+        r.smart_only = smart_only;   // 仅层 2 兜底 → 步数是下界（L<k>+）
+        rows.push_back(r);
+    }
+
+    // 取“最好的一档”：安全（W）优先；否则 L 步数最大者（活得最久）。
+    std::sort(rows.begin(), rows.end(), [](const Row& a, const Row& b2) {
+        const bool aw = (a.tag == 'W'), bw = (b2.tag == 'W');
+        if (aw != bw) return aw;                      // W 优先
+        if (a.steps != b2.steps) return a.steps > b2.steps;
+        if (a.score != b2.score) return a.score > b2.score;
+        if (a.x != b2.x) return a.x < b2.x;
+        return a.y < b2.y;
+    });
+
+    size_t keep = 0;
+    if (!rows.empty()) {
+        while (keep < rows.size() &&
+               rows[keep].tag == rows[0].tag &&
+               rows[keep].steps == rows[0].steps)
+            ++keep;
+    }
+    // 收尾（第二部分 2.4）：仍有多个候选点 → minimax 窄深判断，只留最优。
+    if (keep > 1 && !ctx.timeout) {
+        const double now = now_sec();
+        double remain = (ctx.deadline > 0.0) ? (ctx.deadline - now) : 0.0;
+        if (ctx.deadline <= 0.0 || remain > 0.01) {
+            int best_i = -1;
+            int64_t best_v = 0;
+            for (size_t i = 0; i < keep; ++i) {
+                if (!b.make_move(rows[i].x, rows[i].y, WHITE)) continue;
+                SearchCtx sc;
+                sc.winmode = winmode;
+                sc.has_deadline = true;
+                sc.deadline = Clock::now() +
+                              std::chrono::milliseconds(
+                                  static_cast<long long>(
+                                      std::max(0.005, remain * 0.05) * 1000.0));
+                int64_t v = 0;
+                try {
+                    v = alphabeta(b, 2, -INF_SCORE, INF_SCORE, 0, sc);
+                } catch (const SearchAbort&) {
+                    v = 0;
+                }
+                b.undo_move();
+                // v 是“轮到黑方”的视角分：白方取最小。
+                if (best_i < 0 || v < best_v) { best_i = static_cast<int>(i); best_v = v; }
+            }
+            if (best_i > 0) {
+                Row chosen = rows[static_cast<size_t>(best_i)];
+                rows[0] = chosen;
+                keep = 1;
+            } else if (best_i == 0) {
+                keep = 1;
+            }
+        }
+    }
+    if (keep == 0) keep = std::min<size_t>(1, rows.size());
+
+    std::sort(rows.begin(), rows.begin() + keep, [](const Row& a, const Row& b2) {
+        if (a.x != b2.x) return a.x < b2.x;
+        return a.y < b2.y;
+    });
+    res.labels.reserve(keep);
+    for (size_t i = 0; i < keep; ++i) {
+        CandidateLabel lab;
+        lab.x = rows[i].x;
+        lab.y = rows[i].y;
+        lab.tag = rows[i].tag;
+        lab.steps = rows[i].steps;
+        lab.at_least = (rows[i].tag != 0) && rows[i].smart_only;
+        res.labels.push_back(lab);
+        ++res.paths_found;
+    }
+    res.nodes = ctx.nodes;
+    res.timeout = ctx.timeout;
+#ifndef NDEBUG
+    assert(b.hash() == h0);
+#endif
+    return res;
+}
+#endif  // ==== 封存结束：白方逐点 W/L 标注路径 ====
 
 AnalysisResult analyse(Board& b, int color, int max_steps, int winmode,
                        double time_limit_sec, long long node_limit,
@@ -1642,194 +1843,36 @@ AnalysisResult analyse(Board& b, int color, int max_steps, int winmode,
     const uint64_t h0 = b.hash();
 #endif
 
-    ProveCtx ctx;
-    ctx.node_limit = node_limit;
-    ctx.deadline = (time_limit_sec > 0.0) ? now_sec() + time_limit_sec : 0.0;
-    ProveTT tt;
-
     if (color == WHITE) {
-        // ---- 白棋威胁候选点：阻挡点交集（无交集回退并集），再取标注最好的一档 ----
+        // ---- 白棋威胁候选点（第 8 步）：威胁防御集交集，不做逐点 W/L 标注 ----
+        // 旧的三层 VCT 初筛与“最好一档”收窄已封存；候选点 = white_threat_candidates
+        // 的输出（tag=0），逐点证明搜索由后续的 rapfi 式逐节点搜索承担。
+        (void)max_steps;
+        (void)winmode;
+        (void)time_limit_sec;
+        (void)node_limit;
+        (void)params;
         const WhiteCandidateReport rep = white_threat_candidates(b);
-        std::vector<Pt> pool = rep.candidates;
-
-        if (rep.unconstrained) {
-            // 盘面无强迫威胁（没有“黑棋一手成活四/成五”的线）：候选集**不受约束**=
-            // 全盘空点（legal:everywhere）。逐点仍做健全证明搜索以给出诚实的标注
-            // （L<2m> = 黑方 m 手内被证明必胜；W0 = 该点未被证明会输），但不做
-            // “取最好一档”的收窄——不受约束就是全部空点。
-            std::vector<Pt> all = pool;
-            std::vector<CandidateLabel> labs;
-            labs.reserve(all.size());
-            for (size_t i = 0; i < all.size(); ++i) {
-                const int x = all[i].first, y = all[i].second;
-                if (ctx.timeout) break;          // 预算用尽：剩余点不输出（未见分晓的点不标）
-                if (!b.make_move(x, y, WHITE)) continue;
-                const int m = sound_lose_steps(b, max_steps, &ctx, &tt);
-                b.undo_move();
-                if (ctx.timeout) break;          // 该点未判定：宁可不标
-                CandidateLabel lab;
-                lab.x = x;
-                lab.y = y;
-                lab.tag = (m > 0) ? 'L' : 'W';
-                lab.steps = (m > 0) ? 2 * m : 0;
-                labs.push_back(lab);
-            }
-            std::sort(labs.begin(), labs.end(),
-                      [](const CandidateLabel& a, const CandidateLabel& c) {
-                          if (a.x != c.x) return a.x < c.x;
-                          return a.y < c.y;
-                      });
-            res.labels = labs;
-            res.paths_found = static_cast<int>(labs.size());
-            res.nodes = ctx.nodes;
-            res.timeout = ctx.timeout;
-#ifndef NDEBUG
-            assert(b.hash() == h0);
-#endif
-            return res;
-        }
-
-        struct Row {
-            int x, y, steps;
-            int score;
-            char tag;
-            bool smart_only;
-        };
-        std::vector<Row> rows;
-        rows.reserve(pool.size());
-        for (size_t i = 0; i < pool.size(); ++i) {
-            if (ctx.timeout) break;
-            const int x = pool[i].first, y = pool[i].second;
-            if (!b.make_move(x, y, WHITE)) continue;
-
-            // 1) 健全 AND-OR 证明搜索（第 6 步，含吃子反驳）——权威步数。
-            int m = sound_lose_steps(b, max_steps, &ctx, &tt);
-            bool smart_only = false;
-            if (m == 0 && !ctx.timeout) {
-                // 层 1 全应对（可靠但不完备）与层 2 智能应对（完备但不可靠）的先后：
-                //   有禁手：先智能应对（快），再全应对；
-                //   无禁手：先全应对（阻挡点少、分支小、可靠），智能应对只做兜底。
-                // 用户规格（本轮）：无禁手先全应对、然后智能应对、最后枚举所有应对
-                // （枚举 = 上面的健全 AND-OR 证明搜索，它已经先跑）；有禁手先智能应对
-                // 再枚举所有应对。智能层兜底时步数只是下界（at_least → W/L<k>+）。
-                const bool any_forbid = b.forbid_overline() || b.forbid_44() ||
-                                        b.forbid_33();
-                const bool smart_first = any_forbid;
-                auto slice = [&](double frac) {
-                    const double now = now_sec();
-                    const double remain =
-                        (ctx.deadline > 0.0) ? (ctx.deadline - now) : 0.0;
-                    return (ctx.deadline > 0.0)
-                               ? std::max(0.05, remain * frac)
-                               : 0.0;
-                };
-                VctOutcome first = smart_first
-                                       ? vct_smart_response(b, params, slice(0.25))
-                                       : vct_all_response(b, params, slice(0.25));
-                if (first.win) {
-                    m = first.steps;
-                    smart_only = smart_first;      // 智能层 = 步数下界
-                } else if (!first.timeout) {
-                    VctOutcome second =
-                        smart_first
-                            ? vct_all_response(b, params, slice(0.25))
-                            : vct_smart_response(b, params, slice(0.25));
-                    if (second.win) {
-                        m = second.steps;
-                        smart_only = !smart_first; // 智能层兜底 = 步数下界
-                    }
-                }
-            }
-            const int score = order_score(b, x, y, WHITE);
-            b.undo_move();
-            if (ctx.timeout) break;      // 该点未判定：不输出（宁可不标，不可错标）
-
-            Row r;
-            r.x = x;
-            r.y = y;
-            r.score = score;
-            r.tag = (m > 0) ? 'L' : 'W';
-            r.steps = (m > 0) ? 2 * m : 0;
-            r.smart_only = smart_only;   // 仅层 2 兜底 → 步数是下界（L<k>+）
-            rows.push_back(r);
-        }
-
-        // 取“最好的一档”：安全（W）优先；否则 L 步数最大者（活得最久）。
-        std::sort(rows.begin(), rows.end(), [](const Row& a, const Row& b2) {
-            const bool aw = (a.tag == 'W'), bw = (b2.tag == 'W');
-            if (aw != bw) return aw;                      // W 优先
-            if (a.steps != b2.steps) return a.steps > b2.steps;
-            if (a.score != b2.score) return a.score > b2.score;
-            if (a.x != b2.x) return a.x < b2.x;
-            return a.y < b2.y;
-        });
-
-        size_t keep = 0;
-        if (!rows.empty()) {
-            while (keep < rows.size() &&
-                   rows[keep].tag == rows[0].tag &&
-                   rows[keep].steps == rows[0].steps)
-                ++keep;
-        }
-        // 收尾（第二部分 2.4）：仍有多个候选点 → minimax 窄深判断，只留最优。
-        if (keep > 1 && !ctx.timeout) {
-            const double now = now_sec();
-            double remain = (ctx.deadline > 0.0) ? (ctx.deadline - now) : 0.0;
-            if (ctx.deadline <= 0.0 || remain > 0.01) {
-                int best_i = -1;
-                int64_t best_v = 0;
-                for (size_t i = 0; i < keep; ++i) {
-                    if (!b.make_move(rows[i].x, rows[i].y, WHITE)) continue;
-                    SearchCtx sc;
-                    sc.winmode = winmode;
-                    sc.has_deadline = true;
-                    sc.deadline = Clock::now() +
-                                  std::chrono::milliseconds(
-                                      static_cast<long long>(
-                                          std::max(0.005, remain * 0.05) * 1000.0));
-                    int64_t v = 0;
-                    try {
-                        v = alphabeta(b, 2, -INF_SCORE, INF_SCORE, 0, sc);
-                    } catch (const SearchAbort&) {
-                        v = 0;
-                    }
-                    b.undo_move();
-                    // v 是“轮到黑方”的视角分：白方取最小。
-                    if (best_i < 0 || v < best_v) { best_i = static_cast<int>(i); best_v = v; }
-                }
-                if (best_i > 0) {
-                    Row chosen = rows[static_cast<size_t>(best_i)];
-                    rows[0] = chosen;
-                    keep = 1;
-                } else if (best_i == 0) {
-                    keep = 1;
-                }
-            }
-        }
-        if (keep == 0) keep = std::min<size_t>(1, rows.size());
-
-        std::sort(rows.begin(), rows.begin() + keep, [](const Row& a, const Row& b2) {
-            if (a.x != b2.x) return a.x < b2.x;
-            return a.y < b2.y;
-        });
-        res.labels.reserve(keep);
-        for (size_t i = 0; i < keep; ++i) {
+        res.labels.reserve(rep.candidates.size());
+        for (size_t i = 0; i < rep.candidates.size(); ++i) {
             CandidateLabel lab;
-            lab.x = rows[i].x;
-            lab.y = rows[i].y;
-            lab.tag = rows[i].tag;
-            lab.steps = rows[i].steps;
-            lab.at_least = (rows[i].tag != 0) && rows[i].smart_only;
+            lab.x = rep.candidates[i].first;
+            lab.y = rep.candidates[i].second;
+            lab.tag = 0;
+            lab.steps = 0;
             res.labels.push_back(lab);
-            ++res.paths_found;
         }
-        res.nodes = ctx.nodes;
-        res.timeout = ctx.timeout;
+        res.paths_found = static_cast<int>(rep.candidates.size());
 #ifndef NDEBUG
         assert(b.hash() == h0);
 #endif
         return res;
     }
+
+    ProveCtx ctx;
+    ctx.node_limit = node_limit;
+    ctx.deadline = (time_limit_sec > 0.0) ? now_sec() + time_limit_sec : 0.0;
+    ProveTT tt;
 
     // ---- 黑方：对 gen_moves(BLACK) 逐候选打 W/L（第 6 步语义不变） ----
     const std::vector<Move> cands = gen_moves(b, color);
