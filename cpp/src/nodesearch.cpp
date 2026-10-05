@@ -163,21 +163,6 @@ int collect_five_window_stones(Board& b, int qx, int qy,
     return ns;
 }
 
-// 成五点 q 的四子所在全部正交组的气是否都 >= k；任何一组气 == 1 时
-// cap_lib 给出该组气点（白棋提子防御点）。visited 由调用方提供并复用。
-bool five_window_groups_libs_ge(Board& b, int qx, int qy, int k,
-                                uint8_t* visited, uint16_t* cap_lib) {
-    uint16_t stones[16];
-    const int ns = collect_five_window_stones(b, qx, qy, stones, 16);
-    for (int i = 0; i < ns; ++i) {
-        if (visited[stones[i]]) continue;               // 组已被检查过
-        if (!group_libs_ge_from(b, stones[i] / MAX_BOARD,
-                                stones[i] % MAX_BOARD, k, visited, cap_lib))
-            return false;
-    }
-    return true;
-}
-
 // ---------------------------------------------------------------------------
 // 着法生成（tier + 黑棋成五点清单）
 // ---------------------------------------------------------------------------
@@ -259,16 +244,52 @@ inline int64_t quick_win(int color, int ply, int n5) {
 }
 
 // ---------------------------------------------------------------------------
-// VCF 尾部（depth <= 0）：黑攻四、白防五
+// VCF 尾部（depth <= 0）：黑攻四、白防五。
+// 尾部是**无窗口的纯 AND-OR 精确搜索**：defend 不做 alpha-beta 截断、穷举完整
+// 防御清单；attack 的 mate 值只来自 quick_win（真实成五）经完整防御穷举传播。
+// 这样 mate 结论不依赖边界传播，健全性与主搜索的 PVS 窗口完全解耦。
+// 防御清单（对每个黑棋成五点 q，白棋全部不败着法）：
+//   a) 占据 q（堵成五点）；
+//   b) 提子：q 的四子窗口中某颗黑子所在正交组恰 1 气 → 该气点（提走四子破四）；
+//   c) 无气杀：假想黑落 q 后其块恰 1 气 → 该气点（白占之 q 变自杀点，黑不能落）。
+// 其余白应手既不堵五也不破四也不杀五点 → 黑下一手成五，不必搜索。
 // ---------------------------------------------------------------------------
 int64_t node_dfs(Board& b, int depth, int64_t alpha, int64_t beta, int ply,
                  Ctx& ctx);
-int64_t vcf_attack(Board& b, int64_t alpha, int64_t beta, int ply, Ctx& ctx);
+int64_t vcf_attack(Board& b, int ply, Ctx& ctx);
 
-// 守方节点（轮白）：黑有成五点时只搜“堵成五点 ∪ 四子 1 气组的提子点”；
-// 无威胁 stand-pat。健全性：成五点存在时，其余白应手既不堵成五点也不提走
-// 破坏四子的石块 → 黑下一手成五，价值不高于这里应手的下界。
-int64_t vcf_defend(Board& b, int64_t alpha, int64_t beta, int ply, Ctx& ctx) {
+// 假想黑棋落 (x,y) 后其块的气；返回气数（<= 2 早退），single_lib 给出第 1 气。
+int black_group_libs_after(Board& b, int x, int y, int cap, uint16_t* single_lib) {
+    uint8_t visited[MAX_CELLS];
+    std::memset(visited, 0, sizeof(visited));
+    uint16_t stack[MAX_CELLS];
+    int top = 0, libs = 0;
+    const int start = Board::index(x, y);
+    stack[top++] = uint16_t(start);
+    visited[start] = 1;                        // start 假想已落黑
+    if (single_lib) *single_lib = 0;
+    while (top > 0 && libs < cap) {
+        const int cur = stack[--top];
+        const int cx = cur / MAX_BOARD, cy = cur % MAX_BOARD;
+        for (int t = 0; t < 4 && libs < cap; ++t) {
+            const int nx = cx + NNX[t], ny = cy + NNY[t];
+            if (!b.in_bounds(nx, ny)) continue;
+            const int ni = Board::index(nx, ny);
+            if (ni == start) continue;
+            const uint8_t v = b.at(nx, ny);
+            if (v == BLACK) {
+                if (!visited[ni]) { visited[ni] = 1; stack[top++] = uint16_t(ni); }
+            } else if (v == EMPTY && !visited[ni]) {
+                visited[ni] = 2;
+                if (libs == 0 && single_lib) *single_lib = uint16_t(ni);
+                ++libs;
+            }
+        }
+    }
+    return libs;
+}
+
+int64_t vcf_defend(Board& b, int ply, Ctx& ctx) {
     if (ctx_check(ctx)) return 0;
     if (ply >= MAX_PLY) return stm_score(b, ctx.winmode);
 
@@ -281,29 +302,40 @@ int64_t vcf_defend(Board& b, int64_t alpha, int64_t beta, int ply, Ctx& ctx) {
     }
 
     if (n5 == 0) return stm_score(b, ctx.winmode);      // 无成五威胁：不受迫
-    {
-        const int64_t qw = quick_win(WHITE, ply, n5);
-        if (qw != 0) return qw;                         // 白无成五能力，恒 0（防御）
-    }
 
-    // 应手清单：全部成五点 ∪ 四子中 1 气正交组的提子点（白提走任一四子即破四，
-    // 斜向四子的石块分属不同组，必须逐石子组检查）。
+    // 完整防御清单（去重）。
     uint16_t defenses[32];
     int nd = 0;
-    uint8_t visited[MAX_CELLS];
-    std::memset(visited, 0, sizeof(visited));
-    for (int i = 0; i < n5 && nd < 32; ++i) {
+    uint8_t dmark[MAX_CELLS];
+    std::memset(dmark, 0, sizeof(dmark));
+    auto add_defense = [&](uint16_t idx) {
+        if (nd < 32 && !dmark[idx]) { dmark[idx] = 1; defenses[nd++] = idx; }
+    };
+    for (int i = 0; i < n5; ++i) {
         const int idx = bfive[i];
-        defenses[nd++] = uint16_t(idx);
-        uint16_t cap_lib = 0;
-        if (five_window_groups_libs_ge(b, idx / MAX_BOARD, idx % MAX_BOARD,
-                                       2, visited, &cap_lib))
-            continue;                                   // 所有相关组 >= 2 气：提不了
-        if (cap_lib != 0 && nd < 32) defenses[nd++] = cap_lib;
+        add_defense(uint16_t(idx));                     // a) 堵成五点
+        // b) 四子窗口中 1 气正交组的提子点。
+        uint16_t stones[16];
+        const int ns = collect_five_window_stones(b, idx / MAX_BOARD,
+                                                  idx % MAX_BOARD, stones, 16);
+        uint8_t visited[MAX_CELLS];
+        std::memset(visited, 0, sizeof(visited));
+        for (int k = 0; k < ns; ++k) {
+            if (visited[stones[k]]) continue;
+            uint16_t cap_lib = 0;
+            if (!group_libs_ge_from(b, stones[k] / MAX_BOARD,
+                                    stones[k] % MAX_BOARD, 2, visited, &cap_lib)) {
+                if (cap_lib != 0) add_defense(cap_lib); // 1 气组 → 提子点
+            }
+        }
+        // c) 黑落 q 后块恰 1 气 → 该气点（无气杀）。
+        uint16_t kill_lib = 0;
+        if (black_group_libs_after(b, idx / MAX_BOARD, idx % MAX_BOARD, 2,
+                                   &kill_lib) < 2 && kill_lib != 0)
+            add_defense(kill_lib);
     }
 
     int64_t best = -INF_SCORE;
-    int64_t cur_alpha = alpha;
     for (int i = 0; i < nd; ++i) {
         const int idx = defenses[i];
         if (!b.make_move(idx / MAX_BOARD, idx % MAX_BOARD, WHITE)) continue;
@@ -311,23 +343,18 @@ int64_t vcf_defend(Board& b, int64_t alpha, int64_t beta, int ply, Ctx& ctx) {
         if (b.white_wins_now(ctx.winmode)) {
             v = MATE - ply - 1;                         // 白提光/封堵达成胜利
         } else {
-            v = -vcf_attack(b, -beta, -cur_alpha, ply + 1, ctx);
+            v = -vcf_attack(b, ply + 1, ctx);
         }
         b.undo_move();
         if (ctx.timeout) return 0;
-        if (getenv("NODESEARCH_TRACE") && (v >= MATE_BOUND || v <= -MATE_BOUND))
-            fprintf(stderr, "  tail-defend ply=%d defense=(%d,%d) v=%lld\n",
-                    ply, idx / MAX_BOARD, idx % MAX_BOARD, (long long)v);
         if (v > best) best = v;
-        if (best > cur_alpha) cur_alpha = best;
-        if (cur_alpha >= beta) break;
     }
     if (best == -INF_SCORE) return stm_score(b, ctx.winmode);
     return best;
 }
 
-// 攻方节点（轮黑）：静态杀 → stand-pat → 只走成四手（tier >= E_BLOCK4）。
-int64_t vcf_attack(Board& b, int64_t alpha, int64_t beta, int ply, Ctx& ctx) {
+// 攻方节点（轮黑）：静态杀 → stand-pat → 全部成四手取最大（无截断，精确）。
+int64_t vcf_attack(Board& b, int ply, Ctx& ctx) {
     if (ctx_check(ctx)) return 0;
     if (ply >= MAX_PLY) return stm_score(b, ctx.winmode);
 
@@ -338,61 +365,39 @@ int64_t vcf_attack(Board& b, int64_t alpha, int64_t beta, int ply, Ctx& ctx) {
 
     {
         const int64_t qw = quick_win(BLACK, ply, n5);
-        if (qw != 0) {
-            if (ply >= 4 && getenv("NODESEARCH_DUMP5") != nullptr) {
-                fprintf(stderr, "==== five-point mate at ply=%d, n5=%d ====\n", ply, n5);
-                for (int x = 0; x < b.size(); ++x) {
-                    for (int y = 0; y < b.size(); ++y) {
-                        const uint8_t v = b.at(x, y);
-                        fprintf(stderr, "%c", v == BLACK ? 'X' : v == WHITE ? 'O' : '.');
-                    }
-                    fprintf(stderr, "\n");
-                }
-            }
-            return qw;
-        }
+        if (qw != 0) return qw;
     }
 
-    // TT 探测（VCF 层 depth 恒 0：只做同层截断与边界收窄）。
+    // TT 探测（尾部值是局面的确定函数，EXACT 直接返回）。
     const uint64_t key = b.hash();
     {
         const NSTTEntry& e = g_tt[key & TT_MASK];
-        if (e.key == key && e.flag != TT_EMPTY) {
-            const int64_t s = tt_load_score(e.score, ply);
-            if (e.flag == TT_LOWER && s > alpha) alpha = s;
-            else if (e.flag == TT_UPPER && s < beta) beta = s;
-            if (alpha >= beta) return s;
-        }
+        if (e.key == key && e.flag == TT_EXACT)
+            return tt_load_score(e.score, ply);
     }
 
     const int64_t stand = stm_score(b, ctx.winmode);
-    if (stand >= beta) return stand;
     int64_t best = stand;
-    if (stand > alpha) alpha = stand;
 
     for (int i = 0; i < nm; ++i) {
         if (mv[i].tier < 9) break;                  // 只走成四手（E_BLOCK4 及以上）
         const int idx = mv[i].pos;
         if (!b.make_move(idx / MAX_BOARD, idx % MAX_BOARD, BLACK)) continue;
+        int64_t v;
         if (b.last_move_was_five()) {               // 成五点已由静态杀处理
-            b.undo_move();
-            continue;
+            v = MATE - ply - 1;
+        } else {
+            v = -vcf_defend(b, ply + 1, ctx);
         }
-        const int64_t v = -vcf_defend(b, -beta, -alpha, ply + 1, ctx);
         b.undo_move();
         if (ctx.timeout) return 0;
-        if (getenv("NODESEARCH_TRACE") && (v >= MATE_BOUND || v <= -MATE_BOUND))
-            fprintf(stderr, "tail-attack ply=%d move=(%d,%d) v=%lld\n",
-                    ply, idx / MAX_BOARD, idx % MAX_BOARD, (long long)v);
         if (v > best) best = v;
-        if (best > alpha) alpha = best;
-        if (alpha >= beta) break;
     }
 
     NSTTEntry& e = g_tt[key & TT_MASK];
     e.key = key;
     e.score = tt_store_score(best, ply);
-    e.flag = (best >= beta) ? TT_LOWER : TT_UPPER;
+    e.flag = TT_EXACT;
     e.depth = 0;
     e.best = TT_NO_MOVE;
     return best;
@@ -417,9 +422,8 @@ int64_t node_dfs(Board& b, int depth, int64_t alpha, int64_t beta, int ply,
 
     // depth <= 0：陷入 VCF 尾部。
     if (depth <= 0) {
-        if (getenv("NODESEARCH_NO_VCF")) return stm_score(b, ctx.winmode);
-        if (b.turn() == BLACK) return vcf_attack(b, alpha, beta, ply, ctx);
-        return vcf_defend(b, alpha, beta, ply, ctx);
+        if (b.turn() == BLACK) return vcf_attack(b, ply, ctx);
+        return vcf_defend(b, ply, ctx);
     }
 
     const int color = b.turn();
