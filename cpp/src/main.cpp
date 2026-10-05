@@ -231,6 +231,9 @@ int main() {
                         if (lab.tag == 0) {
                             // 白棋威胁候选点（第 8 步）：无 W/L 标注，输出三列
                             // cand x y（威胁防御集交集，逐点证明搜索已停用封存）。
+                            // 黑方分支的未标注候选（证明不出）仍按旧协议跳过
+                            // （宁可漏标，不可错标；避免全量 gen_moves 噪声）。
+                            if (color != gvg::WHITE) continue;
                             std::cout << "cand " << lab.x << ' ' << lab.y
                                       << '\n';
                             continue;
