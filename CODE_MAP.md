@@ -22,8 +22,8 @@
 | `cpp/` | C++ 引擎（Rapfi 棋型缓存+禁手、元组评估、alpha-beta、证明级 VCF/VCT），见 cpp/README.md |
 | `engine_client.py` | C++ 引擎子进程封装（GUI"C++引擎"模式走它，协议见 cpp/README.md） |
 | `cpp/` | C++ 引擎（make/undo+Rapfi 禁手+元组评估+alpha-beta+VCF/VCT），见 cpp/README.md |
-| `katago_client.py` | 道棋AI（环面围棋 KataGo）客户端：KataGo **analysis 协议**（stdin/stdout JSON），把当前环面局面石子作为 `initialStones` 直传（不做走子重放），GTP 坐标互转，OpenCL 优先/Eigen 自动回退；`analyze()` 返回 best move + 黑方视角 winrate/scoreLead + top 候选 |
-| `daoqi_katago/` | 道棋引擎文件（git 忽略，来源见 `daoqi_katago/README.md`）：`model.bin.gz`（道棋俱乐部 DAOQI 网络）、`katago_opencl.exe`/`katago_eigen.exe`（KataGo v1.18.1 官方版）、`analysis_daoqi.cfg`（`reportAnalysisWinratesAs=BLACK`） |
+| `daoqi_gui.py` | **独立**的道棋（环面围棋）对弈观察窗口，与本项目其他文件零依赖：内嵌 KataGo **GTP** 客户端（`daoqi_katago/` 引擎，规则全部由引擎执行：play/genmove/undo/pass/final_score，chinese 规则），环面镜面棋盘渲染（同主项目视觉：镜面复制区、50% 淡色假子、镜框、悬停虚影、手数、最后一手红圈），kata-analyze 实时**黑方胜率/目差 + 候选点胜率标注**，黑/白 AI（kata-genmove_analyze）自动对弈串或人手点击落子；命令带 GTP id 配对响应、棋盘状态以 showboard 为唯一事实源（UI 无规则代码）。运行 `python daoqi_gui.py` |
+| `daoqi_katago/` | 道棋引擎文件（git 忽略，来源见 `daoqi_katago/README.md`）：`model.bin.gz`（道棋俱乐部 DAOQI 网络）、`katago_opencl.exe`/`katago_eigen.exe`（KataGo v1.18.1 官方版）、`gtp_daoqi.cfg`（GTP 配置，`reportAnalysisWinratesAs=BLACK`）、`analysis_daoqi.cfg`（备用） |
 | `board_tools.py` | 坐标代码（`a15`/`p0`）与棋盘文本互转、导出/导入、分析 CLI（威胁、蓝叉、禁手地图、AI 着法） |
 | `../tools/rapfi-plugin/rapfi_plugin.py`（在程序目录**之外**） | 唯一的 Rapfi 外置插件：**直接从 Rapfi/Yixin 窗口抓局面**（Ctrl+C）或读剪贴板 → **禁手默认问 Rapfi 引擎**（`INFO rule 2` + `YXBOARD` + `YXSHOWFORBID`，与窗口显示一致）→ 追加代码行 + 禁手行到 `导出/粘贴板.md`，预览点阵把禁手画成 X；不改主程序任何文件、不读写 Yixin 目录，双击 `tools\rapfi-plugin\rapfi_plugin.bat` 运行 |
 | `tests_torus.py` | 环面/禁手/GUI/坐标读取 自动化测试（`python tests_torus.py`） |
@@ -138,7 +138,7 @@
 - 黄色棋盘区顶部统计条：黑棋时间/AI/人类（靠棋盘左缘三行）、白吃黑 N子（垂直居中）、白棋时间/AI/人类（靠棋盘右缘三行）；微软雅黑UI字体 9路≈9pt → 15路起封顶20pt，与棋盘间隔一行。AI 行=自动AI搜索思考时间（蓝字口径）累计；人类行=人类落子用时（含右键AI辅助）；同方人类+AI≈该方总用时
 - 蓝/绿小字：AI回合显示搜索进度/上一步AI用时；人类回合蓝字=本步正在用时、绿字=上一手人类用时
 - C++引擎模式：候选点 W/L 角标（绿=W 必胜手数、红=L），由 `_maybe_refresh_engine_labels` 异步取回、`draw_board` 画在候选点方块右上角；步数带 `+`（如 `L8+`）表示只是下界（层 2 智能应对兜底，见 vcfvct 的 `CandidateLabel::at_least`）；禁手蓝叉改由 `_maybe_refresh_engine_forbidden` 取引擎 `checkforbidden`（Rapfi 语义），不再用 Python `rules.py` 判定
-- 道棋AI模式（`daoqi_ai_var`，仅环面模式对白棋生效）：白棋（围棋方）改用 daoqi KataGo——`run_ai_move` 先走 `_run_daoqi_white`：连五点位用 `_quick_forced_response` 同步挡五、紧迫威胁（成五/四三/活四/冲四/活三）回落内置白棋算法、安静局面 `_run_ai_move_daoqi` 查 KataGo；紫色标签（`daoqi_label`）显示**白方胜率/目差**（KataGo 黑方视角 winrate/scoreLead 换算，`_store_daoqi_eval`/`_update_daoqi_label`），每手棋后由 `_maybe_refresh_daoqi_eval` 异步低访问数刷新，与 AI 落子查询共用一个客户端锁串行；「显示AI候选点」显示 KataGo top 候选 + 白方胜率百分比；黑棋永远是内置五子棋引擎（KataGo 不懂连五）；贴目/每手访问数在「AI 设置」窗口（`daoqi_komi_var`/`daoqi_visits_var`，默认 5.5 / 192）；冒烟脚本 `_daoqi_smoke.py`（无 GUI）与 `_daoqi_gui_smoke.py`（真 GUI）
+- 本 gui.py 与道棋 AI 无关：道棋（环面围棋）KataGo 对弈观察在**独立文件 `daoqi_gui.py`**（见第 1 节），不引用也不修改本文件任何逻辑
 - 模式窗口：棋盘尺寸（9~19 奇数，新对局生效）、先手、禁手设置、白棋获胜条件、环面模式（新对局生效）、障碍
 - 环面模式：上下/左右互通（气、连五、禁手、领地、距离全部回绕，AI 只搜索实际 n×n 棋盘）
 - 环面提示（主面板复选框）：开启后四周显示镜面复制区，宽度可选 2 格（n+4）或 4 格（n+8），关闭则只显示 n×n；复制区背景统一用第一圈色、网格线统一 50% 白、假棋子=50%棋子色+50%棋盘底色，实际棋盘四周只有一条 #f2f2f2 粗镜框；鼠标在复制区时幽灵棋子只显示在实际对应格；点击复制格映射到实际格落子

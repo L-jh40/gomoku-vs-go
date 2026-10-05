@@ -17,4 +17,5 @@ daoqi_katago/katago_opencl.exe
 daoqi_katago/katago_eigen.exe
 daoqi_katago/*.dll
 daoqi_katago/analysis_logs/
+daoqi_katago/gtp_logs/
 daoqi_katago/KataGoData/
