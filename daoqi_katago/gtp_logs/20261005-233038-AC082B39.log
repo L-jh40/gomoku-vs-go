@@ -1,0 +1,17 @@
+2026-10-05 23:30:38+0800: Running with following config:
+allowResignation = false
+conservativePass = true
+logAllGTPCommunication = false
+logDir = gtp_logs
+logSearchInfo = false
+logToStderr = false
+maxVisits = 64
+nnCacheSizePowerOfTwo = 21
+nnMaxBatchSize = 64
+nnMutexPoolSizePowerOfTwo = 16
+nnRandomize = true
+numSearchThreads = 8
+reportAnalysisWinratesAs = BLACK
+
+2026-10-05 23:30:38+0800: GTP Engine starting...
+2026-10-05 23:30:38+0800: KataGo v1.18.1
