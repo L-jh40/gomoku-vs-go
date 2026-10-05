@@ -388,6 +388,7 @@ class DaoqiApp:
         self.numbers = {}           # {(x, y): 手数}
         self.captures = {BLACK: 0, WHITE: 0}
         self.moves = []             # [(color, vertex|"pass")] 镜像手序
+        self._snapshots = []        # 每手同步后的 (stones, numbers, captures, last)
         self.last_move = None
         self.turn = BLACK
         self.move_count = 0
@@ -444,8 +445,14 @@ class DaoqiApp:
             self.backend_name = ev[1]
             self._set_status("引擎就绪")
         elif kind == "done":
-            self.job_pending = False
-            self._on_job_done(ev[1], ev[2])
+            # 落子类任务的 busy 状态保持到 showboard 同步完成（_sync_board
+            # 里清零）；其余任务（score / 被拒绝的任务）立即清除。
+            job, result = ev[1], ev[2]
+            follows_sync = (job[0] in ("newgame", "play", "genmove", "undo",
+                                       "board") and result.get("ok", True))
+            if not follows_sync:
+                self.job_pending = False
+            self._on_job_done(job, result)
         elif kind == "dead":
             self.engine_ready = False
             self.job_pending = False
@@ -489,6 +496,7 @@ class DaoqiApp:
             self.numbers = {}
             self.captures = {BLACK: 0, WHITE: 0}
             self.moves = []
+            self._snapshots = []
             self.last_move = None
             self.move_count = 0
             self.game_over = False
@@ -497,6 +505,7 @@ class DaoqiApp:
             self.eval_text = ""
             self.pv_text = ""
             self.turn = BLACK
+            self.engine.analyze_desired = True
             self.eval_label.config(text="")
             self.pv_label.config(text="")
             self._set_status("新对局")
@@ -522,6 +531,16 @@ class DaoqiApp:
             self.move_count = max(0, self.move_count - 1)
             self.game_over = False
             self.result_text = ""
+            # 恢复被撤销那手的派生状态（手数标注 / 提子计数 / 最后一手）
+            if self._snapshots:
+                self._snapshots.pop()
+                if self._snapshots:
+                    st, num, cap, lm = self._snapshots[-1]
+                    self.stones = dict(st)
+                    self.numbers = dict(num)
+                    self.captures = dict(cap)
+                    self.last_move = lm
+            self.engine.analyze_desired = True
             self.engine.submit(("board", self.size.get()))
         elif kind == "score":
             self.result_text = result.get("text", "?")
@@ -550,6 +569,13 @@ class DaoqiApp:
         for p in added:
             self.numbers[p] = self.move_count
         self.stones = stones
+        if self.moves and self.moves[-1][1] != "pass":
+            self.last_move = vertex_to_xy(self.moves[-1][1], self.size.get())
+        else:
+            self.last_move = None
+        # 快照：悔棋时恢复手数标注 / 提子计数（引擎盘面之外的全部派生状态）
+        self._snapshots.append((dict(self.stones), dict(self.numbers),
+                                dict(self.captures), self.last_move))
         cap_text = f"提子 黑{self.captures[BLACK]} 白{self.captures[WHITE]}"
         if self.game_over:
             pass
@@ -572,6 +598,7 @@ class DaoqiApp:
             self._set_status(f"{'黑' if self.turn == BLACK else '白'}方行棋"
                              f"（第 {self.move_count + 1} 手）· {cap_text}")
         self.draw_board()
+        self.job_pending = False
         self._maybe_chain()
 
     def _maybe_chain(self):
