@@ -63,3 +63,5 @@ searchFactorWhenWinningThreshold = 0.95
 2026-10-06 00:37:27+0800: Loaded neural net with nnXLen 16 nnYLen 16
 2026-10-06 00:37:27+0800: Initializing board with boardXSize 16 boardYSize 16
 2026-10-06 00:37:27+0800: Changed rules to Chinese
+2026-10-06 00:38:11+0800: GPU -1 finishing, processed 5521 rows 1325 batches
+2026-10-06 00:38:12+0800: All cleaned up, quitting
