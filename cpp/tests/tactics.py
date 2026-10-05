@@ -267,16 +267,23 @@ def verify_labels(eng: Engine, stats: Stats, pos, side: str, cands,
                   max_sec: float = PROVE_SEC) -> None:
     """通用健全性断言 A1/A2（对每条标注都用引擎的 prove / Python 参考实现复核）。
 
-    第 7 步（威胁候选点重写）后 candidates **w** 的输出语义变了：
-      * L<2m>：白棋落该点后黑方 m 手内被证明必胜（语义不变，仍按 A2 复核）；
-      * W0   ：白棋落该点后黑方在预算内证明不出必胜（该候选点安全）。
-    旧语义里白方候选只有 L，因此 A1 分支（“W<k> 必须能 prove 成 win”）只对
-    黑方候选成立：白方的 W0 改为抽查若干点，断言 (i) 落子合法、(ii) 引擎同一
-    预算下 prove 不出 win（与标注一致）。
+    第 8 步（威胁候选点重写）后 candidates **w** 的输出语义变了：
+      * 候选点一律 tag=''（无 W/L 标注）：威胁防御集交集本身不再附带证明结论，
+        逐点证明搜索已停用封存。这里对无标注候选只做轻量健全性抽查：
+        (i) 落子合法（前 3 个点）。
     """
     tag = "A1" if side == "b" else "A2"
-    checked_w = 0
+    checked_pool = 0
     for (x, y, lab, k) in cands:
+        if lab == "":
+            # 白棋威胁候选点（无标注）：抽查落子合法性。
+            if checked_pool < 3:
+                checked_pool += 1
+                setup(eng, pos)
+                eng.send("play w %d %d" % (x, y))
+                ok = eng.readline() == "ok"
+                stats.check(ok, "A2: 候选点 (%d,%d) 白落子必须 ok" % (x, y))
+            continue
         if lab == "W" and side == "w":
             stats.check(k == 0,
                         "A2: 白方 W 标注只允许 W0（安全点），实际 W%d (%d,%d)"
@@ -286,8 +293,8 @@ def verify_labels(eng: Engine, stats: Stats, pos, side: str, cands,
             ok = eng.readline() == "ok"
             stats.check(ok, "A2: W0 (%d,%d) 白落子必须 ok" % (x, y))
             # 抽查前 3 个：黑方在 CAND_STEPS 预算内不得被证明必胜。
-            if ok and checked_w < 3:
-                checked_w += 1
+            if ok and checked_pool < 3:
+                checked_pool += 1
                 r = run_prove(eng, CAND_STEPS, max_sec)
                 stats.check(r != "win",
                             "A2: W0 (%d,%d) 白落该点后 prove %d 不应为 win，实际 %r"
@@ -413,14 +420,16 @@ def case_t4(eng: Engine, stats: Stats) -> None:
 
 
 def case_t5(eng: Engine, stats: Stats) -> None:
-    print("[T5] L 标注：T4 局面 candidates w 11（只做通用 A2 健全性断言）")
+    print("[T5] 无标注候选：T4 局面 candidates w 11（威胁候选点 tag=''，通用轻量断言）")
     pos = T4_POS
     setup(eng, pos)
     r = run_candidates(eng, "w", 11)
     c = r["cands"]
-    if r["timeout"]:
-        print("  [note] T5: 分析被 max_sec 截断（证明级搜索的已知限制），"
-              "已得标注 %d 条" % len(c))
+    stats.check(not r["timeout"], "T5: 不应超时截断")
+    # 第 8 步新语义：candidates w = 威胁候选点（T4 局面无强迫威胁 → 全部空点），
+    # 一律无 W/L 标注（tag=''）。这里断言“无任何标注”，健全性抽查交给 verify_labels。
+    bad = [t for t in c if t[2] != ""]
+    stats.check(bad == [], "T5: 白方候选应全部无标注（tag=''），异常项 %r" % (bad[:8],))
     verify_labels(eng, stats, pos, "w", c)
 
 
