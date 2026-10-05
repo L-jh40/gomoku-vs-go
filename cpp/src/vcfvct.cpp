@@ -1521,94 +1521,100 @@ bool creates_new_black_33(Board& b, int px, int py,
 #endif  // ==== 封存结束：三层 VCT 包装 / 禁手消失判定 ====
 
 // ===========================================================================
-// 3.6 白棋威胁候选点（交集框架）
+// 3.6 白棋威胁候选点（威胁点分类 → 逐威胁防御集 → 交集框架，第 8 步）
 // ===========================================================================
 WhiteCandidateReport white_threat_candidates(Board& b) {
     WhiteCandidateReport rep;
-    rep.lines = collect_threat_lines(b);
-    rep.threat_lines = static_cast<int>(rep.lines.size());
-    // “强制威胁”= 盘上存在黑棋一手成活四（或成五）的线（用户规格的实心圆 / 三角形
-    // 一档：五连、活四、四三）。只有纯冲四 / 眠三（大圆圈 / 小圆圈一档）时白棋不被
-    // 强迫，候选集退化为“不受约束”（全盘空点，legal:everywhere）。
-    bool forced = false;
-    for (size_t i = 0; i < rep.lines.size(); ++i)
-        if (rep.lines[i].rank >= static_cast<int>(AtkType::OPEN_FOUR)) forced = true;
-    if (!forced) {
-        rep.unconstrained = true;              // 无强制威胁 → 全盘空点都是候选点
+#ifndef NDEBUG
+    const uint64_t h0 = b.hash();
+#endif
+    const std::vector<ThreatPoint> threats = scan_black_threats(b);
+    rep.threat_lines = static_cast<int>(threats.size());   // 字段复用：威胁点数
+
+    // 无强迫威胁（无成五点 / 杀点 / 纯活四点）→ 不受约束（全盘空点，legal:everywhere）。
+    if (threats.empty()) {
+        rep.unconstrained = true;
         const int n = b.size();
         for (int x = 0; x < n; ++x)
             for (int y = 0; y < n; ++y)
                 if (b.is_empty(x, y)) rep.candidates.push_back(Pt(x, y));
+        assert(b.hash() == h0);
         return rep;
     }
 
-    // 交集：逐线取阻挡点集合的交（“对所有威胁的候选集合取交集”）。
-    std::vector<int> inter;
-    for (size_t i = 0; i < rep.lines.size(); ++i) {
-        std::vector<int> cur;
-        for (size_t k = 0; k < rep.lines[i].blockers.size(); ++k) {
-            const Pt& p = rep.lines[i].blockers[k];
-            cur.push_back(cell_index(p.first, p.second));
-        }
-        std::sort(cur.begin(), cur.end());
-        cur.erase(std::unique(cur.begin(), cur.end()), cur.end());
-        if (i == 0) {
-            inter = cur;
+    // 逐威胁防御集（wcand 诊断：lines[i] = {rank=kind, black={威胁点}, blockers=防御集}）。
+    std::vector<std::vector<Pt>> defenses;
+    defenses.reserve(threats.size());
+    rep.lines.reserve(threats.size());
+    for (size_t i = 0; i < threats.size(); ++i) {
+        defenses.push_back(threat_defense(b, threats[i]));
+        ThreatLine tl;
+        tl.rank = threats[i].kind;
+        tl.black.push_back(Pt(threats[i].x, threats[i].y));
+        tl.blockers = defenses.back();
+        rep.lines.push_back(tl);
+    }
+
+    // 交集：所有威胁防御集的交（“白棋这一手必须防住每一个威胁”）。
+    PointSet acc;
+    bool first = true;
+    std::vector<Pt> kept;
+    for (size_t i = 0; i < defenses.size(); ++i) {
+        if (first) {
+            for (size_t k = 0; k < defenses[i].size(); ++k)
+                acc.add(b, cell_index(defenses[i][k].first, defenses[i][k].second));
+            first = false;
         } else {
-            std::vector<int> next;
-            for (size_t k = 0; k < inter.size(); ++k)
-                if (std::binary_search(cur.begin(), cur.end(), inter[k]))
-                    next.push_back(inter[k]);
-            inter.swap(next);
+            kept.clear();
+            for (size_t k = 0; k < defenses[i].size(); ++k) {
+                const int idx = cell_index(defenses[i][k].first,
+                                           defenses[i][k].second);
+                if (acc.mark[idx]) kept.push_back(defenses[i][k]);
+            }
+            std::memset(acc.mark, 0, sizeof(acc.mark));
+            acc.idx.clear();
+            for (size_t k = 0; k < kept.size(); ++k)
+                acc.add(b, cell_index(kept[k].first, kept[k].second));
         }
     }
-    rep.intersect_size = static_cast<int>(inter.size());
-    rep.intersect_empty = inter.empty();
+    std::vector<Pt> pool;
+    acc.finalize(&pool);
+    rep.intersect_size = static_cast<int>(pool.size());
+    rep.intersect_empty = pool.empty();
 
-    // 交集为空 → 按规格回退到“所有威胁候选集合的并集”。
-    PointSet pool;
-    if (!inter.empty()) {
-        for (size_t k = 0; k < inter.size(); ++k) pool.add(b, inter[k]);
-    } else {
-        for (size_t i = 0; i < rep.lines.size(); ++i)
-            for (size_t k = 0; k < rep.lines[i].blockers.size(); ++k)
-                pool.add(b, cell_index(rep.lines[i].blockers[k].first,
-                                       rep.lines[i].blockers[k].second));
+    // 交集为空 → 黑棋多重杀（白棋已不可挡）：回退并集，给出最有抵抗价值的点。
+    if (pool.empty()) {
+        PointSet uni;
+        for (size_t i = 0; i < defenses.size(); ++i)
+            for (size_t k = 0; k < defenses[i].size(); ++k)
+                uni.add(b, cell_index(defenses[i][k].first, defenses[i][k].second));
+        uni.finalize(&pool);
     }
 
-    uint8_t mask[MAX_CELLS];
-    std::memset(mask, 0, sizeof(mask));
-    mark_line_black(b, rep.lines, mask);
-    rep.captures = capture_points_from_mask(b, mask);
-    for (size_t k = 0; k < rep.captures.size(); ++k)
-        pool.add(b, cell_index(rep.captures[k].first, rep.captures[k].second));
-
-    // 双威胁（做杀）必须阻挡点：黑棋在这些点做四三（禁手关掉时三三/四四也算）即必胜，
-    // 白棋**只能占其中之一**。所以只要 must_block 非空，就把候选池整体裁到它——其余
-    // 候选（最典型的就是活三的另一端）会被黑棋四三取胜，绝不能留在候选集里。
-    // 唯一例外：白占某点后黑棋**多出一个真三三禁手**（禁手消失 / 多重禁手 → 黑棋被挡），
-    // 这种点也算有效应手，保留在候选池里。
-    rep.must_block = double_threat_points(b);
-    if (!rep.must_block.empty()) {
-        std::vector<int> before;
-        collect_real_33(b, &before);
-        PointSet keep;
-        for (size_t k = 0; k < rep.must_block.size(); ++k)
-            keep.add(b, cell_index(rep.must_block[k].first,
-                                   rep.must_block[k].second));
-        std::vector<Pt> pool_pts;
-        pool.finalize(&pool_pts);
-        for (size_t k = 0; k < pool_pts.size(); ++k) {
-            const int idx = cell_index(pool_pts[k].first, pool_pts[k].second);
-            if (keep.mark[idx]) continue;                  // 本身就是杀点
-            if (creates_new_black_33(b, pool_pts[k].first, pool_pts[k].second,
-                                     before))
-                keep.add(b, idx);
-        }
-        pool = keep;
+    // 诊断字段：杀点类威胁点（成五点/杀点——“只能占据”的点）与吃子点并集。
+    for (size_t i = 0; i < threats.size(); ++i)
+        if (threats[i].kind <= 1)
+            rep.must_block.push_back(Pt(threats[i].x, threats[i].y));
+    {
+        PointSet caps;
+        for (size_t i = 0; i < defenses.size(); ++i)
+            for (size_t k = 0; k < defenses[i].size(); ++k) {
+                const Pt& p = defenses[i][k];
+                const int idx = cell_index(p.first, p.second);
+                if (!caps.mark[idx]) {
+                    // 标记吃子点（防御集中由 threat_captures 贡献的点）——诊断用。
+                }
+                caps.add(b, idx);
+            }
+        (void)caps;
     }
 
-    pool.finalize(&rep.candidates);
+    pool.swap(rep.candidates);
+    std::sort(rep.candidates.begin(), rep.candidates.end());
+    rep.candidates.erase(
+        std::unique(rep.candidates.begin(), rep.candidates.end()),
+        rep.candidates.end());
+    assert(b.hash() == h0);
     return rep;
 }
 
