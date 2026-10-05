@@ -4,15 +4,17 @@
 //   1. 置换表（本模块私有，2^20 项，always-replace，mate 分 ply 归一化）。
 //   2. 着法生成：候选 = 距任一棋子切比雪夫距离 <= 2 的空点（与 gen_moves 同口径）；
 //      tier 用 Board 的增量棋型缓存 O(1) 读取（黑 = p4_black 组合等级，
-//      白 = 该点上黑棋 p4 的阻挡价值），一次扫描顺带收集黑棋的成五点 / 活四点 /
-//      四三杀点清单供静态杀判定使用。
-//   3. quick_win：吃子感知的静态杀判定（见 nodesearch.h 顶部说明）。
-//      “块气 >= 3”条件是混合规则的关键加固：白棋能提子，叫吃的四/活四石块
-//      让 Rapfi 的“活四不可挡 / 双五不可挡”失效。
-//   4. node_dfs：全宽 alpha-beta。depth <= 0 陷入 VCF 尾部（vcf_attack /
-//      vcf_defend）：黑只走成四手，白只应对成五点（外加 1 气块提子反驳）——
-//      其余白应手立即败给成五，因此不搜它们不损失证明健全性。
-//   5. 迭代加深根：depth = 2,4,...,max_depth，|score| >= MATE_BOUND 即停。
+//      白 = 该点上黑棋 p4 的阻挡价值）；一次扫描顺带收集黑棋成五点清单。
+//   3. 静态杀判定只保留一条**无条件健全**规则：轮黑且有成五点 → MATE（成五立即
+//      终局，提子/禁手都无法干预）。其余“活四/四三/双五不可挡”类 Rapfi 静态规则
+//      在本游戏**不健全**（白棋可以提子破解：斜向四子的石块分属不同正交组，叫吃
+//      的那颗被提走四即消失），一律改由 VCF 尾部搜索健全地解决。
+//   4. node_dfs：全宽 alpha-beta（PVS）。depth <= 0 陷入 VCF 尾部（vcf_attack /
+//      vcf_defend）：攻方（黑）只走成四手；守方（白）只应对成五点 ∪ 成五点四子
+//      中 1 气正交组的提子点（逐石子组检查，斜向四子各石子的组都要查）——其余
+//      白应手立即败给成五，不搜它们不损失证明健全性。
+//   5. 非终局叶子用 stm_score（既有增量评估）做 stand-pat；评估分 |值| < MATE_BOUND
+//      严格小于证明分，因此 MATE 级结论只可能来自真实成五，证明不被评估污染。
 #include "nodesearch.h"
 
 #include <algorithm>
@@ -79,11 +81,11 @@ constexpr int MAX_MOVES = 256;
 
 struct Ctx {
     std::chrono::steady_clock::time_point deadline{};
-    bool     has_deadline = false;
-    long long node_limit  = 0;
-    long long nodes       = 0;
-    bool      timeout     = false;
-    int       winmode     = 0;
+    bool      has_deadline = false;
+    long long node_limit   = 0;
+    long long nodes        = 0;
+    bool      timeout      = false;
+    int       winmode      = 0;
 };
 
 struct NMove {
@@ -106,59 +108,32 @@ inline bool ctx_check(Ctx& ctx) {
 }
 
 // ---------------------------------------------------------------------------
-// 块气判定（静态杀的吃子感知条件）
+// 正交组气检查（吃子防御判定的基础件）
 // ---------------------------------------------------------------------------
-// 从 (x,y) 的黑子组 BFS，气数是否 >= k（早退）。前置：b.at(x,y) == BLACK。
-bool black_group_libs_ge(Board& b, int x, int y, int k) {
-    const int NX[4] = {1, -1, 0, 0}, NY[4] = {0, 0, 1, -1};
-    uint8_t seen[MAX_CELLS];
-    std::memset(seen, 0, sizeof(seen));
-    uint16_t stack[MAX_CELLS];
-    int top = 0, libs = 0;
-    const int start = Board::index(x, y);
-    stack[top++] = uint16_t(start);
-    seen[start] = 1;
-    while (top > 0) {
-        const int cur = stack[--top];
-        const int cx = cur / MAX_BOARD, cy = cur % MAX_BOARD;
-        for (int t = 0; t < 4; ++t) {
-            const int nx = cx + NX[t], ny = cy + NY[t];
-            if (!b.in_bounds(nx, ny)) continue;
-            const int ni = Board::index(nx, ny);
-            const uint8_t v = b.at(nx, ny);
-            if (v == BLACK) {
-                if (!seen[ni]) { seen[ni] = 1; stack[top++] = uint16_t(ni); }
-            } else if (v == EMPTY) {
-                if (!seen[ni]) { seen[ni] = 2; if (++libs >= k) return true; }
-            }
-        }
-    }
-    return libs >= k;
-}
+const int NNX[4] = {1, -1, 0, 0}, NNY[4] = {0, 0, 1, -1};
 
-// 假想黑棋落 (x,y) 后其块的气是否 >= k（块 = (x,y) ∪ 相连黑子）。
-bool black_group_libs_ge_after(Board& b, int x, int y, int k) {
-    const int NX[4] = {1, -1, 0, 0}, NY[4] = {0, 0, 1, -1};
-    uint8_t seen[MAX_CELLS];
-    std::memset(seen, 0, sizeof(seen));
+// 从种子黑子 BFS 其正交组，统计气数（early-exit >= k），返回组气是否 >= k。
+// visited 复用：组员标记 1、气点标记 2，跨多次调用共享（多组检查去重）。
+bool group_libs_ge_from(Board& b, int x, int y, int k,
+                        uint8_t* visited, uint16_t* cap_lib) {
     uint16_t stack[MAX_CELLS];
     int top = 0, libs = 0;
     const int start = Board::index(x, y);
     stack[top++] = uint16_t(start);
-    seen[start] = 1;                       // start 假想已落黑
+    visited[start] = 1;
     while (top > 0) {
         const int cur = stack[--top];
         const int cx = cur / MAX_BOARD, cy = cur % MAX_BOARD;
         for (int t = 0; t < 4; ++t) {
-            const int nx = cx + NX[t], ny = cy + NY[t];
+            const int nx = cx + NNX[t], ny = cy + NNY[t];
             if (!b.in_bounds(nx, ny)) continue;
             const int ni = Board::index(nx, ny);
-            if (ni == start) continue;
             const uint8_t v = b.at(nx, ny);
             if (v == BLACK) {
-                if (!seen[ni]) { seen[ni] = 1; stack[top++] = uint16_t(ni); }
-            } else if (v == EMPTY && !seen[ni]) {
-                seen[ni] = 2;
+                if (!visited[ni]) { visited[ni] = 1; stack[top++] = uint16_t(ni); }
+            } else if (v == EMPTY && !visited[ni]) {
+                visited[ni] = 2;
+                if (cap_lib != nullptr && libs == 0) *cap_lib = uint16_t(ni);
                 if (++libs >= k) return true;
             }
         }
@@ -166,25 +141,43 @@ bool black_group_libs_ge_after(Board& b, int x, int y, int k) {
     return libs >= k;
 }
 
-// 成五点 q 的“四石块组”气是否 >= k（沿其 F5 方向找 4 颗黑子 → BFS 组气）。
-bool five_point_group_libs_ge(Board& b, int qx, int qy, int k) {
+// 成五点 q 的四子窗口：收集其 F5 方向 ±4 内的黑子 idx（四子的正交组可能互不
+// 相连——斜向四子正是如此——必须逐石子检查所在组）。
+int collect_five_window_stones(Board& b, int qx, int qy,
+                               uint16_t* stones, int cap) {
     static const int DX[4] = {1, 0, 1, 1}, DY[4] = {0, 1, 1, -1};
     const int qidx = Board::index(qx, qy);
+    int ns = 0;
     for (int d = 0; d < 4; ++d) {
         if (b.cached_pattern(0, qidx, d) != F5) continue;
-        for (int s = -4; s <= 4; ++s) {
+        for (int s = -4; s <= 4 && ns < cap; ++s) {
             if (s == 0) continue;
             const int nx = qx + s * DX[d], ny = qy + s * DY[d];
             if (!b.in_bounds(nx, ny)) continue;
             if (b.at(nx, ny) != BLACK) continue;
-            return black_group_libs_ge(b, nx, ny, k);   // 4 子连续 → 同组
+            stones[ns++] = uint16_t(Board::index(nx, ny));
         }
     }
-    return true;    // 找不到四子（不应发生）：按安全侧处理
+    return ns;
+}
+
+// 成五点 q 的四子所在全部正交组的气是否都 >= k；任何一组气 == 1 时
+// cap_lib 给出该组气点（白棋提子防御点）。visited 由调用方提供并复用。
+bool five_window_groups_libs_ge(Board& b, int qx, int qy, int k,
+                                uint8_t* visited, uint16_t* cap_lib) {
+    uint16_t stones[16];
+    const int ns = collect_five_window_stones(b, qx, qy, stones, 16);
+    for (int i = 0; i < ns; ++i) {
+        if (visited[stones[i]]) continue;               // 组已被检查过
+        if (!group_libs_ge_from(b, stones[i] / MAX_BOARD,
+                                stones[i] % MAX_BOARD, k, visited, cap_lib))
+            return false;
+    }
+    return true;
 }
 
 // ---------------------------------------------------------------------------
-// 着法生成（tier + 黑棋威胁点清单）
+// 着法生成（tier + 黑棋成五点清单）
 // ---------------------------------------------------------------------------
 // tier（越大越先搜）：13=成五点(白必堵) 12=活四点 11=四三/双四 10/9=冲四类
 // 8..6=活三类 5..2=活二/眠三 1=FORBID(假禁手) 0=无。
@@ -203,12 +196,9 @@ int tier_of_p4(int p4, const Board& b, int idx) {
     return p4;
 }
 
-int gen_node_moves(Board& b, int color, NMove* out,
-                   uint16_t* bfive, int& n5,
-                   uint16_t* bflex4, int& nf4,
-                   uint16_t* bc43, int& nc43) {
+int gen_node_moves(Board& b, int color, NMove* out, uint16_t* bfive, int& n5) {
     const int n = b.size();
-    n5 = nf4 = nc43 = 0;
+    n5 = 0;
 
     uint8_t seen[MAX_CELLS];
     std::memset(seen, 0, sizeof(seen));
@@ -217,7 +207,8 @@ int gen_node_moves(Board& b, int color, NMove* out,
     for (int x = 0; x < n; ++x)
         for (int y = 0; y < n; ++y) {
             const uint8_t v = b.at(x, y);
-            if (v == BLACK || v == WHITE) stones[nstones++] = uint16_t(Board::index(x, y));
+            if (v == BLACK || v == WHITE)
+                stones[nstones++] = uint16_t(Board::index(x, y));
         }
 
     int nm = 0;
@@ -235,21 +226,13 @@ int gen_node_moves(Board& b, int color, NMove* out,
                 if (black_mover && b.is_no_liberty(idx)) continue;  // 黑自杀
                 const int p4 = b.cached_pattern4_black(idx);
                 if (p4 == A_FIVE) {
-                    bfive[n5++] = uint16_t(idx);
-                    if (black_mover) continue;          // 成五点由静态杀直接返回
-                } else if (p4 == B_FLEX4) {
-                    bflex4[nf4++] = uint16_t(idx);
-                } else if (p4 == C_BLOCK4_FLEX3) {
-                    bc43[nc43++] = uint16_t(idx);
+                    if (n5 < MAX_MOVES) bfive[n5++] = uint16_t(idx);
+                    if (black_mover) continue;      // 成五点由静态杀直接返回
                 }
-                int tier;
-                if (black_mover) {
-                    if (p4 == FORBID && check_forbidden(b, nx, ny)) continue;
-                    tier = tier_of_p4(p4, b, idx);
-                } else {
-                    tier = tier_of_p4(p4, b, idx);      // 白：黑 p4 越强越先堵
-                }
-                if (nm < MAX_MOVES) out[nm++] = NMove{uint16_t(idx), int8_t(tier)};
+                if (black_mover && p4 == FORBID && check_forbidden(b, nx, ny))
+                    continue;                       // 真禁手
+                if (nm < MAX_MOVES)
+                    out[nm++] = NMove{uint16_t(idx), int8_t(tier_of_p4(p4, b, idx))};
             }
     }
     if (nstones == 0) {
@@ -266,62 +249,10 @@ int gen_node_moves(Board& b, int color, NMove* out,
 }
 
 // ---------------------------------------------------------------------------
-// 静态杀判定（吃子感知）
+// 静态杀判定：唯一保留“轮黑有成五点 → MATE”（无条件健全：成五立即终局）。
 // ---------------------------------------------------------------------------
-// 返回走子方视角的 MATE 级分值；0 = 无结论。
-int64_t quick_win(Board& b, int color, int ply,
-                  const uint16_t* bfive, int n5,
-                  const uint16_t* bflex4, int nf4,
-                  const uint16_t* bc43, int nc43) {
-    if (color == BLACK) {
-        if (n5 > 0) return MATE - ply - 1;              // 成五立即终局，无条件
-        for (int i = 0; i < nf4; ++i) {
-            const int idx = bflex4[i];
-            if (black_group_libs_ge_after(b, idx / MAX_BOARD, idx % MAX_BOARD, 3))
-                return MATE - ply - 3;                  // 活四 + 石块不被一手提
-        }
-        for (int i = 0; i < nc43; ++i) {
-            const int idx = bc43[i];
-            const int qx = idx / MAX_BOARD, qy = idx % MAX_BOARD;
-            if (!black_group_libs_ge_after(b, qx, qy, 3)) continue;
-            // 四三：黑落 q 后活三方向需有合法成活四点，且其组气 >= 3。
-            bool ok = false;
-            if (b.make_move(qx, qy, BLACK)) {
-                static const int DX[4] = {1, 0, 1, 1}, DY[4] = {0, 1, 1, -1};
-                const int qidx = Board::index(qx, qy);
-                for (int d = 0; d < 4 && !ok; ++d) {
-                    const uint8_t p = b.cached_pattern(0, qidx, d);
-                    if (p != F3 && p != F3S) continue;
-                    for (int s = -4; s <= 4 && !ok; ++s) {
-                        if (s == 0) continue;
-                        const int nx = qx + s * DX[d], ny = qy + s * DY[d];
-                        if (!b.in_bounds(nx, ny)) continue;
-                        if (b.at(nx, ny) != EMPTY) continue;
-                        const int nidx = Board::index(nx, ny);
-                        if (b.is_no_liberty(nidx)) continue;
-                        if (b.cached_pattern(0, nidx, d) != F4) continue;
-                        if (b.cached_pattern4_black(nidx) == FORBID &&
-                            check_forbidden(b, nx, ny))
-                            continue;                   // 假活四（Rapfi isFakeCMove）
-                        if (!black_group_libs_ge(b, nx, ny, 3)) continue;
-                        ok = true;
-                    }
-                }
-                b.undo_move();
-            }
-            if (ok) return MATE - ply - 5;
-        }
-    } else {
-        if (n5 >= 2) {
-            bool all_safe = true;
-            for (int i = 0; i < n5 && all_safe; ++i) {
-                const int idx = bfive[i];
-                if (!five_point_group_libs_ge(b, idx / MAX_BOARD, idx % MAX_BOARD, 3))
-                    all_safe = false;
-            }
-            if (all_safe) return -(MATE - ply - 2);     // 双成五点且都不可提 → 白必败
-        }
-    }
+inline int64_t quick_win(int color, int ply, int n5) {
+    if (color == BLACK && n5 > 0) return MATE - ply - 1;
     return 0;
 }
 
@@ -332,72 +263,41 @@ int64_t node_dfs(Board& b, int depth, int64_t alpha, int64_t beta, int ply,
                  Ctx& ctx);
 int64_t vcf_attack(Board& b, int64_t alpha, int64_t beta, int ply, Ctx& ctx);
 
-// 守方节点（轮白）：黑有成五点时只搜“堵成五点 + 1 气四石块提子”；无威胁 stand-pat。
-// 健全性：成五点存在时，其余白应手既不堵成五点也不提走四石块 → 黑下一手成五，
-// 价值不高于这里的应手，因此只搜这些应手不损失证明健全性。
+// 守方节点（轮白）：黑有成五点时只搜“堵成五点 ∪ 四子 1 气组的提子点”；
+// 无威胁 stand-pat。健全性：成五点存在时，其余白应手既不堵成五点也不提走
+// 破坏四子的石块 → 黑下一手成五，价值不高于这里应手的下界。
 int64_t vcf_defend(Board& b, int64_t alpha, int64_t beta, int ply, Ctx& ctx) {
     if (ctx_check(ctx)) return 0;
     if (ply >= MAX_PLY) return stm_score(b, ctx.winmode);
 
-    uint16_t bfive[MAX_MOVES], bflex4[MAX_MOVES], bc43[MAX_MOVES];
-    int n5, nf4, nc43;
+    uint16_t bfive[MAX_MOVES];
+    int n5;
     {
         NMove mv[MAX_MOVES];
-        const int nm = gen_node_moves(b, WHITE, mv, bfive, n5, bflex4, nf4, bc43, nc43);
+        const int nm = gen_node_moves(b, WHITE, mv, bfive, n5);
         (void)nm;
     }
 
     if (n5 == 0) return stm_score(b, ctx.winmode);      // 无成五威胁：不受迫
     {
-        const int64_t qw = quick_win(b, WHITE, ply, bfive, n5, bflex4, nf4, bc43, nc43);
-        if (qw != 0) return qw;                         // 双成五且都不可提 → 白必败
+        const int64_t qw = quick_win(WHITE, ply, n5);
+        if (qw != 0) return qw;                         // 白无成五能力，恒 0（防御）
     }
 
-    // 应手清单：全部成五点 ∪ 1 气四石块的提子点（n5>=2 但有石块可提时，
-    // 提子是唯一可能存活的防御，必须纳入）。
-    uint16_t defenses[16];
+    // 应手清单：全部成五点 ∪ 四子中 1 气正交组的提子点（白提走任一四子即破四，
+    // 斜向四子的石块分属不同组，必须逐石子组检查）。
+    uint16_t defenses[32];
     int nd = 0;
-    static const int DX[4] = {1, 0, 1, 1}, DY[4] = {0, 1, 1, -1};
-    for (int i = 0; i < n5 && nd < 16; ++i) {
+    uint8_t visited[MAX_CELLS];
+    std::memset(visited, 0, sizeof(visited));
+    for (int i = 0; i < n5 && nd < 32; ++i) {
         const int idx = bfive[i];
         defenses[nd++] = uint16_t(idx);
-        if (five_point_group_libs_ge(b, idx / MAX_BOARD, idx % MAX_BOARD, 2))
-            continue;                                   // 石块 >= 2 气：提不了
-        // 1 气组：BFS 找它的唯一气点（提子防御）。
-        const int qx = idx / MAX_BOARD, qy = idx % MAX_BOARD;
-        for (int d = 0; d < 4 && nd < 16; ++d) {
-            if (b.cached_pattern(0, idx, d) != F5) continue;
-            for (int s = -4; s <= 4 && nd < 16; ++s) {
-                if (s == 0) continue;
-                const int nx = qx + s * DX[d], ny = qy + s * DY[d];
-                if (!b.in_bounds(nx, ny)) continue;
-                if (b.at(nx, ny) != BLACK) continue;
-                const int NX[4] = {1, -1, 0, 0}, NY[4] = {0, 0, 1, -1};
-                uint8_t vis[MAX_CELLS];
-                std::memset(vis, 0, sizeof(vis));
-                uint16_t st[MAX_CELLS];
-                int top = 0;
-                st[top++] = uint16_t(Board::index(nx, ny));
-                vis[st[0]] = 1;
-                while (top > 0 && nd < 16) {
-                    const int cur = st[--top];
-                    const int cx = cur / MAX_BOARD, cy = cur % MAX_BOARD;
-                    for (int t = 0; t < 4; ++t) {
-                        const int mx = cx + NX[t], my = cy + NY[t];
-                        if (!b.in_bounds(mx, my)) continue;
-                        const int mi = Board::index(mx, my);
-                        const uint8_t v2 = b.at(mx, my);
-                        if (v2 == BLACK) {
-                            if (!vis[mi]) { vis[mi] = 1; st[top++] = uint16_t(mi); }
-                        } else if (v2 == EMPTY && !vis[mi]) {
-                            vis[mi] = 2;
-                            defenses[nd++] = uint16_t(mi);   // 提子点
-                        }
-                    }
-                }
-                s = 8;   // 该方向找到四子即止（同组）
-            }
-        }
+        uint16_t cap_lib = 0;
+        if (five_window_groups_libs_ge(b, idx / MAX_BOARD, idx % MAX_BOARD,
+                                       2, visited, &cap_lib))
+            continue;                                   // 所有相关组 >= 2 气：提不了
+        if (cap_lib != 0 && nd < 32) defenses[nd++] = cap_lib;
     }
 
     int64_t best = -INF_SCORE;
@@ -407,7 +307,7 @@ int64_t vcf_defend(Board& b, int64_t alpha, int64_t beta, int ply, Ctx& ctx) {
         if (!b.make_move(idx / MAX_BOARD, idx % MAX_BOARD, WHITE)) continue;
         int64_t v;
         if (b.white_wins_now(ctx.winmode)) {
-            v = MATE - ply - 1;                     // 白提光/封堵达成胜利
+            v = MATE - ply - 1;                         // 白提光/封堵达成胜利
         } else {
             v = -vcf_attack(b, -beta, -cur_alpha, ply + 1, ctx);
         }
@@ -421,18 +321,18 @@ int64_t vcf_defend(Board& b, int64_t alpha, int64_t beta, int ply, Ctx& ctx) {
     return best;
 }
 
-// 攻方节点（轮黑）：静态杀 → stand-pat → 只走成四手。
+// 攻方节点（轮黑）：静态杀 → stand-pat → 只走成四手（tier >= E_BLOCK4）。
 int64_t vcf_attack(Board& b, int64_t alpha, int64_t beta, int ply, Ctx& ctx) {
     if (ctx_check(ctx)) return 0;
     if (ply >= MAX_PLY) return stm_score(b, ctx.winmode);
 
     NMove mv[MAX_MOVES];
-    uint16_t bfive[MAX_MOVES], bflex4[MAX_MOVES], bc43[MAX_MOVES];
-    int n5, nf4, nc43;
-    const int nm = gen_node_moves(b, BLACK, mv, bfive, n5, bflex4, nf4, bc43, nc43);
+    uint16_t bfive[MAX_MOVES];
+    int n5;
+    const int nm = gen_node_moves(b, BLACK, mv, bfive, n5);
 
     {
-        const int64_t qw = quick_win(b, BLACK, ply, bfive, n5, bflex4, nf4, bc43, nc43);
+        const int64_t qw = quick_win(BLACK, ply, n5);
         if (qw != 0) return qw;
     }
 
@@ -457,7 +357,7 @@ int64_t vcf_attack(Board& b, int64_t alpha, int64_t beta, int ply, Ctx& ctx) {
         if (mv[i].tier < 9) break;                  // 只走成四手（E_BLOCK4 及以上）
         const int idx = mv[i].pos;
         if (!b.make_move(idx / MAX_BOARD, idx % MAX_BOARD, BLACK)) continue;
-        if (b.last_move_was_five()) {               // 成五点已由 quick_win 处理
+        if (b.last_move_was_five()) {               // 成五点已由静态杀处理
             b.undo_move();
             continue;
         }
@@ -495,7 +395,7 @@ int64_t node_dfs(Board& b, int depth, int64_t alpha, int64_t beta, int ply,
 
     if (ply >= MAX_PLY) return stm_score(b, ctx.winmode);
 
-    // depth <= 0：陷入 VCF 尾部（vcf_attack / vcf_defend 自带棋型扫描与静态杀）。
+    // depth <= 0：陷入 VCF 尾部。
     if (depth <= 0) {
         if (b.turn() == BLACK) return vcf_attack(b, alpha, beta, ply, ctx);
         return vcf_defend(b, alpha, beta, ply, ctx);
@@ -504,13 +404,12 @@ int64_t node_dfs(Board& b, int depth, int64_t alpha, int64_t beta, int ply,
     const int color = b.turn();
 
     NMove mv[MAX_MOVES];
-    uint16_t bfive[MAX_MOVES], bflex4[MAX_MOVES], bc43[MAX_MOVES];
-    int n5, nf4, nc43;
-    const int nm = gen_node_moves(b, color, mv, bfive, n5, bflex4, nf4, bc43, nc43);
+    uint16_t bfive[MAX_MOVES];
+    int n5;
+    const int nm = gen_node_moves(b, color, mv, bfive, n5);
 
-    // 静态杀判定（吃子感知）。
     {
-        const int64_t qw = quick_win(b, color, ply, bfive, n5, bflex4, nf4, bc43, nc43);
+        const int64_t qw = quick_win(color, ply, n5);
         if (qw != 0) return qw;
     }
 
