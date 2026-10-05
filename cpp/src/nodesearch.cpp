@@ -18,6 +18,8 @@
 #include "nodesearch.h"
 
 #include <algorithm>
+#include <cstdio>
+#include <cstdlib>
 #include <cassert>
 #include <chrono>
 #include <cstring>
@@ -313,6 +315,10 @@ int64_t vcf_defend(Board& b, int64_t alpha, int64_t beta, int ply, Ctx& ctx) {
         }
         b.undo_move();
         if (ctx.timeout) return 0;
+        if (getenv("NODESEARCH_TRACE") && (v >= MATE_BOUND || v <= -MATE_BOUND))
+            fprintf(stderr, "  tail-defend ply=%d defense=(%d,%d) v=%lld
+",
+                    ply, idx / MAX_BOARD, idx % MAX_BOARD, (long long)v);
         if (v > best) best = v;
         if (best > cur_alpha) cur_alpha = best;
         if (cur_alpha >= beta) break;
@@ -333,7 +339,10 @@ int64_t vcf_attack(Board& b, int64_t alpha, int64_t beta, int ply, Ctx& ctx) {
 
     {
         const int64_t qw = quick_win(BLACK, ply, n5);
-        if (qw != 0) return qw;
+        if (qw != 0) {
+            fprintf(stderr, "tail-attack ply=%d n5=%d QUICKWIN MATE\n", ply, n5);
+            return qw;
+        }
     }
 
     // TT 探测（VCF 层 depth 恒 0：只做同层截断与边界收窄）。
@@ -364,6 +373,10 @@ int64_t vcf_attack(Board& b, int64_t alpha, int64_t beta, int ply, Ctx& ctx) {
         const int64_t v = -vcf_defend(b, -beta, -alpha, ply + 1, ctx);
         b.undo_move();
         if (ctx.timeout) return 0;
+        if (getenv("NODESEARCH_TRACE") && (v >= MATE_BOUND || v <= -MATE_BOUND))
+            fprintf(stderr, "tail-attack ply=%d move=(%d,%d) v=%lld
+",
+                    ply, idx / MAX_BOARD, idx % MAX_BOARD, (long long)v);
         if (v > best) best = v;
         if (best > alpha) alpha = best;
         if (alpha >= beta) break;
@@ -397,6 +410,7 @@ int64_t node_dfs(Board& b, int depth, int64_t alpha, int64_t beta, int ply,
 
     // depth <= 0：陷入 VCF 尾部。
     if (depth <= 0) {
+        if (getenv("NODESEARCH_NO_VCF")) return stm_score(b, ctx.winmode);
         if (b.turn() == BLACK) return vcf_attack(b, alpha, beta, ply, ctx);
         return vcf_defend(b, alpha, beta, ply, ctx);
     }
@@ -470,6 +484,10 @@ int64_t node_dfs(Board& b, int depth, int64_t alpha, int64_t beta, int ply,
         b.undo_move();
         if (ctx.timeout) return 0;
         ++searched;
+        if (ply <= 6)
+            fprintf(stderr, "dfs ply=%d depth=%d color=%d move=(%d,%d) score=%lld\n",
+                    ply, depth, color, idx / MAX_BOARD, idx % MAX_BOARD,
+                    (long long)score);
 
         if (score > best) {
             best = score;
