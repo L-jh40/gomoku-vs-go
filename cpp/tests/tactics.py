@@ -213,7 +213,11 @@ def get_forbidden(eng: Engine) -> list:
 
 def run_candidates(eng: Engine, side: str, steps: int = 11,
                    max_sec: float = CAND_SEC) -> dict:
-    """发 candidates 命令，收 cand 行。返回 {'cands':[(x,y,tag,steps)], 'timeout':bool}。"""
+    """发 candidates 命令，收 cand 行。返回 {'cands':[(x,y,tag,steps)], 'timeout':bool}。
+
+    第 8 步起白方候选点无 W/L 标注：输出三列 `cand x y`（tag 记为 ''，steps=0）；
+    黑方候选仍是四列 `cand x y <W|L><k>`。两种都接受。
+    """
     eng.send("candidates %s %d %g" % (side, steps, max_sec))
     cands = []
     timeout = False
@@ -227,6 +231,9 @@ def run_candidates(eng: Engine, side: str, steps: int = 11,
         if ln == "error hash":
             raise RuntimeError("engine reported: error hash")
         parts = ln.split()
+        if len(parts) == 3 and parts[0] == "cand":
+            cands.append((int(parts[1]), int(parts[2]), "", 0))
+            continue
         if len(parts) != 4 or parts[0] != "cand":
             raise RuntimeError("unexpected candidates output line: %r" % ln)
         x, y, lab = int(parts[1]), int(parts[2]), parts[3]
