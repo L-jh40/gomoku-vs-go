@@ -100,6 +100,7 @@ inline int cell_index(int x, int y) { return Board::index(x, y); }
 inline int cell_x(int idx) { return idx / MAX_BOARD; }
 inline int cell_y(int idx) { return idx % MAX_BOARD; }
 
+#if 0  // ==== 封存（第 9 步）：旧单点威胁级别，W/L 标注改用逐节点搜索 ====
 // ===========================================================================
 // 2.1 单点威胁级别
 // ===========================================================================
@@ -125,6 +126,7 @@ AtkType attack_class(Board& b, int x, int y) {
     if (!b.is_empty(x, y)) return AtkType::NONE;
     return static_cast<AtkType>(attack_rank_at(b, x, y));
 }
+#endif  // ==== 封存结束：单点威胁级别 ====
 
 // 黑棋在该空点是否“不可落”：Rapfi 禁手（长连/四四/三三）或无气自杀。
 // 与 gen_moves 的黑方过滤条件一致（check_forbidden 本身不含自杀判定）。
@@ -1842,16 +1844,22 @@ AnalysisResult analyse(Board& b, int color, int max_steps, int winmode,
 #ifndef NDEBUG
     const uint64_t h0 = b.hash();
 #endif
+    (void)params;
+
+    // 第 9 步：W/L 标注改用逐节点证明搜索（rapfi 式，nodesearch.cpp）；
+    // 旧 AND-OR 证明搜索（defense_four/defense_three + prove_*_dfs）已封存。
+    const double deadline =
+        (time_limit_sec > 0.0) ? now_sec() + time_limit_sec : 0.0;
+    const int max_depth = std::max(2, 2 * std::max(1, max_steps));
+    bool tt_seeded = false;
+    bool any_timeout = false;
+    uint64_t total_nodes = 0;
 
     if (color == WHITE) {
-        // ---- 白棋威胁候选点（第 8 步）：威胁防御集交集，不做逐点 W/L 标注 ----
-        // 旧的三层 VCT 初筛与“最好一档”收窄已封存；候选点 = white_threat_candidates
-        // 的输出（tag=0），逐点证明搜索由后续的 rapfi 式逐节点搜索承担。
-        (void)max_steps;
-        (void)winmode;
-        (void)time_limit_sec;
-        (void)node_limit;
-        (void)params;
+        // ---- 白棋威胁候选点（第 8 步防御集交集）+ 第 9 步逐点 L 标注 ----
+        // 受约束候选池逐点做 node search：黑方被证明必胜 → L<k>（k = 白 1 手 +
+        // 黑成五步数）；证明不出 → 无标注（三列输出，宁可漏标不可错标）。
+        // 不受约束（legal:everywhere，全盘空点）逐点搜索代价过高 → 不标注。
         const WhiteCandidateReport rep = white_threat_candidates(b);
         res.labels.reserve(rep.candidates.size());
         for (size_t i = 0; i < rep.candidates.size(); ++i) {
@@ -1860,21 +1868,34 @@ AnalysisResult analyse(Board& b, int color, int max_steps, int winmode,
             lab.y = rep.candidates[i].second;
             lab.tag = 0;
             lab.steps = 0;
+            if (!rep.unconstrained && !any_timeout && b.make_move(lab.x, lab.y, WHITE)) {
+                const double remain =
+                    (deadline > 0.0) ? std::max(0.0, deadline - now_sec()) : 0.0;
+                NodeSearchResult r = node_search(
+                    b, max_depth, winmode, remain,
+                    node_limit > 0 ? std::min<long long>(node_limit, 200000) : 200000,
+                    /*clear_tt=*/!tt_seeded);
+                tt_seeded = true;
+                total_nodes += r.nodes;
+                if (r.timeout) any_timeout = true;
+                if (r.score >= MATE_BOUND) {
+                    lab.tag = 'L';
+                    lab.steps = static_cast<int>(MATE - r.score) + 1;
+                }
+                b.undo_move();
+            }
+            if (lab.tag != 0) ++res.paths_found;
             res.labels.push_back(lab);
         }
-        res.paths_found = static_cast<int>(rep.candidates.size());
+        res.nodes = static_cast<long long>(total_nodes);
+        res.timeout = any_timeout;
 #ifndef NDEBUG
         assert(b.hash() == h0);
 #endif
         return res;
     }
 
-    ProveCtx ctx;
-    ctx.node_limit = node_limit;
-    ctx.deadline = (time_limit_sec > 0.0) ? now_sec() + time_limit_sec : 0.0;
-    ProveTT tt;
-
-    // ---- 黑方：对 gen_moves(BLACK) 逐候选打 W/L（第 6 步语义不变） ----
+    // ---- 黑方：gen_moves 逐候选 node search W 标注（第 9 步） ----
     const std::vector<Move> cands = gen_moves(b, color);
     res.labels.reserve(cands.size());
     for (size_t i = 0; i < cands.size(); ++i) {
@@ -1884,7 +1905,7 @@ AnalysisResult analyse(Board& b, int color, int max_steps, int winmode,
         lab.tag = 0;
         lab.steps = 0;
 
-        if (!ctx.timeout && b.make_move(lab.x, lab.y, color)) {
+        if (!any_timeout && b.make_move(lab.x, lab.y, color)) {
             bool decided = false;
             if (color == BLACK && b.last_move_was_five()) {
                 lab.tag = 'W';          // 该手立即成五（1 手）
@@ -1894,24 +1915,20 @@ AnalysisResult analyse(Board& b, int color, int max_steps, int winmode,
                 decided = true;         // 此手之后白方已达成胜利条件
             }
             if (!decided && color == BLACK) {
-                // 迭代加深：m = 总黑攻击手数（含本手 c）。非威胁手有预算下界：
-                // 活三至少还要两手（三→四→五），四类至少还要一手。
-                const int cls = attack_rank_at(b, lab.x, lab.y);
-                const int lo = (cls == static_cast<int>(AtkType::OPEN_THREE))
-                                   ? 3
-                                   : ((cls == static_cast<int>(AtkType::OPEN_FOUR) ||
-                                       cls == static_cast<int>(AtkType::RUSH_FOUR))
-                                          ? 2
-                                          : 0);
-                for (int m = std::max(2, lo); m <= max_steps; ++m) {
-                    if (m < lo) continue;
-                    const bool win = prove_white_node(b, lab.x, lab.y, m - 1, &ctx, &tt);
-                    if (ctx.timeout) break;
-                    if (win) {
-                        lab.tag = 'W';
-                        lab.steps = 2 * m - 1;   // 黑第 m 手成五落在总第 2m-1 手
-                        break;
-                    }
+                // node search（白方视角根）：score <= -MATE_BOUND ⇒ 黑必胜，
+                // k = 黑候选 1 手 + 白 1 手 + 黑成五步数（奇数）。
+                const double remain =
+                    (deadline > 0.0) ? std::max(0.0, deadline - now_sec()) : 0.0;
+                NodeSearchResult r = node_search(
+                    b, max_depth, winmode, remain,
+                    node_limit > 0 ? std::min<long long>(node_limit, 200000) : 200000,
+                    /*clear_tt=*/!tt_seeded);
+                tt_seeded = true;
+                total_nodes += r.nodes;
+                if (r.timeout) any_timeout = true;
+                if (r.score <= -MATE_BOUND) {
+                    lab.tag = 'W';
+                    lab.steps = static_cast<int>(MATE + r.score) + 1;
                 }
             }
             b.undo_move();
@@ -1920,8 +1937,8 @@ AnalysisResult analyse(Board& b, int color, int max_steps, int winmode,
         res.labels.push_back(lab);
     }
 
-    res.nodes = ctx.nodes;
-    res.timeout = ctx.timeout;
+    res.nodes = static_cast<long long>(total_nodes);
+    res.timeout = any_timeout;
 #ifndef NDEBUG
     assert(b.hash() == h0);
 #endif
@@ -1929,7 +1946,7 @@ AnalysisResult analyse(Board& b, int color, int max_steps, int winmode,
 }
 
 // ===========================================================================
-// 2.10 包装：prove_black / vcf_exists / vct_exists
+// 2.10 包装：prove_black / vcf_exists / vct_exists（第 9 步改用 node search）
 // ===========================================================================
 ProveResult prove_black(Board& b, int max_steps, bool allow_three,
                         double time_sec, long long node_limit) {
@@ -1937,16 +1954,16 @@ ProveResult prove_black(Board& b, int max_steps, bool allow_three,
 #ifndef NDEBUG
     const uint64_t h0 = b.hash();
 #endif
-    ProveCtx ctx;
-    ctx.node_limit = node_limit;
-    ctx.deadline = (time_sec > 0.0) ? now_sec() + time_sec : 0.0;
-    ProveTT tt;
-    const bool win = prove_black_dfs(b, max_steps, allow_three, &ctx, &tt);
+    (void)allow_three;   // 逐节点搜索全宽覆盖三与四，无需区分
+    const int max_depth = std::max(2, 2 * std::max(1, max_steps));
+    const NodeSearchResult r = node_search(b, max_depth, /*winmode=*/0,
+                                           time_sec, node_limit,
+                                           /*clear_tt=*/true);
 #ifndef NDEBUG
     assert(b.hash() == h0);
 #endif
-    if (ctx.timeout) return ProveResult::TIMEOUT;
-    return win ? ProveResult::WIN : ProveResult::UNKNOWN;
+    if (r.timeout) return ProveResult::TIMEOUT;
+    return (r.score >= MATE_BOUND) ? ProveResult::WIN : ProveResult::UNKNOWN;
 }
 
 bool vcf_exists(Board& b, int max_steps) {
