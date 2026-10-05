@@ -238,7 +238,11 @@ int gen_node_moves(Board& b, int color, NMove* out, uint16_t* bfive, int& n5) {
 // 静态杀判定：唯一保留“轮黑有成五点 → MATE”（无条件健全：成五立即终局）。
 // ---------------------------------------------------------------------------
 inline int64_t quick_win(int color, int ply, int n5) {
-    if (color == BLACK && n5 > 0) return MATE - ply - 1;
+    if (color == BLACK && n5 > 0) {
+        if (ply >= 2 && getenv("NODESEARCH_DUMP5"))
+            fprintf(stderr, "==== five-point mate ply=%d n5=%d ====\n", ply, n5);
+        return MATE - ply - 1;
+    }
     return 0;
 }
 
