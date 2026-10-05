@@ -117,6 +117,7 @@ dfs ply=1 depth=1 color=2 move=(6,10) score=-1099511627773
 tail-attack ply=2 n5=2 QUICKWIN MATE
 dfs ply=1 depth=1 color=2 move=(7,10) score=-1099511627773
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(6,5) v=-1099511627771
 dfs ply=1 depth=1 color=2 move=(8,7) score=8587180037
 tail-attack ply=2 n5=2 QUICKWIN MATE
 dfs ply=1 depth=1 color=2 move=(8,9) score=-1099511627773
@@ -136,11 +137,13 @@ tail-attack ply=2 n5=2 QUICKWIN MATE
 dfs ply=1 depth=1 color=2 move=(9,10) score=-1099511627773
 dfs ply=0 depth=2 color=1 move=(7,7) score=-8587180037
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(3,3) v=-1099511627771
 dfs ply=1 depth=1 color=2 move=(3,6) score=8587180096
 dfs ply=0 depth=2 color=1 move=(2,6) score=-8587180096
 dfs ply=1 depth=1 color=2 move=(7,7) score=8589277185
 dfs ply=0 depth=2 color=1 move=(3,3) score=-8589277185
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(3,3) v=-1099511627771
 dfs ply=1 depth=1 color=2 move=(2,6) score=8587311168
 dfs ply=0 depth=2 color=1 move=(3,6) score=-8587311168
 dfs ply=1 depth=1 color=2 move=(7,7) score=8589277248
@@ -214,29 +217,52 @@ dfs ply=1 depth=1 color=2 move=(9,8) score=8582983744
 dfs ply=1 depth=1 color=2 move=(9,9) score=8582983744
 dfs ply=1 depth=1 color=2 move=(9,10) score=8582983744
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(3,3) v=-1099511627771
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(6,5) v=-1099511627769
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(8,8) v=-1099511627771
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(3,3) v=-1099511627769
 tail-attack ply=8 n5=1 QUICKWIN MATE
+  tail-defend ply=7 defense=(3,3) v=-1099511627767
 tail-attack ply=8 n5=1 QUICKWIN MATE
+  tail-defend ply=7 defense=(3,3) v=-1099511627767
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(3,3) v=-1099511627769
 tail-attack ply=8 n5=1 QUICKWIN MATE
+  tail-defend ply=7 defense=(3,3) v=-1099511627767
 tail-attack ply=8 n5=1 QUICKWIN MATE
+  tail-defend ply=7 defense=(3,3) v=-1099511627767
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(3,3) v=-1099511627769
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(3,3) v=-1099511627769
 dfs ply=1 depth=1 color=2 move=(4,3) score=8586653760
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(3,3) v=-1099511627771
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(3,3) v=-1099511627769
 tail-attack ply=8 n5=1 QUICKWIN MATE
+  tail-defend ply=7 defense=(3,3) v=-1099511627767
 tail-attack ply=8 n5=1 QUICKWIN MATE
+  tail-defend ply=7 defense=(3,3) v=-1099511627767
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(3,3) v=-1099511627769
 tail-attack ply=8 n5=1 QUICKWIN MATE
+  tail-defend ply=7 defense=(3,3) v=-1099511627767
 tail-attack ply=8 n5=1 QUICKWIN MATE
+  tail-defend ply=7 defense=(3,3) v=-1099511627767
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(3,3) v=-1099511627769
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(3,3) v=-1099511627769
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(3,3) v=-1099511627771
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(6,5) v=-1099511627769
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(8,8) v=-1099511627771
 dfs ply=1 depth=1 color=2 move=(4,7) score=8586981440
 dfs ply=1 depth=1 color=2 move=(7,7) score=8585080896
 dfs ply=1 depth=1 color=2 move=(2,6) score=8583049280
@@ -306,32 +332,53 @@ dfs ply=1 depth=1 color=2 move=(9,9) score=8582983744
 dfs ply=1 depth=1 color=2 move=(9,10) score=8582983744
 dfs ply=0 depth=2 color=1 move=(4,5) score=-8586981440
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(3,3) v=-1099511627771
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(3,3) v=-1099511627769
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(3,3) v=-1099511627769
 dfs ply=1 depth=1 color=2 move=(4,5) score=8587046976
 dfs ply=0 depth=2 color=1 move=(4,7) score=-8587046976
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(3,3) v=-1099511627771
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(6,5) v=-1099511627769
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(8,8) v=-1099511627771
 dfs ply=1 depth=1 color=2 move=(5,4) score=8585342977
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(7,7) score=-1099511627771
 dfs ply=1 depth=1 color=2 move=(2,6) score=8585279492
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(3,3) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(3,3) v=-1099511627771
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(6,5) v=-1099511627769
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(8,8) v=-1099511627771
 dfs ply=1 depth=1 color=2 move=(5,7) score=8585279552
 dfs ply=1 depth=1 color=2 move=(3,6) score=8585148480
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(3,3) v=-1099511627771
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(6,5) v=-1099511627769
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(8,8) v=-1099511627771
 dfs ply=1 depth=1 color=2 move=(5,2) score=8585214016
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(8,8) score=-1099511627771
 dfs ply=1 depth=1 color=2 move=(3,5) score=8585277504
 dfs ply=1 depth=1 color=2 move=(4,3) score=8585211907
@@ -398,304 +445,850 @@ dfs ply=1 depth=1 color=2 move=(9,8) score=8585082944
 dfs ply=1 depth=1 color=2 move=(9,9) score=8585082944
 dfs ply=1 depth=1 color=2 move=(9,10) score=8585082944
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(3,3) v=-1099511627771
 tail-attack ply=8 n5=1 QUICKWIN MATE
+  tail-defend ply=7 defense=(1,7) v=-1099511627767
 tail-attack ply=8 n5=1 QUICKWIN MATE
+  tail-defend ply=7 defense=(6,2) v=-1099511627767
+tail-attack ply=6 move=(3,5) v=1099511627767
+  tail-defend ply=5 defense=(3,6) v=-1099511627767
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(6,5) v=-1099511627769
+tail-attack ply=4 move=(2,6) v=1099511627767
+  tail-defend ply=3 defense=(8,7) v=-1099511627767
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(8,8) v=-1099511627771
+tail-attack ply=2 move=(7,7) v=1099511627767
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(1,7) v=-1099511627769
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(6,2) v=-1099511627769
+tail-attack ply=4 move=(3,5) v=1099511627769
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(3,3) v=-1099511627769
+tail-attack ply=4 move=(7,7) v=1099511627769
 tail-attack ply=8 n5=1 QUICKWIN MATE
+  tail-defend ply=7 defense=(1,7) v=-1099511627767
+tail-attack ply=6 move=(3,5) v=1099511627767
+  tail-defend ply=5 defense=(7,7) v=-1099511627767
+tail-attack ply=4 move=(3,3) v=1099511627767
 tail-attack ply=8 n5=1 QUICKWIN MATE
+  tail-defend ply=7 defense=(3,3) v=-1099511627767
+tail-attack ply=6 move=(7,7) v=1099511627767
+  tail-defend ply=5 defense=(3,5) v=-1099511627767
+tail-attack ply=4 move=(1,7) v=1099511627767
 tail-attack ply=8 n5=1 QUICKWIN MATE
+  tail-defend ply=7 defense=(3,3) v=-1099511627767
+tail-attack ply=6 move=(7,7) v=1099511627767
 tail-attack ply=10 n5=1 QUICKWIN MATE
+  tail-defend ply=9 defense=(3,3) v=-1099511627765
+tail-attack ply=8 move=(7,7) v=1099511627765
+  tail-defend ply=7 defense=(8,0) v=-1099511627765
+tail-attack ply=6 move=(7,1) v=1099511627765
 tail-attack ply=10 n5=1 QUICKWIN MATE
+  tail-defend ply=9 defense=(3,3) v=-1099511627765
+tail-attack ply=8 move=(7,7) v=1099511627765
+  tail-defend ply=7 defense=(7,1) v=-1099511627765
+tail-attack ply=6 move=(8,0) v=1099511627765
+  tail-defend ply=5 defense=(3,5) v=-1099511627767
+tail-attack ply=4 move=(6,2) v=1099511627767
 tail-attack ply=8 n5=1 QUICKWIN MATE
+  tail-defend ply=7 defense=(1,7) v=-1099511627767
+tail-attack ply=6 move=(3,5) v=1099511627767
+  tail-defend ply=5 defense=(7,7) v=-1099511627767
+tail-attack ply=4 move=(8,8) v=1099511627767
+  tail-defend ply=3 defense=(3,6) v=-1099511627769
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(6,5) v=-1099511627771
+tail-attack ply=2 move=(2,6) v=1099511627769
+  tail-defend ply=5 defense=(3,6) v=-1099511627767
+tail-attack ply=4 move=(2,6) v=1099511627767
+  tail-defend ply=3 defense=(7,7) v=-1099511627767
+tail-attack ply=2 move=(3,3) v=1099511627767
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(3,3) v=-1099511627769
+tail-attack ply=4 move=(7,7) v=1099511627769
+  tail-defend ply=3 defense=(2,6) v=-1099511627769
+tail-attack ply=2 move=(3,6) v=1099511627769
+  tail-defend ply=5 defense=(3,6) v=-1099511627767
+tail-attack ply=4 move=(2,6) v=1099511627767
+  tail-defend ply=3 defense=(7,7) v=-1099511627767
+tail-attack ply=2 move=(8,8) v=1099511627767
 dfs ply=1 depth=1 color=2 move=(5,4) score=-1099511627769
 dfs ply=1 depth=1 color=2 move=(7,7) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(2,6) score=-1099511627771
 dfs ply=1 depth=1 color=2 move=(3,3) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(3,3) v=-1099511627771
 tail-attack ply=8 n5=1 QUICKWIN MATE
+  tail-defend ply=7 defense=(1,7) v=-1099511627767
+tail-attack ply=6 move=(3,5) v=1099511627767
 tail-attack ply=10 n5=1 QUICKWIN MATE
+  tail-defend ply=9 defense=(1,7) v=-1099511627765
+tail-attack ply=8 move=(3,5) v=1099511627765
+  tail-defend ply=7 defense=(5,2) v=-1099511627765
+tail-attack ply=6 move=(5,4) v=1099511627765
 tail-attack ply=10 n5=1 QUICKWIN MATE
+  tail-defend ply=9 defense=(1,7) v=-1099511627765
+tail-attack ply=8 move=(3,5) v=1099511627765
+  tail-defend ply=7 defense=(5,4) v=-1099511627765
+tail-attack ply=6 move=(5,2) v=1099511627765
+  tail-defend ply=5 defense=(3,6) v=-1099511627767
+tail-attack ply=4 move=(2,6) v=1099511627767
+  tail-defend ply=7 defense=(3,6) v=-1099511627765
+tail-attack ply=6 move=(2,6) v=1099511627765
+  tail-defend ply=5 defense=(5,2) v=-1099511627765
+tail-attack ply=4 move=(5,4) v=1099511627765
+  tail-defend ply=7 defense=(3,6) v=-1099511627765
+tail-attack ply=6 move=(2,6) v=1099511627765
+  tail-defend ply=5 defense=(5,4) v=-1099511627765
+tail-attack ply=4 move=(5,2) v=1099511627765
+  tail-defend ply=3 defense=(8,7) v=-1099511627767
+tail-attack ply=2 move=(7,7) v=1099511627767
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(1,7) v=-1099511627769
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(6,2) v=-1099511627769
+tail-attack ply=4 move=(3,5) v=1099511627769
+  tail-defend ply=3 defense=(3,6) v=-1099511627769
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(6,5) v=-1099511627771
+tail-attack ply=2 move=(2,6) v=1099511627769
 dfs ply=1 depth=1 color=2 move=(5,7) score=-1099511627769
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(3,6) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(3,3) v=-1099511627771
 tail-attack ply=8 n5=1 QUICKWIN MATE
+  tail-defend ply=7 defense=(1,7) v=-1099511627767
+tail-attack ply=6 move=(3,5) v=1099511627767
+  tail-defend ply=7 defense=(5,7) v=-1099511627765
+tail-attack ply=6 move=(5,4) v=1099511627765
 tail-attack ply=10 n5=1 QUICKWIN MATE
+  tail-defend ply=9 defense=(1,7) v=-1099511627765
+tail-attack ply=8 move=(3,5) v=1099511627765
 tail-attack ply=12 n5=1 QUICKWIN MATE
+  tail-defend ply=11 defense=(1,7) v=-1099511627763
+tail-attack ply=10 move=(3,5) v=1099511627763
+  tail-defend ply=9 defense=(5,8) v=-1099511627763
+tail-attack ply=8 move=(5,9) v=1099511627763
 tail-attack ply=12 n5=1 QUICKWIN MATE
+  tail-defend ply=11 defense=(1,7) v=-1099511627763
+tail-attack ply=10 move=(3,5) v=1099511627763
+  tail-defend ply=9 defense=(5,9) v=-1099511627763
+tail-attack ply=8 move=(5,8) v=1099511627763
+  tail-defend ply=7 defense=(5,4) v=-1099511627765
+tail-attack ply=6 move=(5,7) v=1099511627765
+  tail-defend ply=5 defense=(3,6) v=-1099511627767
+tail-attack ply=4 move=(2,6) v=1099511627767
+  tail-defend ply=5 defense=(5,7) v=-1099511627765
+tail-attack ply=4 move=(5,4) v=1099511627765
+  tail-defend ply=7 defense=(3,6) v=-1099511627765
+tail-attack ply=6 move=(2,6) v=1099511627765
+  tail-defend ply=9 defense=(3,6) v=-1099511627763
+tail-attack ply=8 move=(2,6) v=1099511627763
+  tail-defend ply=7 defense=(5,9) v=-1099511627763
+tail-attack ply=6 move=(5,8) v=1099511627763
+  tail-defend ply=9 defense=(3,6) v=-1099511627763
+tail-attack ply=8 move=(2,6) v=1099511627763
+  tail-defend ply=7 defense=(5,8) v=-1099511627763
+tail-attack ply=6 move=(5,9) v=1099511627763
+  tail-defend ply=5 defense=(5,4) v=-1099511627765
+tail-attack ply=4 move=(5,7) v=1099511627765
+  tail-defend ply=3 defense=(8,7) v=-1099511627767
+tail-attack ply=2 move=(7,7) v=1099511627767
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(1,7) v=-1099511627769
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(6,2) v=-1099511627769
+tail-attack ply=4 move=(3,5) v=1099511627769
+  tail-defend ply=3 defense=(3,6) v=-1099511627769
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(6,5) v=-1099511627771
+tail-attack ply=2 move=(2,6) v=1099511627769
 dfs ply=1 depth=1 color=2 move=(5,2) score=-1099511627769
 dfs ply=1 depth=1 color=2 move=(8,8) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(3,5) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(4,3) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(4,5) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(4,7) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(6,4) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(7,3) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(2,8) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(3,7) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(6,2) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(7,1) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(4,2) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(4,8) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(2,4) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(6,5) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(7,4) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(7,5) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(5,8) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(5,9) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(1,3) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(1,4) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(2,3) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(2,5) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(3,1) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(3,4) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(3,8) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(6,3) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(6,8) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(7,9) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(8,4) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(8,5) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(8,6) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(0,0) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(0,1) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(0,2) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(0,3) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(0,4) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(1,0) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(1,1) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(1,2) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(2,0) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(2,1) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(2,7) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(3,0) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(3,2) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(4,0) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(4,1) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(4,9) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(5,1) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(5,10) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(6,1) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(6,9) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(6,10) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(7,2) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(7,10) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(8,7) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(8,9) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(8,10) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(9,4) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(9,5) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(9,6) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(9,7) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(9,8) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(9,9) score=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,2) v=-1099511627771
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(5,7) v=-1099511627771
+tail-attack ply=2 move=(5,4) v=1099511627771
 dfs ply=1 depth=1 color=2 move=(9,10) score=-1099511627771
 dfs ply=0 depth=2 color=1 move=(5,3) score=1099511627769
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(3,3) v=-1099511627771
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(3,3) v=-1099511627769
+tail-attack ply=4 move=(7,7) v=1099511627769
 tail-attack ply=8 n5=1 QUICKWIN MATE
+  tail-defend ply=7 defense=(3,3) v=-1099511627767
+tail-attack ply=6 move=(7,7) v=1099511627767
+  tail-defend ply=5 defense=(5,8) v=-1099511627767
+tail-attack ply=4 move=(5,7) v=1099511627767
 tail-attack ply=8 n5=1 QUICKWIN MATE
+  tail-defend ply=7 defense=(3,3) v=-1099511627767
+tail-attack ply=6 move=(7,7) v=1099511627767
+  tail-defend ply=5 defense=(5,7) v=-1099511627767
+tail-attack ply=4 move=(5,8) v=1099511627767
+  tail-defend ply=3 defense=(2,6) v=-1099511627769
+tail-attack ply=2 move=(3,6) v=1099511627769
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(3,3) v=-1099511627769
+tail-attack ply=4 move=(7,7) v=1099511627769
+  tail-defend ply=5 defense=(2,6) v=-1099511627767
+tail-attack ply=4 move=(3,6) v=1099511627767
 tail-attack ply=8 n5=1 QUICKWIN MATE
+  tail-defend ply=7 defense=(3,3) v=-1099511627767
+tail-attack ply=6 move=(7,7) v=1099511627767
+  tail-defend ply=5 defense=(3,6) v=-1099511627767
+tail-attack ply=4 move=(2,6) v=1099511627767
+  tail-defend ply=3 defense=(5,8) v=-1099511627769
+tail-attack ply=2 move=(5,7) v=1099511627769
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(3,3) v=-1099511627769
+tail-attack ply=4 move=(7,7) v=1099511627769
+  tail-defend ply=5 defense=(5,8) v=-1099511627767
+tail-attack ply=4 move=(5,7) v=1099511627767
 tail-attack ply=8 n5=1 QUICKWIN MATE
+  tail-defend ply=7 defense=(3,3) v=-1099511627767
+tail-attack ply=6 move=(7,7) v=1099511627767
+  tail-defend ply=5 defense=(5,7) v=-1099511627767
+tail-attack ply=4 move=(5,8) v=1099511627767
+  tail-defend ply=3 defense=(3,6) v=-1099511627769
+tail-attack ply=2 move=(2,6) v=1099511627769
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(3,3) v=-1099511627769
+tail-attack ply=4 move=(7,7) v=1099511627769
+  tail-defend ply=5 defense=(2,6) v=-1099511627767
+tail-attack ply=4 move=(3,6) v=1099511627767
+  tail-defend ply=5 defense=(3,6) v=-1099511627767
+tail-attack ply=4 move=(2,6) v=1099511627767
+  tail-defend ply=3 defense=(5,7) v=-1099511627769
+tail-attack ply=2 move=(5,8) v=1099511627769
 dfs ply=1 depth=1 color=2 move=(5,3) score=-1099511627769
 dfs ply=0 depth=2 color=1 move=(5,4) score=1099511627769
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(3,3) v=-1099511627771
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(3,3) v=-1099511627769
+tail-attack ply=4 move=(7,7) v=1099511627769
 tail-attack ply=8 n5=1 QUICKWIN MATE
+  tail-defend ply=7 defense=(3,3) v=-1099511627767
+tail-attack ply=6 move=(7,7) v=1099511627767
+  tail-defend ply=5 defense=(5,8) v=-1099511627767
+tail-attack ply=4 move=(5,9) v=1099511627767
 tail-attack ply=8 n5=1 QUICKWIN MATE
+  tail-defend ply=7 defense=(3,3) v=-1099511627767
+tail-attack ply=6 move=(7,7) v=1099511627767
+  tail-defend ply=5 defense=(5,9) v=-1099511627767
+tail-attack ply=4 move=(5,8) v=1099511627767
+  tail-defend ply=3 defense=(3,6) v=-1099511627769
+tail-attack ply=2 move=(2,6) v=1099511627769
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(3,3) v=-1099511627769
+tail-attack ply=4 move=(7,7) v=1099511627769
 tail-attack ply=8 n5=1 QUICKWIN MATE
+  tail-defend ply=7 defense=(3,3) v=-1099511627767
+tail-attack ply=6 move=(7,7) v=1099511627767
+  tail-defend ply=5 defense=(5,9) v=-1099511627767
+tail-attack ply=4 move=(5,8) v=1099511627767
 tail-attack ply=8 n5=1 QUICKWIN MATE
+  tail-defend ply=7 defense=(3,3) v=-1099511627767
+tail-attack ply=6 move=(7,7) v=1099511627767
+  tail-defend ply=5 defense=(5,8) v=-1099511627767
+tail-attack ply=4 move=(5,9) v=1099511627767
+  tail-defend ply=3 defense=(2,6) v=-1099511627769
+tail-attack ply=2 move=(3,6) v=1099511627769
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(3,3) v=-1099511627769
+tail-attack ply=4 move=(7,7) v=1099511627769
+  tail-defend ply=5 defense=(3,6) v=-1099511627767
+tail-attack ply=4 move=(2,6) v=1099511627767
+  tail-defend ply=5 defense=(2,6) v=-1099511627767
+tail-attack ply=4 move=(3,6) v=1099511627767
+  tail-defend ply=3 defense=(5,9) v=-1099511627769
+tail-attack ply=2 move=(5,8) v=1099511627769
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(3,3) v=-1099511627769
+tail-attack ply=4 move=(7,7) v=1099511627769
+  tail-defend ply=5 defense=(3,6) v=-1099511627767
+tail-attack ply=4 move=(2,6) v=1099511627767
+  tail-defend ply=5 defense=(2,6) v=-1099511627767
+tail-attack ply=4 move=(3,6) v=1099511627767
+  tail-defend ply=3 defense=(5,8) v=-1099511627769
+tail-attack ply=2 move=(5,9) v=1099511627769
 dfs ply=1 depth=1 color=2 move=(5,4) score=-1099511627769
 dfs ply=0 depth=2 color=1 move=(5,7) score=1099511627769
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(3,3) v=-1099511627771
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(3,3) v=-1099511627769
+tail-attack ply=4 move=(7,7) v=1099511627769
 tail-attack ply=8 n5=1 QUICKWIN MATE
+  tail-defend ply=7 defense=(3,3) v=-1099511627767
+tail-attack ply=6 move=(7,7) v=1099511627767
+  tail-defend ply=5 defense=(8,2) v=-1099511627767
+tail-attack ply=4 move=(7,3) v=1099511627767
 tail-attack ply=8 n5=1 QUICKWIN MATE
+  tail-defend ply=7 defense=(3,3) v=-1099511627767
+tail-attack ply=6 move=(7,7) v=1099511627767
+  tail-defend ply=5 defense=(7,3) v=-1099511627767
+tail-attack ply=4 move=(8,2) v=1099511627767
+  tail-defend ply=3 defense=(3,6) v=-1099511627769
+tail-attack ply=2 move=(2,6) v=1099511627769
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(3,3) v=-1099511627769
+tail-attack ply=4 move=(7,7) v=1099511627769
 tail-attack ply=8 n5=1 QUICKWIN MATE
+  tail-defend ply=7 defense=(3,3) v=-1099511627767
+tail-attack ply=6 move=(7,7) v=1099511627767
+  tail-defend ply=5 defense=(8,2) v=-1099511627767
+tail-attack ply=4 move=(7,3) v=1099511627767
 tail-attack ply=8 n5=1 QUICKWIN MATE
+  tail-defend ply=7 defense=(3,3) v=-1099511627767
+tail-attack ply=6 move=(7,7) v=1099511627767
+  tail-defend ply=5 defense=(7,3) v=-1099511627767
+tail-attack ply=4 move=(8,2) v=1099511627767
+  tail-defend ply=3 defense=(2,6) v=-1099511627769
+tail-attack ply=2 move=(3,6) v=1099511627769
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(3,3) v=-1099511627769
+tail-attack ply=4 move=(7,7) v=1099511627769
+  tail-defend ply=5 defense=(3,6) v=-1099511627767
+tail-attack ply=4 move=(2,6) v=1099511627767
+  tail-defend ply=5 defense=(2,6) v=-1099511627767
+tail-attack ply=4 move=(3,6) v=1099511627767
+  tail-defend ply=3 defense=(8,2) v=-1099511627769
+tail-attack ply=2 move=(7,3) v=1099511627769
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(3,3) v=-1099511627769
+tail-attack ply=4 move=(7,7) v=1099511627769
+  tail-defend ply=5 defense=(3,6) v=-1099511627767
+tail-attack ply=4 move=(2,6) v=1099511627767
+  tail-defend ply=5 defense=(2,6) v=-1099511627767
+tail-attack ply=4 move=(3,6) v=1099511627767
+  tail-defend ply=3 defense=(7,3) v=-1099511627769
+tail-attack ply=2 move=(8,2) v=1099511627769
 dfs ply=1 depth=1 color=2 move=(3,7) score=-1099511627769
 dfs ply=0 depth=2 color=1 move=(6,4) score=1099511627769
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(3,3) v=-1099511627771
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(3,3) v=-1099511627769
+tail-attack ply=4 move=(7,7) v=1099511627769
+  tail-defend ply=3 defense=(3,6) v=-1099511627769
+tail-attack ply=2 move=(2,6) v=1099511627769
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(3,3) v=-1099511627769
+tail-attack ply=4 move=(7,7) v=1099511627769
+  tail-defend ply=3 defense=(2,6) v=-1099511627769
+tail-attack ply=2 move=(3,6) v=1099511627769
 dfs ply=1 depth=1 color=2 move=(3,7) score=-1099511627769
 dfs ply=0 depth=2 color=1 move=(2,8) score=1099511627769
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(3,3) v=-1099511627771
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(3,3) v=-1099511627769
+tail-attack ply=4 move=(7,7) v=1099511627769
 tail-attack ply=8 n5=1 QUICKWIN MATE
+  tail-defend ply=7 defense=(3,3) v=-1099511627767
+tail-attack ply=6 move=(7,7) v=1099511627767
+  tail-defend ply=5 defense=(7,3) v=-1099511627767
+tail-attack ply=4 move=(6,4) v=1099511627767
 tail-attack ply=8 n5=1 QUICKWIN MATE
+  tail-defend ply=7 defense=(3,3) v=-1099511627767
+tail-attack ply=6 move=(7,7) v=1099511627767
+  tail-defend ply=5 defense=(6,4) v=-1099511627767
+tail-attack ply=4 move=(7,3) v=1099511627767
+  tail-defend ply=3 defense=(3,6) v=-1099511627769
+tail-attack ply=2 move=(2,6) v=1099511627769
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(3,3) v=-1099511627769
+tail-attack ply=4 move=(7,7) v=1099511627769
 tail-attack ply=12 n5=1 QUICKWIN MATE
+  tail-defend ply=11 defense=(2,4) v=-1099511627763
+tail-attack ply=10 move=(5,4) v=1099511627763
+  tail-defend ply=9 defense=(7,3) v=-1099511627763
+tail-attack ply=8 move=(6,4) v=1099511627763
+  tail-defend ply=7 defense=(3,5) v=-1099511627763
+tail-attack ply=6 move=(3,4) v=1099511627763
+  tail-defend ply=9 defense=(3,5) v=-1099511627763
+tail-attack ply=8 move=(3,4) v=1099511627763
+  tail-defend ply=7 defense=(7,3) v=-1099511627763
+tail-attack ply=6 move=(6,4) v=1099511627763
+  tail-defend ply=5 defense=(7,7) v=-1099511627763
+tail-attack ply=4 move=(3,3) v=1099511627763
 tail-attack ply=8 n5=1 QUICKWIN MATE
+  tail-defend ply=7 defense=(3,3) v=-1099511627767
+tail-attack ply=6 move=(7,7) v=1099511627767
+  tail-defend ply=7 defense=(7,7) v=-1099511627763
+tail-attack ply=6 move=(3,3) v=1099511627763
+  tail-defend ply=5 defense=(7,3) v=-1099511627767
+tail-attack ply=4 move=(6,4) v=1099511627767
 tail-attack ply=8 n5=1 QUICKWIN MATE
+  tail-defend ply=7 defense=(3,3) v=-1099511627767
+tail-attack ply=6 move=(7,7) v=1099511627767
+  tail-defend ply=5 defense=(6,4) v=-1099511627767
+tail-attack ply=4 move=(7,3) v=1099511627767
+  tail-defend ply=3 defense=(2,6) v=-1099511627769
+tail-attack ply=2 move=(3,6) v=1099511627769
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(3,3) v=-1099511627769
+tail-attack ply=4 move=(7,7) v=1099511627769
+  tail-defend ply=5 defense=(3,6) v=-1099511627767
+tail-attack ply=4 move=(2,6) v=1099511627767
+  tail-defend ply=5 defense=(2,6) v=-1099511627767
+tail-attack ply=4 move=(3,6) v=1099511627767
+  tail-defend ply=7 defense=(2,6) v=-1099511627763
+tail-attack ply=6 move=(3,6) v=1099511627763
+  tail-defend ply=5 defense=(7,7) v=-1099511627763
+tail-attack ply=4 move=(3,3) v=1099511627763
+  tail-defend ply=3 defense=(7,3) v=-1099511627769
+tail-attack ply=2 move=(6,4) v=1099511627769
+  tail-defend ply=5 defense=(2,6) v=-1099511627763
+tail-attack ply=4 move=(3,6) v=1099511627763
+  tail-defend ply=5 defense=(7,3) v=-1099511627763
+tail-attack ply=4 move=(6,4) v=1099511627763
+  tail-defend ply=3 defense=(7,7) v=-1099511627763
+tail-attack ply=2 move=(3,3) v=1099511627763
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(3,3) v=-1099511627769
+tail-attack ply=4 move=(7,7) v=1099511627769
+  tail-defend ply=5 defense=(3,6) v=-1099511627767
+tail-attack ply=4 move=(2,6) v=1099511627767
+  tail-defend ply=5 defense=(2,6) v=-1099511627767
+tail-attack ply=4 move=(3,6) v=1099511627767
+  tail-defend ply=3 defense=(6,4) v=-1099511627769
+tail-attack ply=2 move=(7,3) v=1099511627769
 dfs ply=1 depth=1 color=2 move=(2,8) score=-1099511627769
 dfs ply=0 depth=2 color=1 move=(3,7) score=1099511627769
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(3,3) v=-1099511627771
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(3,3) v=-1099511627769
+tail-attack ply=4 move=(7,7) v=1099511627769
+  tail-defend ply=3 defense=(3,6) v=-1099511627769
+tail-attack ply=2 move=(2,6) v=1099511627769
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(3,3) v=-1099511627769
+tail-attack ply=4 move=(7,7) v=1099511627769
+  tail-defend ply=3 defense=(2,6) v=-1099511627769
+tail-attack ply=2 move=(3,6) v=1099511627769
 dfs ply=1 depth=1 color=2 move=(4,5) score=-1099511627769
 dfs ply=0 depth=2 color=1 move=(4,3) score=1099511627769
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(3,3) v=-1099511627771
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(3,3) v=-1099511627769
+tail-attack ply=4 move=(7,7) v=1099511627769
+  tail-defend ply=3 defense=(3,6) v=-1099511627769
+tail-attack ply=2 move=(2,6) v=1099511627769
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(3,3) v=-1099511627769
+tail-attack ply=4 move=(7,7) v=1099511627769
+  tail-defend ply=3 defense=(2,6) v=-1099511627769
+tail-attack ply=2 move=(3,6) v=1099511627769
 dfs ply=1 depth=1 color=2 move=(5,7) score=-1099511627769
 dfs ply=0 depth=2 color=1 move=(5,8) score=1099511627769
 tail-attack ply=4 n5=1 QUICKWIN MATE
+  tail-defend ply=3 defense=(3,3) v=-1099511627771
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(3,3) v=-1099511627769
+tail-attack ply=4 move=(7,7) v=1099511627769
+  tail-defend ply=3 defense=(3,6) v=-1099511627769
+tail-attack ply=2 move=(2,6) v=1099511627769
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(3,3) v=-1099511627769
+tail-attack ply=4 move=(7,7) v=1099511627769
+  tail-defend ply=3 defense=(2,6) v=-1099511627769
+tail-attack ply=2 move=(3,6) v=1099511627769
 dfs ply=1 depth=1 color=2 move=(6,4) score=-1099511627769
 dfs ply=0 depth=2 color=1 move=(7,3) score=1099511627769
 dfs ply=1 depth=1 color=2 move=(7,7) score=8588881984
@@ -703,14 +1296,44 @@ dfs ply=0 depth=2 color=1 move=(4,8) score=-8588881984
 dfs ply=1 depth=1 color=2 move=(7,7) score=8588949568
 dfs ply=0 depth=2 color=1 move=(2,4) score=-8588949568
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(0,8) v=-1099511627769
+tail-attack ply=4 move=(1,7) v=1099511627769
 tail-attack ply=6 n5=1 QUICKWIN MATE
+  tail-defend ply=5 defense=(1,7) v=-1099511627769
+tail-attack ply=4 move=(5,3) v=1099511627769
 tail-attack ply=10 n5=1 QUICKWIN MATE
+  tail-defend ply=9 defense=(5,7) v=-1099511627765
+tail-attack ply=8 move=(5,4) v=1099511627765
 tail-attack ply=12 n5=1 QUICKWIN MATE
+  tail-defend ply=11 defense=(1,3) v=-1099511627763
+tail-attack ply=10 move=(2,4) v=1099511627763
 tail-attack ply=12 n5=1 QUICKWIN MATE
+  tail-defend ply=11 defense=(2,4) v=-1099511627763
+tail-attack ply=10 move=(6,8) v=1099511627763
 tail-attack ply=14 n5=1 QUICKWIN MATE
+  tail-defend ply=13 defense=(1,3) v=-1099511627761
+tail-attack ply=12 move=(2,4) v=1099511627761
 tail-attack ply=14 n5=1 QUICKWIN MATE
+  tail-defend ply=13 defense=(2,4) v=-1099511627761
+tail-attack ply=12 move=(6,8) v=1099511627761
+  tail-defend ply=11 defense=(5,8) v=-1099511627761
+tail-attack ply=10 move=(5,9) v=1099511627761
 tail-attack ply=14 n5=1 QUICKWIN MATE
+  tail-defend ply=13 defense=(1,3) v=-1099511627761
+tail-attack ply=12 move=(2,4) v=1099511627761
 tail-attack ply=14 n5=1 QUICKWIN MATE
+  tail-defend ply=13 defense=(2,4) v=-1099511627761
+tail-attack ply=12 move=(6,8) v=1099511627761
+  tail-defend ply=11 defense=(5,9) v=-1099511627761
+tail-attack ply=10 move=(5,8) v=1099511627761
+  tail-defend ply=9 defense=(5,4) v=-1099511627763
+tail-attack ply=8 move=(5,7) v=1099511627763
+  tail-defend ply=7 defense=(6,2) v=-1099511627765
+tail-attack ply=6 move=(5,3) v=1099511627765
+  tail-defend ply=5 defense=(1,7) v=-1099511627765
+tail-attack ply=4 move=(0,8) v=1099511627765
+  tail-defend ply=3 defense=(3,6) v=-1099511627769
+tail-attack ply=2 move=(2,6) v=1099511627769
 dfs ply=1 depth=1 color=2 move=(7,7) score=-1099511627769
 dfs ply=0 depth=2 color=1 move=(3,5) score=1099511627769
 dfs ply=1 depth=1 color=2 move=(7,7) score=8588881984
@@ -722,9 +1345,35 @@ dfs ply=0 depth=2 color=1 move=(7,5) score=-8588949568
 dfs ply=1 depth=1 color=2 move=(7,7) score=8588750912
 dfs ply=0 depth=2 color=1 move=(4,2) score=-8588750912
 tail-attack ply=8 n5=1 QUICKWIN MATE
+  tail-defend ply=7 defense=(1,7) v=-1099511627767
+tail-attack ply=6 move=(3,5) v=1099511627767
+  tail-defend ply=5 defense=(5,4) v=-1099511627767
+tail-attack ply=4 move=(5,3) v=1099511627767
+  tail-defend ply=3 defense=(3,6) v=-1099511627767
+tail-attack ply=2 move=(2,6) v=1099511627767
+  tail-defend ply=5 defense=(3,6) v=-1099511627767
+tail-attack ply=4 move=(2,6) v=1099511627767
+  tail-defend ply=3 defense=(5,4) v=-1099511627767
+tail-attack ply=2 move=(5,3) v=1099511627767
 dfs ply=1 depth=1 color=2 move=(7,7) score=-1099511627767
 dfs ply=0 depth=2 color=1 move=(5,2) score=1099511627767
 tail-attack ply=10 n5=1 QUICKWIN MATE
+  tail-defend ply=9 defense=(1,7) v=-1099511627765
+tail-attack ply=8 move=(3,5) v=1099511627765
+  tail-defend ply=7 defense=(5,4) v=-1099511627765
+tail-attack ply=6 move=(5,3) v=1099511627765
+  tail-defend ply=5 defense=(5,8) v=-1099511627765
+tail-attack ply=4 move=(5,7) v=1099511627765
+  tail-defend ply=3 defense=(3,6) v=-1099511627765
+tail-attack ply=2 move=(2,6) v=1099511627765
+  tail-defend ply=5 defense=(3,6) v=-1099511627765
+tail-attack ply=4 move=(2,6) v=1099511627765
+  tail-defend ply=7 defense=(3,6) v=-1099511627765
+tail-attack ply=6 move=(2,6) v=1099511627765
+  tail-defend ply=5 defense=(5,4) v=-1099511627765
+tail-attack ply=4 move=(5,3) v=1099511627765
+  tail-defend ply=3 defense=(5,8) v=-1099511627765
+tail-attack ply=2 move=(5,7) v=1099511627765
 dfs ply=1 depth=1 color=2 move=(7,7) score=-1099511627765
 dfs ply=0 depth=2 color=1 move=(5,9) score=1099511627765
 dfs ply=1 depth=1 color=2 move=(7,7) score=8589211712
@@ -738,8 +1387,22 @@ dfs ply=0 depth=2 color=1 move=(3,4) score=-8589078592
 dfs ply=1 depth=1 color=2 move=(7,7) score=8589146176
 dfs ply=0 depth=2 color=1 move=(3,8) score=-8589146176
 tail-attack ply=8 n5=1 QUICKWIN MATE
+  tail-defend ply=7 defense=(5,7) v=-1099511627767
+tail-attack ply=6 move=(5,4) v=1099511627767
 tail-attack ply=10 n5=1 QUICKWIN MATE
+  tail-defend ply=9 defense=(5,7) v=-1099511627765
+tail-attack ply=8 move=(5,4) v=1099511627765
+  tail-defend ply=7 defense=(8,0) v=-1099511627765
+tail-attack ply=6 move=(7,1) v=1099511627765
 tail-attack ply=10 n5=1 QUICKWIN MATE
+  tail-defend ply=9 defense=(5,7) v=-1099511627765
+tail-attack ply=8 move=(5,4) v=1099511627765
+  tail-defend ply=7 defense=(7,1) v=-1099511627765
+tail-attack ply=6 move=(8,0) v=1099511627765
+  tail-defend ply=5 defense=(3,5) v=-1099511627767
+tail-attack ply=4 move=(5,3) v=1099511627767
+  tail-defend ply=3 defense=(3,6) v=-1099511627767
+tail-attack ply=2 move=(2,6) v=1099511627767
 dfs ply=1 depth=1 color=2 move=(7,7) score=-1099511627767
 dfs ply=0 depth=2 color=1 move=(6,2) score=1099511627767
 dfs ply=1 depth=1 color=2 move=(7,7) score=8589146176

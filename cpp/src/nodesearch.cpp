@@ -373,8 +373,7 @@ int64_t vcf_attack(Board& b, int64_t alpha, int64_t beta, int ply, Ctx& ctx) {
         b.undo_move();
         if (ctx.timeout) return 0;
         if (getenv("NODESEARCH_TRACE") && (v >= MATE_BOUND || v <= -MATE_BOUND))
-            fprintf(stderr, "tail-attack ply=%d move=(%d,%d) v=%lld
-",
+            fprintf(stderr, "tail-attack ply=%d move=(%d,%d) v=%lld\n",
                     ply, idx / MAX_BOARD, idx % MAX_BOARD, (long long)v);
         if (v > best) best = v;
         if (best > alpha) alpha = best;
