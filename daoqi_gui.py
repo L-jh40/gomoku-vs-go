@@ -242,9 +242,22 @@ class KataGoGTP:
                 block.append(line)
             # lines outside any block should not happen; drop them
 
-    def _wait_block(self, timeout):
-        """Consume events until the open block closes.  Returns the block
-        or None on timeout/eof."""
+    _BLOCK_RE = re.compile(r"([=?])(\d+)?\s*(.*)")
+
+    def _send_cmd(self, cmd):
+        """Send a GTP command with an id prefix; the engine echoes the id
+        in the first line of its response block."""
+        self._cmd_id += 1
+        self._send(f"{self._cmd_id} {cmd}")
+        return self._cmd_id
+
+    def _wait_for(self, cmd_id, timeout):
+        """Consume events until the response block for `cmd_id` arrives.
+
+        Blocks are matched BY ID, so a stale block - e.g. the terminator of
+        the kata-analyze stream that the new command just interrupted (it
+        may or may not carry a final report depending on timing) - is
+        discarded automatically instead of desyncing the framing."""
         deadline = time.time() + timeout
         while True:
             remain = deadline - time.time()
@@ -254,73 +267,82 @@ class KataGoGTP:
                 kind, payload = self.evq.get(timeout=remain)
             except queue.Empty:
                 return None
-            if kind == "block":
-                if self._analyzing:
-                    self._analyzing = False
-                return payload
             if kind == "eof":
                 return None
+            if kind != "block" or not payload:
+                continue
+            m = self._BLOCK_RE.match(payload[0])
+            if not m or not m.group(2):
+                continue
+            block_id = int(m.group(2))
+            if block_id == cmd_id:
+                if cmd_id == self._analyze_id:
+                    self._analyzing = False
+                return payload
+            if block_id == self._analyze_id:
+                self._analyzing = False     # interrupted analyze terminator
 
     # ------------------------------------------------------------------
     def _worker(self):
-        # Ready ping: the engine answers only after the net is loaded
-        # (~20s first start with a warm OpenCL tuning cache).
-        self._send("name")
-        if self._wait_block(240) is None:
+        try:
+            # Ready ping: the engine answers only after the net is loaded
+            # (~20s first start with a warm OpenCL tuning cache).
+            cid = self._send_cmd("name")
+            if self._wait_for(cid, 240) is None:
+                self._die()
+                return
+            self.on_event(("ready", self.backend))
+            while True:
+                job = self.jobs.get()
+                kind = job[0]
+                if kind == "quit":
+                    self._send_cmd("quit")
+                    break
+                if not self.alive:
+                    break
+                try:
+                    result = self._run_job(job)
+                except EngineDead:
+                    self._die()
+                    break
+                self.on_event(("done", job, result))
+                # Between jobs keep a live kata-analyze stream open so the
+                # UI shows continuous winrate / scoreLead / candidates.
+                if kind != "score" and self.analyze_desired and self.alive:
+                    self._analyze_id = self._send_cmd("kata-analyze 100")
+                    self._analyzing = True
+        except Exception:
             self._die()
-            return
-        self.on_event(("ready", self.backend))
-        while True:
-            job = self.jobs.get()
-            kind = job[0]
-            if kind == "quit":
-                self._send("quit")
-                self._wait_block(5)
-                break
-            if not self.alive:
-                break
-            # Close the open kata-analyze stream first: raw newline makes
-            # the engine emit its last report block, which we discard.
-            if self._analyzing:
-                self._send("")
-                self._wait_block(10)
-                self._analyzing = False
-            try:
-                result = self._run_job(job)
-            except EngineDead:
-                break
-            self.on_event(("done", job, result))
-            if kind != "score" and self.analyze_desired and self.alive:
-                self._send("kata-analyze 100")
-                self._analyzing = True
 
     def _run_job(self, job):
         kind = job[0]
         if kind == "newgame":
-            self._send(f"boardsize {job[1]}")
-            blk = self._wait_block(60)
-            if blk is None:
+            cid = self._send_cmd(f"boardsize {job[1]}")
+            if self._wait_for(cid, 60) is None:
                 raise EngineDead()
-            self._send(f"komi {job[2]}")
-            self._wait_block(30)
-            self._send("kata-set-rules chinese")
-            self._wait_block(30)
-            self._send("clear_board")
-            return self._ok(self._wait_block(60))
+            cid = self._send_cmd(f"komi {job[2]}")
+            self._wait_for(cid, 30)
+            cid = self._send_cmd("kata-set-rules chinese")
+            self._wait_for(cid, 30)
+            cid = self._send_cmd("clear_board")
+            return self._ok(self._wait_for(cid, 60))
         if kind == "play":
             color, vtx = job[1], job[2]
-            self._send(f"play {'b' if color == BLACK else 'w'} {vtx}")
-            return self._ok(self._wait_block(60))
+            cid = self._send_cmd(
+                f"play {'b' if color == BLACK else 'w'} {vtx}")
+            return self._ok(self._wait_for(cid, 60))
         if kind == "undo":
-            self._send("undo")
-            return self._ok(self._wait_block(60))
+            cid = self._send_cmd("undo")
+            return self._ok(self._wait_for(cid, 60))
         if kind == "genmove":
             color, visits = job[1], job[2]
-            self._send(f"kata-set-param maxVisits {max(8, int(visits))}")
-            self._wait_block(30)
-            self._send(f"kata-genmove_analyze "
-                       f"{'b' if color == BLACK else 'w'} 100")
-            blk = self._wait_block(3600)
+            cid = self._send_cmd(
+                f"kata-set-param maxVisits {max(8, int(visits))}")
+            self._wait_for(cid, 30)
+            cid = self._send_cmd(
+                f"kata-genmove_analyze "
+                f"{'b' if color == BLACK else 'w'} 100")
+            blk = self._wait_for(cid, 3600)
             if blk is None:
                 raise EngineDead()
             move = None
@@ -329,27 +351,33 @@ class KataGoGTP:
                     move = line[5:].strip()
             return {"ok": move is not None, "move": move}
         if kind == "score":
-            self._send("final_score")
-            blk = self._wait_block(120)
+            cid = self._send_cmd("final_score")
+            blk = self._wait_for(cid, 120)
             if blk is None:
                 raise EngineDead()
-            return {"text": blk[0][1:].strip() if blk and blk[0].startswith("=")
-                    else "?"}
+            text = ""
+            if blk:
+                m = self._BLOCK_RE.match(blk[0])
+                if m and m.group(1) == "=":
+                    text = m.group(3)
+            return {"text": text or "?"}
         if kind == "board":
-            self._send("showboard")
-            blk = self._wait_block(60)
+            cid = self._send_cmd("showboard")
+            blk = self._wait_for(cid, 60)
             if blk is None:
                 raise EngineDead()
             return {"stones": parse_showboard(blk, job[1])}
         return {"ok": False}
 
-    @staticmethod
-    def _ok(block):
+    @classmethod
+    def _ok(cls, block):
         if block is None:
             return {"ok": False, "error": "引擎无响应"}
-        first = block[0] if block else ""
-        if first.startswith("?"):
-            return {"ok": False, "error": first[1:].strip() or "被引擎拒绝"}
+        m = cls._BLOCK_RE.match(block[0]) if block else None
+        if m is None:
+            return {"ok": False, "error": "无法解析引擎响应"}
+        if m.group(1) == "?":
+            return {"ok": False, "error": m.group(3) or "被引擎拒绝"}
         return {"ok": True, "error": None}
 
     def submit(self, job):

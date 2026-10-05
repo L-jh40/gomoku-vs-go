@@ -989,6 +989,7 @@ std::vector<Pt> line_blockers(Board& b, const int* cells, int n, int d) {
 }
 #endif  // ==== 封存结束：旧威胁线阻挡点 ====
 
+#if 0  // ==== 封存（第 8 步）：旧“全盘威胁线 / 双威胁必须阻挡点”，由威胁点分类取代 ====
 // 全盘威胁线：4 方向 × 每条线，rank != NONE 的线连同其阻挡点与线上黑子。
 std::vector<ThreatLine> collect_threat_lines(Board& b) {
     std::vector<ThreatLine> out;
@@ -1081,6 +1082,7 @@ std::vector<Pt> double_threat_points(Board& b) {
     }
     return out;
 }
+#endif  // ==== 封存结束：旧威胁线/双威胁 ====
 
 // 黑棋是否可能在 2 手内连五（用于“2 手内吃子点”的有效性校验）：
 // 盘上存在一步成五的点，或存在一步成活四的点（活四无法同时封堵两端）。
@@ -1138,6 +1140,7 @@ void mark_line_black(const Board& b, const std::vector<ThreatLine>& lines,
     (void)b;
 }
 
+#if 0  // ==== 封存（第 8 步）：旧“阻挡点禁手说明”诊断，威胁点分类下不再需要 ====
 // 禁手消失（多重禁手）说明：阻挡点本身可能是黑棋禁手（白棋占之合法）。返回
 //   0 = 该点不是黑棋禁手（或非空点）；
 //   1 = 真禁手（长连 / 四四 / 三三，Rapfi check_forbidden 复判为准）；
@@ -1163,6 +1166,7 @@ ForbiddenNote blocking_point_forbidden_note(Board& b, int x, int y) {
     note.kind = check_forbidden(b, x, y) ? 1 : 2;
     return note;
 }
+#endif  // ==== 封存结束：阻挡点禁手说明 ====
 
 // ===========================================================================
 // 4. 第二部分：三层 VCT（全应对 / 智能应对 / 混合判定）
