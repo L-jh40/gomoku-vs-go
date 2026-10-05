@@ -252,7 +252,11 @@ def engine_forbidden(eng: Engine, board, case_id: str):
 
 
 def engine_candidates(eng: Engine, board):
-    """candidates w 的候选点集合（只取 cand 行的 x,y）+ 耗时（秒）。"""
+    """candidates w 的候选点集合（只取 cand 行的 x,y）+ 耗时（秒）。
+
+    第 8 步起白方候选点无 W/L 标注：输出三列 `cand x y`（tag=0）；
+    黑方候选仍是四列 `cand x y <W|L><k>`，两种都接受。
+    """
     engine_setup(eng, board)
     rows, dt = eng.timed_raw("candidates w %d %g" % (CAND_STEPS, CAND_SEC))
     got = set()
@@ -266,7 +270,7 @@ def engine_candidates(eng: Engine, board):
         if row.startswith("error"):
             raise RuntimeError("engine reported: %s" % row)
         parts = row.split()
-        if len(parts) == 4 and parts[0] == "cand":
+        if len(parts) in (3, 4) and parts[0] == "cand":
             got.add((int(parts[1]), int(parts[2])))
     return got, dt, timed_out
 
