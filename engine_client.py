@@ -223,9 +223,12 @@ class EngineClient:
                    vc=1, vct=18, vcf=180):
         """Candidate points with VCF/VCT W/L annotation.
 
-        Returns a list of (x, y, tag, k) tuples read from the
+        Returns a list of (x, y, tag, k, at_least) tuples read from the
         "cand <x> <y> <W|L><k>" lines; an optional "timeout" line is
         tolerated (and ignored), "end" terminates the reply.
+
+        第 8 步起白方候选点无 W/L 标注：三列 `cand x y`（tag=None, k=0）；
+        黑方候选仍是四列。两种都接受。
         """
         with self._lock:
             self._send(f"winmode {winmode}")
@@ -241,6 +244,14 @@ class EngineClient:
                     continue
                 head = parts[0]
                 if head == "cand":
+                    if len(parts) == 3:
+                        # 白棋威胁候选点（无标注）：威胁防御集交集。
+                        try:
+                            out.append((int(parts[1]), int(parts[2]), None, 0,
+                                        False))
+                        except ValueError:
+                            raise EngineError(f"bad cand line: {line!r}")
+                        continue
                     if len(parts) < 4:
                         raise EngineError(f"bad cand line: {line!r}")
                     try:
