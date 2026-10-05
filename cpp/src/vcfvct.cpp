@@ -692,15 +692,20 @@ bool line_still_winning(const Board& b, const int* cells, int n, int d) {
 
 // 该线的全部阻挡点（枚举线上空点，真实 make_move(WHITE) 后用棋型缓存复判）。
 std::vector<Pt> line_blockers(Board& b, const int* cells, int n, int d) {
+    // 查表规则（用户规格）：阻挡点 = 该线上"黑棋落子能成五或成四"的空点。
+    //   10111 / 011112 → 1 点（成五完成点）；
+    //   0011102        → 3 点（三个 0 都是成四点）；
+    //   0011100        → 紧邻两个 0（0A111B0 的 A、B，各成活四）。
+    // 全部经增量棋型缓存 point_pattern_d 判定（O(1) 查表），不再试落验证。
     std::vector<Pt> out;
     for (int i = 0; i < n; ++i) {
         const int c = cells[i];
         const int x = cell_x(c), y = cell_y(c);
         if (!b.is_empty(x, y)) continue;
-        if (!b.make_move(x, y, WHITE)) continue;      // 白棋落子（含提子）
-        const bool still = line_still_winning(b, cells, n, d);
-        b.undo_move();
-        if (!still) out.push_back(Pt(x, y));
+        if (b.is_dead_empty(x, y)) continue;          // 无气空点 = 阻挡，黑不能落
+        const PointPattern p = point_pattern_d(b, c, d);
+        if (p == PP_FIVE || p == PP_FLEX4 || p == PP_B4)
+            out.push_back(Pt(x, y));
     }
     return out;
 }
