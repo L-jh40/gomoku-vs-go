@@ -72,6 +72,7 @@
 
 #include "eval.h"
 #include "forbidden.h"
+#include "nodesearch.h"
 #include "pattern_table.h"
 #include "search.h"
 
@@ -270,6 +271,9 @@ struct PointSet {
     }
 };
 
+#if 0  // ==== 封存（第 9 步）：旧 AND-OR 证明搜索（防御集 + 攻击候选 + 证明 DFS）====
+//       W/L 标注与 prove 改用逐节点证明搜索（nodesearch.cpp：全宽 PVS + 静态杀 +
+//       VCF 尾部），本块整体停用，源码保留备查。
 // ===========================================================================
 // 2.4 四威胁的健全防御集：a) 合法完成点 b) 1 气块提子点
 //                          c) 吃子使能闭包 d) 自杀使能闭包
@@ -628,6 +632,7 @@ bool prove_white_node(Board& b, int cx, int cy, int budget, ProveCtx* ctx,
     }
     return true;
 }
+#endif  // ==== 封存结束：旧 AND-OR 证明搜索 ====
 
 // ===========================================================================
 // 3. 白棋威胁候选点（第 8 步重写：rapfi 式威胁分类 + 逐威胁防御集 + 交集框架）
