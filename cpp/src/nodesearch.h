@@ -34,15 +34,12 @@ struct NodeSearchResult {
     bool timeout = false;
 };
 
-// 逐节点证明搜索：迭代加深 depth = 2,4,...,max_depth（首个含 mate 结论的深度
-// 即返回，score 携带精确步数）。max_sec<=0 无时限；node_limit<=0 无节点上限。
-// 每次调用清空本模块的置换表（保证同局面 + 同参数 → 同输出）。
+// 逐节点证明搜索：迭代加深 depth = 2,4,...,max_depth，|score| >= MATE_BOUND
+// 即提前返回（score 携带精确步数）。max_sec<=0 无时限；node_limit<=0 无节点
+// 上限。clear_tt=false 时复用上次调用的置换表（candidates 逐候选调用时共享，
+// 不同候选的子局面键不同，无串扰）。
 NodeSearchResult node_search(Board& b, int max_depth, int winmode,
-                             double max_sec, long long node_limit);
-
-// 节点级搜索（供 analyse 逐候选调用；迭代加深从 depth=2 到 max_depth，
-// 一旦 |score| >= MATE_BOUND 提前返回）。
-NodeSearchResult node_search_prove(Board& b, int max_depth, int winmode,
-                                   double max_sec, long long node_limit);
+                             double max_sec, long long node_limit,
+                             bool clear_tt = true);
 
 }  // namespace gvg
