@@ -1417,11 +1417,14 @@ class GameGUI:
 
     def _draw_engine_labels(self):
         """C++ engine candidate annotation: "W<k>" / "L<k>" corner text on
-        empty points (green = win within k, red = loss within k)."""
+        empty points (green = win within k, red = loss within k).
+        第 8 步起白方候选点无标注（tag=None）：只画候选方块，不画角标文字。"""
         if not self.engine_labels:
             return
         for (x, y), (tag, k, at_least) in self.engine_labels.items():
             if not self.board.is_empty(x, y):
+                continue
+            if tag is None:
                 continue
             cx, cy = self._point_center(x, y)
             color = "#1a7f1a" if tag == "W" else "#c01010"
