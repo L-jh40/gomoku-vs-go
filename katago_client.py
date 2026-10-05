@@ -21,6 +21,11 @@ the same side to move.
 
 Winrate / scoreLead are reported from BLACK's perspective (the bundled
 analysis_daoqi.cfg sets reportAnalysisWinratesAs = BLACK).
+
+This module is standalone: it imports nothing from the gomoku project.  A
+board is anything exposing ``size`` (int) and ``grid`` (2-indexable, values
+0 empty / 1 black / 2 white / 3 obstacle) - e.g. daoqi_board.DaoqiBoard or
+the main project's HybridBoard.
 """
 
 from __future__ import annotations
@@ -31,7 +36,12 @@ import subprocess
 import threading
 import time
 
-from board import BLACK, OBSTACLE, WHITE
+# Same values as the main project's board.py, redefined locally so this
+# module has no dependency on it.
+EMPTY = 0
+BLACK = 1
+WHITE = 2
+OBSTACLE = 3
 
 # Repository root = the directory holding this file.
 _ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -206,7 +216,8 @@ class KataGoClient:
     def analyze(self, board, color, max_visits=256, komi=5.5):
         """Evaluate the current position for `color` to move.
 
-        `board` is a HybridBoard snapshot (torus captures already applied;
+        `board` is any board snapshot exposing ``size`` and ``grid`` (torus
+        captures already applied;
         obstacle cells are projected as white stones, the closest go
         equivalent of a wall nobody can use).  Returns:
 
