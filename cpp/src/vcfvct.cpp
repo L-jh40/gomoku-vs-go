@@ -1861,6 +1861,12 @@ AnalysisResult analyse(Board& b, int color, int max_steps, int winmode,
     bool tt_seeded = false;
     bool any_timeout = false;
     uint64_t total_nodes = 0;
+    // 逐候选搜索的剩余时间；预算耗尽即停止标注（宁可漏标，不可错标）。
+    auto remaining_sec = [&]() -> double {
+        if (deadline <= 0.0) return 0.0;            // 无时限
+        const double remain = deadline - now_sec();
+        return remain > 0.005 ? remain : -1.0;      // -1 = 预算耗尽
+    };
 
     if (color == WHITE) {
         // ---- 白棋威胁候选点（第 8 步防御集交集）+ 第 9 步逐点 L 标注 ----
@@ -1875,9 +1881,8 @@ AnalysisResult analyse(Board& b, int color, int max_steps, int winmode,
             lab.y = rep.candidates[i].second;
             lab.tag = 0;
             lab.steps = 0;
-            if (!rep.unconstrained && !any_timeout && b.make_move(lab.x, lab.y, WHITE)) {
-                const double remain =
-                    (deadline > 0.0) ? std::max(0.0, deadline - now_sec()) : 0.0;
+            const double remain = rep.unconstrained ? -1.0 : remaining_sec();
+            if (remain >= 0.0 && b.make_move(lab.x, lab.y, WHITE)) {
                 NodeSearchResult r = node_search(
                     b, max_depth, winmode, remain,
                     node_limit > 0 ? std::min<long long>(node_limit, 200000) : 200000,
@@ -1890,6 +1895,8 @@ AnalysisResult analyse(Board& b, int color, int max_steps, int winmode,
                     lab.steps = static_cast<int>(MATE - r.score) + 1;
                 }
                 b.undo_move();
+            } else if (remain < 0.0) {
+                any_timeout = true;
             }
             if (lab.tag != 0) ++res.paths_found;
             res.labels.push_back(lab);
@@ -1912,7 +1919,8 @@ AnalysisResult analyse(Board& b, int color, int max_steps, int winmode,
         lab.tag = 0;
         lab.steps = 0;
 
-        if (!any_timeout && b.make_move(lab.x, lab.y, color)) {
+        const double remain = remaining_sec();
+        if (remain >= 0.0 && b.make_move(lab.x, lab.y, color)) {
             bool decided = false;
             if (color == BLACK && b.last_move_was_five()) {
                 lab.tag = 'W';          // 该手立即成五（1 手）
@@ -1924,8 +1932,6 @@ AnalysisResult analyse(Board& b, int color, int max_steps, int winmode,
             if (!decided && color == BLACK) {
                 // node search（白方视角根）：score <= -MATE_BOUND ⇒ 黑必胜，
                 // k = 黑候选 1 手 + 白 1 手 + 黑成五步数（奇数）。
-                const double remain =
-                    (deadline > 0.0) ? std::max(0.0, deadline - now_sec()) : 0.0;
                 NodeSearchResult r = node_search(
                     b, max_depth, winmode, remain,
                     node_limit > 0 ? std::min<long long>(node_limit, 200000) : 200000,
@@ -1939,6 +1945,8 @@ AnalysisResult analyse(Board& b, int color, int max_steps, int winmode,
                 }
             }
             b.undo_move();
+        } else if (remain < 0.0) {
+            any_timeout = true;
         }
         if (lab.tag != 0) ++res.paths_found;
         res.labels.push_back(lab);
