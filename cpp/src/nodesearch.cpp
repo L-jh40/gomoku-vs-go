@@ -171,11 +171,6 @@ bool five_point_group_libs_ge(Board& b, int qx, int qy, int k) {
     const int qidx = Board::index(qx, qy);
     for (int d = 0; d < 4; ++d) {
         if (b.cached_pattern(0, qidx, d) != F5) continue;
-        // 成五方向上 q ±1..4 的黑子（恰 4 颗，连续）。
-        for (int s = -4; s <= 4; s += 7) {          // s = -4 时窗口在负侧，+4 在正侧
-            // 分别从两端找第一颗黑子作为组的种子即可（4 子连续同组）。
-            (void)s;
-        }
         for (int s = -4; s <= 4; ++s) {
             if (s == 0) continue;
             const int nx = qx + s * DX[d], ny = qy + s * DY[d];
