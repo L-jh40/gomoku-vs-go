@@ -1,0 +1,10 @@
+board.cpp
+eval.cpp
+forbidden.cpp
+main.cpp
+pattern_count.cpp
+pattern_table.cpp
+search.cpp
+vcfvct.cpp
+正在生成代码...
+[build] ok: build\engine.exe
