@@ -948,7 +948,8 @@ class DaoqiApp:
         gy = round((event.y - oy) / cell) + pad
         if not (0 <= gx < n + 2 * pad and 0 <= gy < n + 2 * pad):
             return None
-        x, y = gx % n, gy % n
+        # 显示格 -> 实际格：先减 pad 偏移，再对 n 取模映射环面回绕
+        x, y = (gx - pad) % n, (gy - pad) % n
         return x, y
 
     # ------------------------------------------------------------------
