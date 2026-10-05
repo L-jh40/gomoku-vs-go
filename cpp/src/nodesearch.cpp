@@ -55,8 +55,8 @@ NSTTEntry* g_tt = nullptr;
 
 void tt_ensure() {
     if (g_tt == nullptr) {
-        g_tt = new TTEntry[TT_SIZE];
-        std::memset(g_tt, 0, sizeof(TTEntry) * TT_SIZE);
+        g_tt = new NSTTEntry[TT_SIZE];
+        std::memset(g_tt, 0, sizeof(NSTTEntry) * TT_SIZE);
     }
 }
 
@@ -439,7 +439,7 @@ int64_t vcf_attack(Board& b, int64_t alpha, int64_t beta, int ply, Ctx& ctx) {
     // TT 探测（VCF 层 depth 恒 0：只做同层截断与边界收窄）。
     const uint64_t key = b.hash();
     {
-        const NSNSTTEntry& e = g_tt[key & TT_MASK];
+        const NSTTEntry& e = g_tt[key & TT_MASK];
         if (e.key == key && e.flag != TT_EMPTY) {
             const int64_t s = tt_load_score(e.score, ply);
             if (e.flag == TT_LOWER && s > alpha) alpha = s;
@@ -518,7 +518,7 @@ int64_t node_dfs(Board& b, int depth, int64_t alpha, int64_t beta, int ply,
     const uint64_t key = b.hash();
     int tt_best = -1;
     {
-        const NSNSTTEntry& e = g_tt[key & TT_MASK];
+        const NSTTEntry& e = g_tt[key & TT_MASK];
         if (e.key == key && e.flag != TT_EMPTY) {
             const int64_t s = tt_load_score(e.score, ply);
             if (e.depth >= depth) {
@@ -603,7 +603,7 @@ int64_t node_dfs(Board& b, int depth, int64_t alpha, int64_t beta, int ply,
 
 void node_tt_clear() {
     tt_ensure();
-    std::memset(g_tt, 0, sizeof(TTEntry) * TT_SIZE);
+    std::memset(g_tt, 0, sizeof(NSTTEntry) * TT_SIZE);
 }
 
 NodeSearchResult node_search(Board& b, int max_depth, int winmode,
