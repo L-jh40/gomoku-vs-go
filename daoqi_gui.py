@@ -148,9 +148,10 @@ def parse_showboard(block, size):
 class KataGoGTP:
     """One KataGo GTP subprocess.  A worker thread runs queued jobs in
     order; between jobs it keeps a kata-analyze stream open so the UI can
-    show live winrate / scoreLead / candidates.  Every job first closes
-    that stream (raw newline + discard its last report block), which keeps
-    request/response framing in sync (verified against v1.18.1)."""
+    show live winrate / scoreLead / candidates.  Every command carries a
+    GTP id and the worker matches responses BY ID, so interrupting the
+    analyze stream (its terminator block arrives at unpredictable times)
+    can never desync the request/response framing (verified v1.18.1)."""
 
     def __init__(self, on_event):
         self.on_event = on_event            # ("info", report) / ("dead", tail)
@@ -161,6 +162,8 @@ class KataGoGTP:
         self.alive = False
         self.analyze_desired = True
         self._analyzing = False
+        self._cmd_id = 0
+        self._analyze_id = None
         self._stderr_tail = []
         self._gen = 0
 

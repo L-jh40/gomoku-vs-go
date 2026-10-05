@@ -1168,6 +1168,10 @@ ForbiddenNote blocking_point_forbidden_note(Board& b, int x, int y) {
 }
 #endif  // ==== 封存结束：阻挡点禁手说明 ====
 
+#if 0  // ==== 封存（第 8 步）：三层 VCT（全应对/智能应对/混合判定）整体停用 ====
+//       用户指令：人工证明显示中央 5 子局面几分钟可完成证明，逐节点证明搜索
+//       可以直接跑，初筛不必要。候选点改由威胁点分类 + 防御集交集给出
+//       （见第 3 节与 white_threat_candidates），逐点 W/L 标注停用。
 // ===========================================================================
 // 4. 第二部分：三层 VCT（全应对 / 智能应对 / 混合判定）
 // ===========================================================================
@@ -1420,6 +1424,7 @@ VctOutcome layer_run(Board& b, const VctParams& params, double time_sec, bool sm
     out.timeout = ctx.timeout;
     return out;
 }
+#endif  // ==== 封存结束：三层 VCT ====
 
 }  // namespace
 
