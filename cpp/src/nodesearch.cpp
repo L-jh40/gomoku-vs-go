@@ -16,6 +16,7 @@
 #include "nodesearch.h"
 
 #include <algorithm>
+#include <cassert>
 #include <chrono>
 #include <cstring>
 
@@ -40,17 +41,17 @@ constexpr int8_t TT_LOWER = 2;
 constexpr int8_t TT_UPPER = 3;
 constexpr uint16_t TT_NO_MOVE = 0xFFFF;
 
-struct TTEntry {
+struct NSTTEntry {
     uint64_t key;
     int64_t  score;
     uint16_t best;
     int16_t  depth;
     int8_t   flag;
-    uint8_t  pad_[5];
+    uint8_t  pad_[3];
 };
-static_assert(sizeof(TTEntry) == 24, "unexpected TTEntry layout");
+static_assert(sizeof(NSTTEntry) == 24, "unexpected NSTTEntry layout");
 
-TTEntry* g_tt = nullptr;
+NSTTEntry* g_tt = nullptr;
 
 void tt_ensure() {
     if (g_tt == nullptr) {
@@ -438,7 +439,7 @@ int64_t vcf_attack(Board& b, int64_t alpha, int64_t beta, int ply, Ctx& ctx) {
     // TT 探测（VCF 层 depth 恒 0：只做同层截断与边界收窄）。
     const uint64_t key = b.hash();
     {
-        const TTEntry& e = g_tt[key & TT_MASK];
+        const NSNSTTEntry& e = g_tt[key & TT_MASK];
         if (e.key == key && e.flag != TT_EMPTY) {
             const int64_t s = tt_load_score(e.score, ply);
             if (e.flag == TT_LOWER && s > alpha) alpha = s;
@@ -468,7 +469,7 @@ int64_t vcf_attack(Board& b, int64_t alpha, int64_t beta, int ply, Ctx& ctx) {
         if (alpha >= beta) break;
     }
 
-    TTEntry& e = g_tt[key & TT_MASK];
+    NSTTEntry& e = g_tt[key & TT_MASK];
     e.key = key;
     e.score = tt_store_score(best, ply);
     e.flag = (best >= beta) ? TT_LOWER : TT_UPPER;
@@ -517,7 +518,7 @@ int64_t node_dfs(Board& b, int depth, int64_t alpha, int64_t beta, int ply,
     const uint64_t key = b.hash();
     int tt_best = -1;
     {
-        const TTEntry& e = g_tt[key & TT_MASK];
+        const NSNSTTEntry& e = g_tt[key & TT_MASK];
         if (e.key == key && e.flag != TT_EMPTY) {
             const int64_t s = tt_load_score(e.score, ply);
             if (e.depth >= depth) {
@@ -589,7 +590,7 @@ int64_t node_dfs(Board& b, int depth, int64_t alpha, int64_t beta, int ply,
         return (color == BLACK) ? (-MATE + ply) : stm_score(b, ctx.winmode);
     }
 
-    TTEntry& e = g_tt[key & TT_MASK];
+    NSTTEntry& e = g_tt[key & TT_MASK];
     e.key = key;
     e.score = tt_store_score(best, ply);
     e.depth = int16_t(depth);
