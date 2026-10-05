@@ -627,23 +627,35 @@ bool prove_white_node(Board& b, int cx, int cy, int budget, ProveCtx* ctx,
 }
 
 // ===========================================================================
-// 3. 第一部分：威胁候选点（阻挡点）—— 查表规则的增量棋型实现
+// 3. 白棋威胁候选点（第 8 步重写：rapfi 式威胁分类 + 逐威胁防御集 + 交集框架）
 // ===========================================================================
-// 记号（用户规格原文）：0 = 空，1 = 黑棋，2 = 阻挡（白子 / 障碍 / 无气空点；棋型层
-// 由 Board::build_pattern_window 统一映射，代码层面完全一致）。
+// 迁移自 Rapfi 的威胁判定（game/pattern.cpp 的 DEFENCE 防守掩码思想、
+// game/movegen.cpp 的 findFourDefence / findB4F3Defence / findFlex4LineDefence）。
 //
-// 查表规则（用户规格）：
-//   10111   → 1 个阻挡点（那个 0：黑成五的唯一完成点）
-//   011112  → 1 个阻挡点（唯一的成五点）
-//   0011102 → 3 个阻挡点（三个 0 都是有效应对）
-//   0011100 → 2 个阻挡点（只有紧邻 111 的两个 0）
-// 统一实现（不写字符串匹配，全部走 Board 的增量棋型缓存 classify_point）：
-//   * 威胁线 ⟺ 线上存在空点 e 使 classify_point(e,BLACK,d) ∈ {PP_FIVE,PP_FLEX4,PP_B4}
-//     （黑棋在该线一步能成五或成四）。
-//   * p 是该线的阻挡点 ⟺ 白棋落 p（真实 make_move，含提子）后，该线上不存在空点 q
-//     使 classify_point(q,BLACK,d) ∈ {PP_FIVE,PP_FLEX4}（黑棋无法在该线成五/活四）。
-//   逐条复现上表：10111 / 011112 只剩“成五点”；0011100 只剩紧邻两点（远端 0 挡不住
-//   另一端）；0011102 三个 0 全部有效（一端被 2 堵死时远端 0 足以把四降级为冲四）。
+// 威胁点分类（增量棋型缓存 O(1)/点，方向线型 point_pattern_d 组合；p4 == FORBID
+// 且 check_forbidden 为真的真禁手点黑棋不能落 → 不是威胁；假禁手点照常分类）：
+//   * kind 0 成五点：某方向 PP_FIVE（盘上已有四）→ 防御 = 成五点本身 ∪ 吃子点
+//     （四的完成点唯一，白占其余位置无效——用户规格 10111/011112 → 1 点）；
+//   * kind 1 杀点：活四/双四成分参与的立即胜（PP_FLEX4 ∧ 其他方向三/四、双活四、
+//     双冲四、三三[禁手关闭时]）→ 活四/双四成分不可挡，防御 = 杀点本身 ∪ 吃子点
+//     ∪ 无气构造点（占位/降级探针都挡不住活四，一律无效——用例 a → {h9}）；
+//   * kind 2 四三杀点：PP_B4 ∧ PP_FLEX3 → 防御 = 杀点本身 ∪ 活三线“线型降级”
+//     探针 ∪ 冲四线的成五点 ∪ 吃子/无气构造（用例 #4 → {h9,h10,g10,k6}）；
+//   * kind 3 纯活四点：单方向 PP_FLEX4（活三的成活四点）→ 防御 = 该线的试落阻挡
+//     点 ∪ 吃子/无气构造（用例 #5 → {h9,h5}；用例 c 交集 → {g8}）。
+//   纯冲四点（单方向 PP_B4）不是强迫威胁（冲四的成五点一手可挡）→ 不产生候选
+//   （用例 b legal:everywhere）；纯活三点同理（它的成活四点才是威胁点）。
+//
+// 试落阻挡点 = 空点 p，白棋真实 make_move(p, WHITE)（含提子/无气翻转）后，线上
+// 不再存在“黑棋可落的成五/活四制造点”——Rapfi DEFENCE 查表（fillDefenceLUT：
+// 防守子试落后攻击方线型 < F3）在混合规则下的运行时等价。用户规格查表逐条复现：
+// 10111/011112 → 1 点；0011102 → 3 点；0011100 → 紧邻 2 点。
+//
+// 无气构造点 = 黑棋落威胁点 q 后其块恰有 1/2 口气时的气点（1 气：q 自填即被提；
+// 2 气：白占一气后 q 变 1 气、下一手提）——混合规则的“吃子阻挡”（用例 c 的 g8）。
+//
+// 候选集 = 所有威胁防御集的**交集**；交集为空回退**并集**（黑棋多重杀时白棋已不可
+// 挡，并集给出最有抵抗价值的点）；盘面无强迫威胁 → 不受约束（全盘空点）。
 
 // 收集一条线（从线上第一个盘内格开始）的全部盘内格 idx。
 int collect_line_cells(const Board& b, int d, int sx, int sy, int* out) {
@@ -661,6 +673,272 @@ PointPattern point_pattern_d(const Board& b, int idx, int d) {
     return classify_point(b, cell_x(idx), cell_y(idx), BLACK, DX4[d], DY4[d]);
 }
 
+// ---- 3.1 威胁点分类 -------------------------------------------------------
+struct ThreatPoint {
+    int x = 0, y = 0;
+    int kind = 0;          // 0=成五点 1=杀点(活四/双四成分) 2=四三杀点 3=纯活四点
+    uint8_t f5_dirs = 0;   // PP_FIVE 方向位掩码
+    uint8_t f4_dirs = 0;   // PP_FLEX4 方向位掩码
+    uint8_t b4_dirs = 0;   // PP_B4 方向位掩码
+    uint8_t f3_dirs = 0;   // PP_FLEX3 方向位掩码
+};
+
+// 全盘扫描黑棋“强迫威胁点”：白棋必须应对，否则黑棋下一手（或两三手内）成五。
+// 纯冲四 / 纯活三 / 更弱的点一律不算（冲四可挡、活三由它的成活四点代表）。
+std::vector<ThreatPoint> scan_black_threats(Board& b) {
+    std::vector<ThreatPoint> out;
+    const int n = b.size();
+    for (int x = 0; x < n; ++x) {
+        for (int y = 0; y < n; ++y) {
+            if (!b.is_empty(x, y)) continue;
+            const int idx = cell_index(x, y);
+            if (b.is_no_liberty(idx)) continue;            // 无气空点 = 阻挡
+            const int p4 = b.cached_pattern4_black(idx);
+            if (p4 == P4_NONE) continue;                   // O(1) 预筛：无三以上成分
+            if (p4 == FORBID && check_forbidden(b, x, y))
+                continue;                                  // 真禁手：黑棋不能落
+            ThreatPoint t;
+            t.x = x;
+            t.y = y;
+            int nf4 = 0, nb4 = 0, nf3 = 0;
+            for (int d = 0; d < 4; ++d) {
+                switch (point_pattern_d(b, idx, d)) {
+                case PP_FIVE:   t.f5_dirs |= 1 << d; break;
+                case PP_FLEX4:  t.f4_dirs |= 1 << d; ++nf4; break;
+                case PP_B4:     t.b4_dirs |= 1 << d; ++nb4; break;
+                case PP_FLEX3:  t.f3_dirs |= 1 << d; ++nf3; break;
+                default: break;
+                }
+            }
+            if (t.f5_dirs) {
+                t.kind = 0;                                // 成五点（盘上有四）
+            } else if (nf4 >= 1 && (nf3 >= 1 || nb4 >= 1 || nf4 >= 2)) {
+                t.kind = 1;                                // 活四成分杀（立即胜）
+            } else if (nf4 >= 1) {
+                t.kind = 3;                                // 纯活四点（活三端点）
+            } else if (nb4 >= 2) {
+                t.kind = 1;                                // 双冲四杀（两个成五点）
+            } else if (nb4 >= 1 && nf3 >= 1) {
+                t.kind = 2;                                // 四三杀（冲四∧活三）
+            } else if (nf3 >= 2) {
+                t.kind = 1;                                // 三三杀（禁手关闭时才到达）
+            } else {
+                continue;                                  // 纯冲四 / 纯活三 / 更弱
+            }
+            out.push_back(t);
+        }
+    }
+    return out;
+}
+
+// ---- 3.2 试落阻挡点 -------------------------------------------------------
+// 线上是否仍存在“黑棋可落”的成五/活四制造点（制造点本身是禁手/自杀的算假威胁）。
+bool line_has_fire(const Board& b, const int* cells, int n, int d) {
+    for (int i = 0; i < n; ++i) {
+        const int c = cells[i];
+        const int x = cell_x(c), y = cell_y(c);
+        if (!b.is_empty(x, y)) continue;
+        if (b.is_no_liberty(c)) continue;                  // 无气空点 = 阻挡
+        const PointPattern p = point_pattern_d(b, c, d);
+        if (p != PP_FIVE && p != PP_FLEX4) continue;
+        if (black_point_illegal(b, x, y)) continue;        // 禁手/自杀制造点 = 假威胁
+        return true;
+    }
+    return false;
+}
+
+// 线上全部“试落阻挡点”：白棋真实落 p（含提子）后线上无成五/活四制造点。
+// 只探测线上黑子 ±5 窗口内的空点（窗口外的白子不影响任何线型）。
+std::vector<Pt> line_defense_points(Board& b, int d, int tx, int ty) {
+    std::vector<Pt> out;
+    int cells[MAX_BOARD];
+    int sx = tx, sy = ty;
+    const int dx = DX4[d], dy = DY4[d];
+    while (b.in_bounds(sx - dx, sy - dy)) { sx -= dx; sy -= dy; }
+    const int len = collect_line_cells(b, d, sx, sy, cells);
+
+    // 线上黑子的位置（±5 窗口预筛用）。
+    uint8_t near_black[MAX_BOARD];
+    for (int i = 0; i < len; ++i) {
+        const int x = cell_x(cells[i]), y = cell_y(cells[i]);
+        int dist = std::abs(x - tx);
+        if (d >= 2) dist = std::min(std::abs(x - tx), std::abs(y - ty));
+        near_black[i] = (b.at(x, y) == BLACK && dist <= 5) ? 1 : 0;
+    }
+    for (int i = 0; i < len; ++i) {
+        const int c = cells[i];
+        const int x = cell_x(c), y = cell_y(c);
+        if (!b.is_empty(x, y)) continue;
+        // 白子必须落在某线上黑子 ±5 窗口内才可能改变线型（提子例外：提走线上
+        // 黑子所在块，其邻点可能在窗口外——一并用窗口并集近似，漏掉的情形由
+        // 交集/并集框架的吃子点覆盖）。
+        bool in_window = false;
+        for (int k = std::max(0, i - 9); k <= std::min(len - 1, i + 9) && !in_window; ++k)
+            if (near_black[k]) in_window = true;
+        if (!in_window) continue;
+        if (!b.make_move(x, y, WHITE)) continue;
+        const bool fire = line_has_fire(b, cells, len, d);
+        b.undo_move();
+        if (!fire) out.push_back(Pt(x, y));
+    }
+    return out;
+}
+
+// ---- 3.3 无气构造点 -------------------------------------------------------
+// 假设黑棋落 (x,y)（不落子）：其块 = (x,y) ∪ 正交相连黑子，气 = 块的空正交邻点。
+void black_group_libs_after(Board& b, int x, int y, std::vector<int>* libs) {
+    libs->clear();
+    uint8_t seen[MAX_CELLS];
+    std::memset(seen, 0, sizeof(seen));
+    std::vector<int> stack;
+    const int start = cell_index(x, y);
+    stack.push_back(start);
+    seen[start] = 1;
+    for (size_t qi = 0; qi < stack.size(); ++qi) {
+        const int cur = stack[qi];
+        const int cx = cell_x(cur), cy = cell_y(cur);
+        for (int k = 0; k < 4; ++k) {
+            const int nx = cx + NX4[k], ny = cy + NY4[k];
+            if (!b.in_bounds(nx, ny)) continue;
+            const int ni = cell_index(nx, ny);
+            const uint8_t v = b.at(nx, ny);
+            if (v == BLACK) {
+                if (!seen[ni]) { seen[ni] = 1; stack.push_back(ni); }
+            } else if (v == EMPTY && ni != start && !seen[ni]) {
+                seen[ni] = 1;                          // start 假想已落黑，不算气
+                libs->push_back(ni);
+            }
+        }
+    }
+}
+
+// 黑棋落威胁点 q 后块气 ≤ 2 时的气点（白棋“构造无气/吃子”防御点）：
+//   1 气：q 自填即死，白棋一手提走；2 气：白占一气后 q 变 1 气、下一手提。
+// 气 >= 3：构造无气不可行 → 空表。
+std::vector<Pt> self_capture_defense(Board& b, int x, int y) {
+    std::vector<Pt> out;
+    std::vector<int> libs;
+    black_group_libs_after(b, x, y, &libs);
+    const size_t take = std::min<size_t>(libs.size(), 2);
+    for (size_t i = 0; i < take; ++i)
+        out.push_back(Pt(cell_x(libs[i]), cell_y(libs[i])));
+    return out;
+}
+
+// ---- 3.4 威胁相关吃子点 ---------------------------------------------------
+// 威胁涉及方向线上（威胁点 ±5 窗口内）的黑子 → 相关黑块的吃子点：
+// 1 气块的气点（一手提）；2 气块的两气点（落子后黑棋 2 步内不能连五才有效）。
+std::vector<Pt> threat_captures(Board& b, const ThreatPoint& t) {
+    uint8_t dirs = t.f5_dirs | t.f4_dirs | t.b4_dirs | t.f3_dirs;
+    if (t.kind == 0) dirs = t.f5_dirs;         // 成五点：只有成五方向线上的黑子相关
+    else if (t.kind == 1 && t.f4_dirs) dirs = t.f4_dirs;   // 活四杀：活四方向相关
+    uint8_t mask[MAX_CELLS];
+    std::memset(mask, 0, sizeof(mask));
+    int cells[MAX_BOARD];
+    for (int d = 0; d < 4; ++d) {
+        if (!(dirs & (1 << d))) continue;
+        int sx = t.x, sy = t.y;
+        const int dx = DX4[d], dy = DY4[d];
+        while (b.in_bounds(sx - dx, sy - dy)) { sx -= dx; sy -= dy; }
+        const int len = collect_line_cells(b, d, sx, sy, cells);
+        for (int i = 0; i < len; ++i) {
+            const int x = cell_x(cells[i]), y = cell_y(cells[i]);
+            if (b.at(x, y) != BLACK) continue;
+            int dist = std::abs(x - t.x);
+            if (d >= 2) dist = std::min(std::abs(x - t.x), std::abs(y - t.y));
+            if (dist > 5) continue;
+            mask[cells[i]] = 1;
+        }
+    }
+    return capture_points_from_mask(b, mask);
+}
+
+// ---- 3.5 逐威胁防御集 -----------------------------------------------------
+// Defense(T) = {T} ∪ 试落阻挡 ∪ 吃子 ∪ 无气构造。全部点经 PointSet 去重排序。
+std::vector<Pt> threat_defense(Board& b, const ThreatPoint& t) {
+    PointSet def;
+    def.add(b, cell_index(t.x, t.y));                    // 占据威胁点（通用防御）
+
+    int cells[MAX_BOARD];
+    if (t.kind == 3 || (t.kind == 1 && !t.f4_dirs && !t.b4_dirs)) {
+        // 纯活四点 / 三三杀：线上试落阻挡 / 活三线线型降级探针。
+        for (int d = 0; d < 4; ++d) {
+            const bool f4dir = (t.kind == 3) && (t.f4_dirs & (1 << d));
+            const bool f3dir = (t.kind == 1) && (t.f3_dirs & (1 << d));
+            if (!f4dir && !f3dir) continue;
+            int sx = t.x, sy = t.y;
+            const int dx = DX4[d], dy = DY4[d];
+            while (b.in_bounds(sx - dx, sy - dy)) { sx -= dx; sy -= dy; }
+            const int len = collect_line_cells(b, d, sx, sy, cells);
+            for (int i = 0; i < len; ++i) {
+                const int c = cells[i];
+                const int x = cell_x(c), y = cell_y(c);
+                if (!b.is_empty(x, y)) continue;
+                if (!b.make_move(x, y, WHITE)) continue;
+                bool defends;
+                if (f4dir) {
+                    defends = !line_has_fire(b, cells, len, d);
+                } else {
+                    // 三三杀：任一活三方向降级（< 活三）即防住其中一个三。
+                    defends = classify_point(b, t.x, t.y, BLACK, dx, dy) < PP_FLEX3;
+                }
+                b.undo_move();
+                if (defends) def.add(b, c);
+            }
+        }
+    } else if (t.kind == 2) {
+        // 四三杀：活三线的线型降级探针 + 冲四线的成五点。
+        for (int d = 0; d < 4; ++d) {
+            if (!(t.f3_dirs & (1 << d))) continue;
+            const int dx = DX4[d], dy = DY4[d];
+            int sx = t.x, sy = t.y;
+            while (b.in_bounds(sx - dx, sy - dy)) { sx -= dx; sy -= dy; }
+            const int len = collect_line_cells(b, d, sx, sy, cells);
+            for (int i = 0; i < len; ++i) {
+                const int c = cells[i];
+                const int x = cell_x(c), y = cell_y(c);
+                if (!b.is_empty(x, y)) continue;
+                if (!b.make_move(x, y, WHITE)) continue;
+                const bool defends =
+                    classify_point(b, t.x, t.y, BLACK, dx, dy) < PP_FLEX3;
+                b.undo_move();
+                if (defends) def.add(b, c);
+            }
+        }
+        for (int d = 0; d < 4; ++d) {
+            if (!(t.b4_dirs & (1 << d))) continue;
+            // 黑棋真实落杀点，其冲四的成五点即白棋防御点（冲四完成点唯一）。
+            if (!b.make_move(t.x, t.y, BLACK)) continue;
+            const int dx = DX4[d], dy = DY4[d];
+            int sx = t.x, sy = t.y;
+            while (b.in_bounds(sx - dx, sy - dy)) { sx -= dx; sy -= dy; }
+            const int len = collect_line_cells(b, d, sx, sy, cells);
+            for (int i = 0; i < len; ++i) {
+                const int c = cells[i];
+                if (!b.is_empty(cell_x(c), cell_y(c))) continue;
+                if (point_pattern_d(b, c, d) == PP_FIVE) def.add(b, c);
+            }
+            b.undo_move();
+        }
+    }
+    // kind 0 / kind 1(活四成分)：无试落阻挡（成五点唯一 / 活四不可挡）。
+
+    const std::vector<Pt> caps = threat_captures(b, t);
+    for (size_t i = 0; i < caps.size(); ++i)
+        def.add(b, cell_index(caps[i].first, caps[i].second));
+
+    if (t.kind != 0) {                       // 成五点不吃子反驳（成五即胜）
+        const std::vector<Pt> selfcap = self_capture_defense(b, t.x, t.y);
+        for (size_t i = 0; i < selfcap.size(); ++i)
+            def.add(b, cell_index(selfcap[i].first, selfcap[i].second));
+    }
+
+    std::vector<Pt> out;
+    def.finalize(&out);
+    return out;
+}
+
+#if 0  // ==== 封存（第 8 步）：旧“威胁线阻挡点”查表实现，由威胁点分类 + 试落阻挡取代 ====
 // 线的威胁等级：存在空点一步成五 → FIVE；一步成活四 → OPEN_FOUR；一步成冲四 →
 // RUSH_FOUR；否则 NONE（活二 / 眠三 一类不构成“一步成四/五”的强制威胁）。
 AtkType line_threat_rank(const Board& b, const int* cells, int n, int d) {
@@ -709,6 +987,7 @@ std::vector<Pt> line_blockers(Board& b, const int* cells, int n, int d) {
     }
     return out;
 }
+#endif  // ==== 封存结束：旧威胁线阻挡点 ====
 
 // 全盘威胁线：4 方向 × 每条线，rank != NONE 的线连同其阻挡点与线上黑子。
 std::vector<ThreatLine> collect_threat_lines(Board& b) {
