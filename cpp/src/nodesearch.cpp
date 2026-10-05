@@ -329,74 +329,78 @@ int64_t quick_win(Board& b, int color, int ply,
 // ---------------------------------------------------------------------------
 int64_t node_dfs(Board& b, int depth, int64_t alpha, int64_t beta, int ply,
                  Ctx& ctx);
+int64_t vcf_attack(Board& b, int64_t alpha, int64_t beta, int ply, Ctx& ctx);
 
-// 守方节点（轮白）：黑有成五点时只搜“堵成五点 + 1 气块提子”；无威胁 stand-pat。
+// 守方节点（轮白）：黑有成五点时只搜“堵成五点 + 1 气四石块提子”；无威胁 stand-pat。
+// 健全性：成五点存在时，其余白应手既不堵成五点也不提走四石块 → 黑下一手成五，
+// 价值不高于这里的应手，因此只搜这些应手不损失证明健全性。
 int64_t vcf_defend(Board& b, int64_t alpha, int64_t beta, int ply, Ctx& ctx) {
     if (ctx_check(ctx)) return 0;
-    NMove mv[MAX_MOVES];
+    if (ply >= MAX_PLY) return stm_score(b, ctx.winmode);
+
     uint16_t bfive[MAX_MOVES], bflex4[MAX_MOVES], bc43[MAX_MOVES];
     int n5, nf4, nc43;
-    const int nm = gen_node_moves(b, WHITE, mv, bfive, n5, bflex4, nf4, bc43, nc43);
-    (void)nm; (void)mv;
-
-    if (n5 == 0) return stm_score(b, ctx.winmode);      // 无成五威胁：不受迫
-    if (n5 >= 2) {
-        const int64_t qw = quick_win(b, WHITE, ply, bfive, n5, bflex4, nf4, bc43, nc43);
-        if (qw != 0) return qw;
-        // 双成五但石块可提：交给通用着法循环太贵，按守方视角取“堵其一”继续
-        //（健全性：其余应手立即败，价值不高于堵一手后的局面）。
+    {
+        NMove mv[MAX_MOVES];
+        const int nm = gen_node_moves(b, WHITE, mv, bfive, n5, bflex4, nf4, bc43, nc43);
+        (void)nm;
     }
 
-    // 应手清单：全部成五点（n5==1 时 1 个；n5>=2 时堵任一——堵完另一个成五点
-    // 会在子节点 quick_win 里判负）∪ 1 气四石块的提子点。
-    uint16_t defenses[8];
+    if (n5 == 0) return stm_score(b, ctx.winmode);      // 无成五威胁：不受迫
+    {
+        const int64_t qw = quick_win(b, WHITE, ply, bfive, n5, bflex4, nf4, bc43, nc43);
+        if (qw != 0) return qw;                         // 双成五且都不可提 → 白必败
+    }
+
+    // 应手清单：全部成五点 ∪ 1 气四石块的提子点（n5>=2 但有石块可提时，
+    // 提子是唯一可能存活的防御，必须纳入）。
+    uint16_t defenses[16];
     int nd = 0;
-    for (int i = 0; i < n5 && nd < 8; ++i) defenses[nd++] = bfive[i];
-    if (n5 == 1) {
-        const int idx = bfive[0];
-        // 四石块 1 气 → 提子点也是有效防御（其余防御立即败给成五）。
-        if (!five_point_group_libs_ge(b, idx / MAX_BOARD, idx % MAX_BOARD, 2)) {
-            static const int DX[4] = {1, 0, 1, 1}, DY[4] = {0, 1, 1, -1};
-            const int qx = idx / MAX_BOARD, qy = idx % MAX_BOARD;
-            const int qidx = idx;
-            for (int d = 0; d < 4 && nd < 8; ++d) {
-                if (b.cached_pattern(0, qidx, d) != F5) continue;
-                for (int s = -4; s <= 4 && nd < 8; ++s) {
-                    if (s == 0) continue;
-                    const int nx = qx + s * DX[d], ny = qy + s * DY[d];
-                    if (!b.in_bounds(nx, ny)) continue;
-                    if (b.at(nx, ny) != BLACK) continue;
-                    // 1 气组的唯一气点：BFS 找它。
-                    const int NX[4] = {1, -1, 0, 0}, NY[4] = {0, 0, 1, -1};
-                    uint8_t vis[MAX_CELLS];
-                    std::memset(vis, 0, sizeof(vis));
-                    uint16_t st[MAX_CELLS];
-                    int top = 0;
-                    st[top++] = uint16_t(Board::index(nx, ny));
-                    vis[st[0]] = 1;
-                    while (top > 0 && nd < 8) {
-                        const int cur = st[--top];
-                        const int cx = cur / MAX_BOARD, cy = cur % MAX_BOARD;
-                        for (int t = 0; t < 4; ++t) {
-                            const int mx = cx + NX[t], my = cy + NY[t];
-                            if (!b.in_bounds(mx, my)) continue;
-                            const int mi = Board::index(mx, my);
-                            const uint8_t v2 = b.at(mx, my);
-                            if (v2 == BLACK) {
-                                if (!vis[mi]) { vis[mi] = 1; st[top++] = uint16_t(mi); }
-                            } else if (v2 == EMPTY && !vis[mi]) {
-                                vis[mi] = 2;
-                                defenses[nd++] = uint16_t(mi);   // 提子点
-                            }
+    static const int DX[4] = {1, 0, 1, 1}, DY[4] = {0, 1, 1, -1};
+    for (int i = 0; i < n5 && nd < 16; ++i) {
+        const int idx = bfive[i];
+        defenses[nd++] = uint16_t(idx);
+        if (five_point_group_libs_ge(b, idx / MAX_BOARD, idx % MAX_BOARD, 2))
+            continue;                                   // 石块 >= 2 气：提不了
+        // 1 气组：BFS 找它的唯一气点（提子防御）。
+        const int qx = idx / MAX_BOARD, qy = idx % MAX_BOARD;
+        for (int d = 0; d < 4 && nd < 16; ++d) {
+            if (b.cached_pattern(0, idx, d) != F5) continue;
+            for (int s = -4; s <= 4 && nd < 16; ++s) {
+                if (s == 0) continue;
+                const int nx = qx + s * DX[d], ny = qy + s * DY[d];
+                if (!b.in_bounds(nx, ny)) continue;
+                if (b.at(nx, ny) != BLACK) continue;
+                const int NX[4] = {1, -1, 0, 0}, NY[4] = {0, 0, 1, -1};
+                uint8_t vis[MAX_CELLS];
+                std::memset(vis, 0, sizeof(vis));
+                uint16_t st[MAX_CELLS];
+                int top = 0;
+                st[top++] = uint16_t(Board::index(nx, ny));
+                vis[st[0]] = 1;
+                while (top > 0 && nd < 16) {
+                    const int cur = st[--top];
+                    const int cx = cur / MAX_BOARD, cy = cur % MAX_BOARD;
+                    for (int t = 0; t < 4; ++t) {
+                        const int mx = cx + NX[t], my = cy + NY[t];
+                        if (!b.in_bounds(mx, my)) continue;
+                        const int mi = Board::index(mx, my);
+                        const uint8_t v2 = b.at(mx, my);
+                        if (v2 == BLACK) {
+                            if (!vis[mi]) { vis[mi] = 1; st[top++] = uint16_t(mi); }
+                        } else if (v2 == EMPTY && !vis[mi]) {
+                            vis[mi] = 2;
+                            defenses[nd++] = uint16_t(mi);   // 提子点
                         }
                     }
-                    s = 8;   // 找到组即止
                 }
+                s = 8;   // 该方向找到四子即止（同组）
             }
         }
     }
 
     int64_t best = -INF_SCORE;
+    int64_t cur_alpha = alpha;
     for (int i = 0; i < nd; ++i) {
         const int idx = defenses[i];
         if (!b.make_move(idx / MAX_BOARD, idx % MAX_BOARD, WHITE)) continue;
@@ -404,13 +408,13 @@ int64_t vcf_defend(Board& b, int64_t alpha, int64_t beta, int ply, Ctx& ctx) {
         if (b.white_wins_now(ctx.winmode)) {
             v = MATE - ply - 1;                     // 白提光/封堵达成胜利
         } else {
-            v = -vcf_attack(b, -beta, -alpha, ply + 1, ctx);
+            v = -vcf_attack(b, -beta, -cur_alpha, ply + 1, ctx);
         }
         b.undo_move();
         if (ctx.timeout) return 0;
         if (v > best) best = v;
-        if (best > alpha) alpha = best;
-        if (alpha >= beta) break;
+        if (best > cur_alpha) cur_alpha = best;
+        if (cur_alpha >= beta) break;
     }
     if (best == -INF_SCORE) return stm_score(b, ctx.winmode);
     return best;
@@ -431,7 +435,7 @@ int64_t vcf_attack(Board& b, int64_t alpha, int64_t beta, int ply, Ctx& ctx) {
         if (qw != 0) return qw;
     }
 
-    // TT 探测（仅取 best 排序与 depth>=0 截断；VCF 层 depth 恒 0）。
+    // TT 探测（VCF 层 depth 恒 0：只做同层截断与边界收窄）。
     const uint64_t key = b.hash();
     {
         const TTEntry& e = g_tt[key & TT_MASK];
@@ -452,7 +456,7 @@ int64_t vcf_attack(Board& b, int64_t alpha, int64_t beta, int ply, Ctx& ctx) {
         if (mv[i].tier < 9) break;                  // 只走成四手（E_BLOCK4 及以上）
         const int idx = mv[i].pos;
         if (!b.make_move(idx / MAX_BOARD, idx % MAX_BOARD, BLACK)) continue;
-        if (b.last_move_was_five()) {               // 防御：成五点已在 quick_win 处理
+        if (b.last_move_was_five()) {               // 成五点已由 quick_win 处理
             b.undo_move();
             continue;
         }
@@ -467,7 +471,7 @@ int64_t vcf_attack(Board& b, int64_t alpha, int64_t beta, int ply, Ctx& ctx) {
     TTEntry& e = g_tt[key & TT_MASK];
     e.key = key;
     e.score = tt_store_score(best, ply);
-    e.flag = (best >= beta) ? TT_LOWER : ((best > stand) ? TT_LOWER : TT_UPPER);
+    e.flag = (best >= beta) ? TT_LOWER : TT_UPPER;
     e.depth = 0;
     e.best = TT_NO_MOVE;
     return best;
