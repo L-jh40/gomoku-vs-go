@@ -724,7 +724,8 @@ class DaoqiApp:
             self._set_status("引擎尚未就绪")
             return True
         if self.job_pending:
-            return True            # 静默忽略（引擎忙）
+            self._set_status("引擎思考中，请稍候…")
+            return True
         if self.game_over:
             self._set_status(f"对局已结束：{self.result_text}（点“新对局”）")
             return True
