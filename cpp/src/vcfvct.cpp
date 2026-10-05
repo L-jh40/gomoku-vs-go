@@ -1428,6 +1428,7 @@ VctOutcome layer_run(Board& b, const VctParams& params, double time_sec, bool sm
 
 }  // namespace
 
+#if 0  // ==== 封存（第 8 步）：三层 VCT 的对外包装与混合判定 ====
 // 混合判定（第二部分 2.3）的防御点交集：把各条成功路线的首轮应手集合取交集
 // （“每种可靠 VCT 的防御点位集合”）。交集为空时返回空表，调用方按规格退回到
 // “按最大步数标注 W/L”。
@@ -1517,6 +1518,7 @@ bool creates_new_black_33(Board& b, int px, int py,
     }
     return false;
 }
+#endif  // ==== 封存结束：三层 VCT 包装 / 禁手消失判定 ====
 
 // ===========================================================================
 // 3.6 白棋威胁候选点（交集框架）
