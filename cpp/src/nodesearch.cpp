@@ -254,12 +254,7 @@ int gen_node_moves(Board& b, int color, NMove* out, uint16_t* bfive, int& n5) {
 // 静态杀判定：唯一保留“轮黑有成五点 → MATE”（无条件健全：成五立即终局）。
 // ---------------------------------------------------------------------------
 inline int64_t quick_win(int color, int ply, int n5) {
-    if (color == BLACK && n5 > 0) {
-        if (ply >= 2 && getenv("NODESEARCH_DUMP5") != nullptr) {
-            fprintf(stderr, "==== five-point mate at ply=%d ====\n", ply);
-        }
-        return MATE - ply - 1;
-    }
+    if (color == BLACK && n5 > 0) return MATE - ply - 1;
     return 0;
 }
 
@@ -344,7 +339,16 @@ int64_t vcf_attack(Board& b, int64_t alpha, int64_t beta, int ply, Ctx& ctx) {
     {
         const int64_t qw = quick_win(BLACK, ply, n5);
         if (qw != 0) {
-            fprintf(stderr, "tail-attack ply=%d n5=%d QUICKWIN MATE\n", ply, n5);
+            if (ply >= 4 && getenv("NODESEARCH_DUMP5") != nullptr) {
+                fprintf(stderr, "==== five-point mate at ply=%d, n5=%d ====\n", ply, n5);
+                for (int x = 0; x < b.size(); ++x) {
+                    for (int y = 0; y < b.size(); ++y) {
+                        const uint8_t v = b.at(x, y);
+                        fprintf(stderr, "%c", v == BLACK ? 'X' : v == WHITE ? 'O' : '.');
+                    }
+                    fprintf(stderr, "\n");
+                }
+            }
             return qw;
         }
     }
