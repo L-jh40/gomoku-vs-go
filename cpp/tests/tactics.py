@@ -374,15 +374,14 @@ def case_t2(eng: Engine, stats: Stats) -> None:
     stats.check(v is None,
                 "T2: (7,4) 不应有 W 标注（白 (7,8) 提子反驳），实际 %r" % (v,))
     verify_labels(eng, stats, pos, "b", c)
-    # 交叉校验（第 7 步新语义）：轮到白方时 candidates w = **威胁候选点**
-    # （阻挡点交集，无交集回退并集，再取标注最好的一档）。T2 局面黑 (7,5)(7,6)(7,7)
-    # 是一条被 (7,3) 半堵的活三，白方 (7,8) 同时是它的阻挡点与提子点（黑块 2 气），
-    # 因此它必须作为候选点出现，且**不能**被标 L（白提子后黑方再也成不了五）。
+    # 交叉校验（第 8 步新语义）：轮到白方时 candidates w = **威胁候选点**
+    # （威胁防御集交集，无交集回退并集；一律无 W/L 标注 tag=''）。T2 局面黑
+    # (7,5)(7,6)(7,7) 是一条被 (7,3) 半堵的活三，白方 (7,8) 同时是它的阻挡点与
+    # 提子点（黑块 2 气），因此它必须作为候选点出现。
     rw = run_candidates(eng, "w", 11)
     vw = find(rw["cands"], 7, 8)
-    stats.check(vw is not None and vw[0] != "L",
-                "T2: 白方 (7,8)（阻挡点 + 提子点）应在候选集里且不得被标 L，实际 %r"
-                % (vw,))
+    stats.check(vw is not None,
+                "T2: 白方 (7,8)（阻挡点 + 提子点）应在候选集里，实际 %r" % (vw,))
     verify_labels(eng, stats, pos, "w", rw["cands"])
 
 
@@ -463,16 +462,15 @@ def case_t7(eng: Engine, stats: Stats) -> None:
 
 
 def case_t8(eng: Engine, stats: Stats) -> None:
-    print("[T8] 胜点验证：T4 局面 play b 7 7 后 candidates w 11 应为小黑方威胁的阻挡点且全为 L")
+    print("[T8] 胜点验证：T4 局面 play b 7 7 后 candidates w 11 应为双活三的阻挡点且无标注")
     pos = position(black=T4_BLACK, white=T4_WHITE, prelude=["play b 7 7"])
     setup(eng, pos)
     r = run_candidates(eng, "w", 11)
     c = r["cands"]
     stats.check(not r["timeout"], "T8: 不应超时截断")
-    # 第 7 步新语义：candidates w = 威胁候选点（黑 (7,7) 落下后是“活三 + 活三”双威胁，
-    # 其阻挡点是四条线的紧邻空点 {(5,7),(9,7),(7,5),(7,9)}）；旧版“给 gen_moves(WHITE)
-    # 的每个候选都打 L”的语义已废弃，故这里断言的是“候选集是这些阻挡点的子集、
-    # 数量很小、且全部为 L（白方必败）”。
+    # 第 8 步新语义：candidates w = 威胁候选点（黑 (7,7) 落下后是“活三 + 活三”双威胁，
+    # 四条活三线的防御集两两不相交 → 交集为空回退并集 = 恰为四个阻挡点
+    # {(5,7),(9,7),(7,5),(7,9)}），一律无 W/L 标注（tag=''）。
     blockers = {(5, 7), (9, 7), (7, 5), (7, 9)}
     stats.check(1 <= len(c) <= 8,
                 "T8: 白方候选应是少量阻挡点（1..8），实际 %d" % len(c))
@@ -480,12 +478,8 @@ def case_t8(eng: Engine, stats: Stats) -> None:
     stats.check(outside == [],
                 "T8: 白方候选应局限于黑方威胁的阻挡点 %s，越界项 %r"
                 % (sorted(blockers), outside[:8]))
-    bad = [t for t in c if t[2] != "L"]
-    stats.check(bad == [], "T8: 所有白方候选都应是 L，异常项 %r" % (bad[:8],))
-    for pt in sorted(blockers):
-        v = find(c, pt[0], pt[1])
-        stats.check(v is None or v[0] == "L",
-                    "T8: %r 若为候选则应为 L，实际 %r" % (pt, v))
+    bad = [t for t in c if t[2] != ""]
+    stats.check(bad == [], "T8: 所有白方候选都应无标注（tag=''），异常项 %r" % (bad[:8],))
     verify_labels(eng, stats, pos, "w", c)
     # 黑方自己在这个局面下也有连五/四三点，counter-check 一下黑方标注非空。
     pos_b = position(black=T4_BLACK + [(7, 7)], white=T4_WHITE)
