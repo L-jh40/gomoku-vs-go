@@ -500,7 +500,7 @@ int64_t node_dfs(Board& b, int depth, int64_t alpha, int64_t beta, int ply,
         } else if (b.white_wins_now(ctx.winmode)) {
             score = (color == WHITE) ? (MATE - ply - 1) : (-MATE + ply);
         } else {
-            if (searched == 0) {
+            if (searched == 0 || getenv("NODESEARCH_NO_PVS")) {
                 score = -node_dfs(b, depth - 1, -beta, -alpha, ply + 1, ctx);
             } else {
                 // PVS：零窗口试探，失败高再以全窗口重搜。
