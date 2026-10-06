@@ -18,6 +18,7 @@
 #include "nodesearch.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <cstdlib>
 #include <cassert>
 #include <chrono>
