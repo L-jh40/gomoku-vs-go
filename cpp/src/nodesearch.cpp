@@ -439,6 +439,7 @@ int64_t node_dfs(Board& b, int depth, int64_t alpha, int64_t beta, int ply,
 
     // depth <= 0：陷入 VCF 尾部。
     if (depth <= 0) {
+        if (getenv("NODESEARCH_NO_VCF")) return stm_score(b, ctx.winmode);
         if (b.turn() == BLACK) return vcf_attack(b, ply, ctx);
         return vcf_defend(b, ply, ctx);
     }
