@@ -60,7 +60,8 @@ def main():
             v = int(board.grid[x, y])
             if v:
                 e.cmd("set %d %d %s" % (x, y, {1: "b", 2: "w", 3: "o"}[v]))
-    print("play b h8:", e.cmd("play b 7 7"))
+    print("play w g8 (堵 g8 口):", e.cmd("play w 7 6"))
+    print("play b h8 (1 气自填):", e.cmd("play b 7 7"))
     print("pat d12 (h8 黑子在, F5 合理):", e.cmd("pat 3 3"))
     print("play w h7 (提 h8):", e.cmd("play w 8 7"))
     print("counters:", e.cmd("counters"))

@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstdio>
 #include <cstdlib>
 #include <cassert>
 #include <chrono>
@@ -369,7 +370,19 @@ int64_t vcf_attack(Board& b, int ply, Ctx& ctx) {
 
     {
         const int64_t qw = quick_win(BLACK, ply, n5);
-        if (qw != 0) return qw;
+        if (qw != 0) {
+            if (ply >= 2 && getenv("NODESEARCH_DUMP5")) {
+                fprintf(stderr, "==== tail five-point mate ply=%d n5=%d ====\n", ply, n5);
+                for (int x = 0; x < b.size(); ++x) {
+                    for (int y = 0; y < b.size(); ++y) {
+                        const uint8_t v = b.at(x, y);
+                        fprintf(stderr, "%c", v == BLACK ? 'X' : v == WHITE ? 'O' : '.');
+                    }
+                    fprintf(stderr, "\n");
+                }
+            }
+            return qw;
+        }
     }
 
     // TT 探测（尾部值是局面的确定函数，EXACT 直接返回）。
