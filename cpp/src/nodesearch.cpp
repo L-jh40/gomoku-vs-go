@@ -359,8 +359,7 @@ int64_t vcf_defend(Board& b, int ply, Ctx& ctx) {
         b.undo_move();
         if (ctx.timeout) return 0;
         if (getenv("NODESEARCH_TRACE") && ply <= 8)
-            fprintf(stderr, "  defend ply=%d def=(%d,%d) v=%lld
-", ply,
+            fprintf(stderr, "  defend ply=%d def=(%d,%d) v=%lld\n", ply,
                     idx / MAX_BOARD, idx % MAX_BOARD, (long long)v);
         if (v > best) best = v;
     }
