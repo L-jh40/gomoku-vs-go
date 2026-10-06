@@ -343,9 +343,8 @@ int64_t vcf_defend(Board& b, int ply, Ctx& ctx) {
     if (getenv("NODESEARCH_TRACE") && ply <= 8) {
         fprintf(stderr, "defend ply=%d n5=%d nd=%d defenses:", ply, n5, nd);
         for (int i = 0; i < nd; ++i)
-            fprintf(stderr, " (%d,%d)", defenses[i] / MAX_BOARD, defenses[i] %% MAX_BOARD);
-        fprintf(stderr, "
-");
+            fprintf(stderr, " (%d,%d)", defenses[i] / MAX_BOARD, defenses[i] % MAX_BOARD);
+        fprintf(stderr, "\n");
     }
     int64_t best = -INF_SCORE;
     for (int i = 0; i < nd; ++i) {
