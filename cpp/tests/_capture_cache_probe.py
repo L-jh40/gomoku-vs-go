@@ -29,6 +29,9 @@ class Eng:
             return None
         if head in ("play", "undo", "hash", "pat", "counters", "eval", "move"):
             return self.p.stdout.readline().rstrip("\n")
+        if head == "dump":
+            return [self.p.stdout.readline().rstrip("\n")
+                    for _ in range(15)]
         out = []
         while True:
             r = self.p.stdout.readline()
