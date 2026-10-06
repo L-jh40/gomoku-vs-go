@@ -330,14 +330,34 @@ int64_t vcf_defend(Board& b, int ply, Ctx& ctx) {
             uint16_t cap_lib = 0;
             if (!group_libs_ge_from(b, stones[k] / MAX_BOARD,
                                     stones[k] % MAX_BOARD, 2, visited, &cap_lib)) {
-                if (cap_lib != 0) add_defense(cap_lib); // 1 气组 → 提子点
+                if (cap_lib != 0) {
+                    if (getenv("NODESEARCH_TRACE") && ply <= 8) {
+                        fprintf(stderr, "  cap-lib for q=(%d,%d) stone=(%d,%d): (%d,%d)\n",
+                                idx / MAX_BOARD, idx % MAX_BOARD,
+                                stones[k] / MAX_BOARD, stones[k] % MAX_BOARD,
+                                cap_lib / MAX_BOARD, cap_lib % MAX_BOARD);
+                        for (int x = 0; x < b.size(); ++x) {
+                            for (int y = 0; y < b.size(); ++y) {
+                                const uint8_t v = b.at(x, y);
+                                fprintf(stderr, "%c", v == BLACK ? 'X' : v == WHITE ? 'O' : '.');
+                            }
+                            fprintf(stderr, "\n");
+                        }
+                    }
+                    add_defense(cap_lib);               // 1 气组 → 提子点
+                }
             }
         }
         // c) 黑落 q 后块恰 1 气 → 该气点（无气杀）。
         uint16_t kill_lib = 0;
         if (black_group_libs_after(b, idx / MAX_BOARD, idx % MAX_BOARD, 2,
-                                   &kill_lib) < 2 && kill_lib != 0)
+                                   &kill_lib) < 2 && kill_lib != 0) {
+            if (getenv("NODESEARCH_TRACE") && ply <= 8)
+                fprintf(stderr, "  kill-lib for q=(%d,%d): (%d,%d)\n",
+                        idx / MAX_BOARD, idx % MAX_BOARD,
+                        kill_lib / MAX_BOARD, kill_lib % MAX_BOARD);
             add_defense(kill_lib);
+        }
     }
 
     if (getenv("NODESEARCH_TRACE") && ply <= 8) {
