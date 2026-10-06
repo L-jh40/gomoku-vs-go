@@ -374,13 +374,16 @@ int Board::post_move_cell_flags(const uint16_t* centers, int nc,
     }
 
     // 受影响棋块的空邻点（气数变化会改变这些空点的无气状态）。
+    // 种子 = centers 本身及其正交邻位中的黑子——必须与 make 侧
+    // eval_update_after_move (2e) 的 riskCells 种子集合同口径，否则
+    // make 触碰过、undo 未触碰的空点 self_cap_/dead_ 残留 make 时的值，
+    // 棋型缓存（无气点=阻挡映射）随搜索深度累积漂移。
     ++comp_gen_;
     if (comp_gen_ == 0) { std::memset(comp_stamp_, 0, sizeof(comp_stamp_)); comp_gen_ = 1; }
     {
         int stack[MAX_CELLS];
-        for (int i = 0; i < nc; ++i) {
-            const int s = centers[i];
-            if (cells_[s] != BLACK || comp_stamp_[s] == comp_gen_) continue;
+        auto seed_group = [&](int s) {
+            if (cells_[s] != BLACK || comp_stamp_[s] == comp_gen_) return;
             int top = 0;
             stack[top++] = s;
             comp_stamp_[s] = comp_gen_;
@@ -398,6 +401,15 @@ int Board::post_move_cell_flags(const uint16_t* centers, int nc,
                         stack[top++] = ni;
                     }
                 }
+            }
+        };
+        for (int i = 0; i < nc; ++i) {
+            const int c = centers[i];
+            seed_group(c);
+            const int cx = c / MAX_BOARD, cy = c % MAX_BOARD;
+            for (int k = 0; k < 4; ++k) {
+                const int nx = cx + DX4[k], ny = cy + DY4[k];
+                if (in_bounds(nx, ny)) seed_group(index(nx, ny));
             }
         }
     }
