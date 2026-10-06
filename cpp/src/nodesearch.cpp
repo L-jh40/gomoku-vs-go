@@ -458,7 +458,7 @@ int64_t node_dfs(Board& b, int depth, int64_t alpha, int64_t beta, int ply,
     // TT 探测。
     const uint64_t key = b.hash();
     int tt_best = -1;
-    {
+    if (getenv("NODESEARCH_NO_TT") == nullptr) {
         const NSTTEntry& e = g_tt[key & TT_MASK];
         if (e.key == key && e.flag != TT_EMPTY) {
             const int64_t s = tt_load_score(e.score, ply);
@@ -535,12 +535,14 @@ int64_t node_dfs(Board& b, int depth, int64_t alpha, int64_t beta, int ply,
         return (color == BLACK) ? (-MATE + ply) : stm_score(b, ctx.winmode);
     }
 
-    NSTTEntry& e = g_tt[key & TT_MASK];
-    e.key = key;
-    e.score = tt_store_score(best, ply);
-    e.depth = int16_t(depth);
-    e.flag = flag;
-    e.best = best_move;
+    if (getenv("NODESEARCH_NO_TT") == nullptr) {
+        NSTTEntry& e = g_tt[key & TT_MASK];
+        e.key = key;
+        e.score = tt_store_score(best, ply);
+        e.depth = int16_t(depth);
+        e.flag = flag;
+        e.best = best_move;
+    }
     return best;
 }
 
