@@ -340,6 +340,13 @@ int64_t vcf_defend(Board& b, int ply, Ctx& ctx) {
             add_defense(kill_lib);
     }
 
+    if (getenv("NODESEARCH_TRACE") && ply <= 8) {
+        fprintf(stderr, "defend ply=%d n5=%d nd=%d defenses:", ply, n5, nd);
+        for (int i = 0; i < nd; ++i)
+            fprintf(stderr, " (%d,%d)", defenses[i] / MAX_BOARD, defenses[i] %% MAX_BOARD);
+        fprintf(stderr, "
+");
+    }
     int64_t best = -INF_SCORE;
     for (int i = 0; i < nd; ++i) {
         const int idx = defenses[i];
@@ -352,6 +359,10 @@ int64_t vcf_defend(Board& b, int ply, Ctx& ctx) {
         }
         b.undo_move();
         if (ctx.timeout) return 0;
+        if (getenv("NODESEARCH_TRACE") && ply <= 8)
+            fprintf(stderr, "  defend ply=%d def=(%d,%d) v=%lld
+", ply,
+                    idx / MAX_BOARD, idx % MAX_BOARD, (long long)v);
         if (v > best) best = v;
     }
     if (best == -INF_SCORE) return stm_score(b, ctx.winmode);
