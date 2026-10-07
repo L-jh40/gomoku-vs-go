@@ -397,6 +397,14 @@ int64_t vcf_attack(Board& b, int ply, Ctx& ctx) {
     int n5;
     const int nm = gen_node_moves(b, BLACK, mv, bfive, n5);
 
+    if (getenv("NODESEARCH_TRACE") && ply <= 4) {
+        fprintf(stderr, "tail-attack ply=%d n5=%d four-moves:", ply, n5);
+        for (int i = 0; i < nm && mv[i].tier >= 9; ++i)
+            fprintf(stderr, " (%d,%d,t%d)", mv[i].pos / MAX_BOARD, mv[i].pos % MAX_BOARD, mv[i].tier);
+        fprintf(stderr, "
+");
+    }
+
     {
         const int64_t qw = quick_win(BLACK, ply, n5);
         if (qw != 0) {
