@@ -1855,15 +1855,18 @@ AnalysisResult analyse(Board& b, int color, int max_steps, int winmode,
 
     // 第 9 步：W/L 标注改用逐节点证明搜索（rapfi 式，nodesearch.cpp）；
     // 旧 AND-OR 证明搜索（defense_four/defense_three + prove_*_dfs）已封存。
+    // 标注搜索预算受限（深度上限 8、每点 6 万节点）：L 标签只覆盖浅层战术，
+    // 深层证明交给 prove 命令（完整预算）——“宁可漏标，不可错标”。
     const double deadline =
         (time_limit_sec > 0.0) ? now_sec() + time_limit_sec : 0.0;
-    const int max_depth = std::max(2, 2 * std::max(1, max_steps));
+    const int max_depth = std::min(6, std::max(2, 2 * std::max(1, max_steps)));
+    const long long per_label_nodes = 40000;
     bool tt_seeded = false;
     bool any_timeout = false;
     uint64_t total_nodes = 0;
     // 逐候选搜索的剩余时间；预算耗尽即停止标注（宁可漏标，不可错标）。
     auto remaining_sec = [&]() -> double {
-        if (deadline <= 0.0) return 0.0;            // 无时限
+        if (deadline <= 0.0) return 1e9;            // 无时限
         const double remain = deadline - now_sec();
         return remain > 0.005 ? remain : -1.0;      // -1 = 预算耗尽
     };
@@ -1881,15 +1884,16 @@ AnalysisResult analyse(Board& b, int color, int max_steps, int winmode,
             lab.y = rep.candidates[i].second;
             lab.tag = 0;
             lab.steps = 0;
-            const double remain = rep.unconstrained ? -1.0 : remaining_sec();
-            if (remain >= 0.0 && b.make_move(lab.x, lab.y, WHITE)) {
+            const double remain = rep.unconstrained ? 0.0 : remaining_sec();
+            if (remain > 0.0 && b.make_move(lab.x, lab.y, WHITE)) {
                 NodeSearchResult r = node_search(
                     b, max_depth, winmode, remain,
-                    node_limit > 0 ? std::min<long long>(node_limit, 200000) : 200000,
+                    node_limit > 0 ? std::min<long long>(node_limit, per_label_nodes)
+                                   : per_label_nodes,
                     /*clear_tt=*/!tt_seeded);
                 tt_seeded = true;
                 total_nodes += r.nodes;
-                if (r.timeout) any_timeout = true;
+                if (r.timeout && remaining_sec() < 0.0) any_timeout = true;
                 if (r.score >= MATE_BOUND) {
                     lab.tag = 'L';
                     lab.steps = static_cast<int>(MATE - r.score) + 1;
@@ -1920,7 +1924,7 @@ AnalysisResult analyse(Board& b, int color, int max_steps, int winmode,
         lab.steps = 0;
 
         const double remain = remaining_sec();
-        if (remain >= 0.0 && b.make_move(lab.x, lab.y, color)) {
+        if (remain > 0.0 && b.make_move(lab.x, lab.y, color)) {
             bool decided = false;
             if (color == BLACK && b.last_move_was_five()) {
                 lab.tag = 'W';          // 该手立即成五（1 手）
@@ -1934,7 +1938,8 @@ AnalysisResult analyse(Board& b, int color, int max_steps, int winmode,
                 // k = 黑候选 1 手 + 白 1 手 + 黑成五步数（奇数）。
                 NodeSearchResult r = node_search(
                     b, max_depth, winmode, remain,
-                    node_limit > 0 ? std::min<long long>(node_limit, 200000) : 200000,
+                    node_limit > 0 ? std::min<long long>(node_limit, per_label_nodes)
+                                   : per_label_nodes,
                     /*clear_tt=*/!tt_seeded);
                 tt_seeded = true;
                 total_nodes += r.nodes;
