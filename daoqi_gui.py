@@ -26,7 +26,15 @@ import tkinter as tk
 from tkinter import messagebox
 
 _BASE = os.path.dirname(os.path.abspath(__file__))
-DAOQI_DIR = os.path.join(_BASE, "daoqi_katago")
+# 引擎目录：优先 ../tools/daoqi_katago（引擎集中放在 tools/），兼容本目录旁
+# 的 daoqi_katago（旧布局）。
+_DAOQI_CANDIDATES = (
+    os.path.join(os.path.dirname(_BASE), "tools", "daoqi_katago"),
+    os.path.join(_BASE, "daoqi_katago"),
+)
+DAOQI_DIR = next((p for p in _DAOQI_CANDIDATES
+                  if os.path.exists(os.path.join(p, "model.bin.gz"))),
+                 _DAOQI_CANDIDATES[0])
 MODEL_PATH = os.path.join(DAOQI_DIR, "model.bin.gz")
 CONFIG_PATH = os.path.join(DAOQI_DIR, "gtp_daoqi.cfg")
 BACKENDS = (("OpenCL", "katago_opencl.exe"), ("Eigen", "katago_eigen.exe"))
