@@ -108,21 +108,22 @@ class TraditionalApp(base.DaoqiApp):
             return
         if self._view_pos is None:                      # 从实时进入翻看
             self._live_state = self._snapshot_state()
-            self._view_pos = len(snaps) - 1
+            pos = len(snaps) - 1 + delta
         else:
-            self._view_pos += delta
-        if self._view_pos >= len(snaps) - 1:            # 回到最新
+            pos = self._view_pos + delta
+        if pos >= len(snaps) - 1:                       # 到最新一手 -> 实时局面
             if self._live_state is not None:
                 self._restore_state(self._live_state)
             self._view_pos = None
             self._live_state = None
             self._set_status("已回到最新局面")
         else:
-            self._view_pos = max(0, self._view_pos)
-            self._restore_state(snaps[self._view_pos])
+            pos = max(0, pos)
+            self._view_pos = pos
+            self._restore_state(snaps[pos])
             self.candidates = []
-            self._set_status("浏览第 %d 手（← / → 前后，点棋盘回到最新）"
-                             % (self._view_pos + 1))
+            self._set_status("浏览第 %d 手（← / → 前后，点击棋盘回到最新）"
+                             % (pos + 1))
         self.draw_board()
 
     def _sync_board(self, stones):
